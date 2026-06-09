@@ -1,0 +1,104 @@
+{
+  "sources": {
+    "admissions": "/mnt/d/Data/mimic-iv-2.2/hosp/admissions.csv.gz",
+    "patients": "/mnt/d/Data/mimic-iv-2.2/hosp/patients.csv.gz",
+    "diagnoses_icd": "/mnt/d/Data/mimic-iv-2.2/hosp/diagnoses_icd.csv.gz",
+    "icustays": "/mnt/d/Data/mimic-iv-2.2/icu/icustays.csv.gz",
+    "chartevents": "/mnt/d/Data/mimic-iv-2.2/icu/chartevents.csv.gz",
+    "ecode_excel": "/mnt/d/Data/Trauma cohort MIMICIV/dictionary/qualified_traumatic_Ecodes_clean.xlsx",
+    "injury_severity": ""
+  },
+  "outputs": {
+    "cohort_csv": "/mnt/d/Data/Trauma cohort MIMICIV/cohort/mimiciv_trauma_cohort_clean.csv",
+    "layers_md": "/mnt/d/Data/Trauma cohort MIMICIV/metadata/cohort_layers.md"
+  },
+  "cohort": {
+    "semantic_label": "mimiciv_hospital_admission_base_trauma_ecode_clean_age18_89_hosp48_vent3_hadm",
+    "unit": "hadm_id primary; final CSV has one row per ICU stay under each final hadm_id",
+    "source_universe": "MIMIC-IV hospital admissions; valid trauma layer requires patient row, ICU stay, CHARTEVENTS, and ICD-9/10 E-code evidence from clean workbook",
+    "diagnosis_position": "any",
+    "min_age": 18,
+    "max_age": 89,
+    "hospital_los_hours_min": 48,
+    "mechanical_ventilation_day_min": 3,
+    "icd9_match_source": "clean_excel_exact_allowlist",
+    "icd10_match_source": "clean_excel_exact_allowlist",
+    "ecode_candidate_semantics": "E-codes/external-cause codes are a first-stage MIMIC trauma candidate screen, not final registry inclusion evidence",
+    "require_injury_severity_confirmation": false,
+    "injury_severity_rule": "deferred; ISS/AIS confirmation is not applied in the current extractor layer",
+    "injury_severity_source_status": "not_configured_in_mimic_core_deferred",
+    "icd9_ecode_ranges": [
+      "E8000-E8480",
+      "E8800-E9057",
+      "E9060-E9259",
+      "E9270-E9289",
+      "E9507",
+      "E9520",
+      "E9521",
+      "E9520-E9589",
+      "E9600",
+      "E9610-E9689",
+      "E9700-E9760",
+      "E9780-E9799",
+      "E9806",
+      "E9830-E9886",
+      "E9888",
+      "E9889",
+      "E9900-E9961",
+      "E9968-E9989"
+    ],
+    "exclude_icd9_ecode_ranges": [
+      "E8500-E8549"
+    ],
+    "use_icd10": true,
+    "icd10_category_ranges": [
+      "T74",
+      "T76",
+      "V00-V06",
+      "V09-V99",
+      "W00-W01",
+      "W03-W40",
+      "W42",
+      "W45-W46",
+      "W49-W62",
+      "W64-W65",
+      "W67",
+      "W69",
+      "W73-W74",
+      "W85-W86",
+      "W89",
+      "W92-W94",
+      "W99",
+      "X00-X06",
+      "X08",
+      "X10-X19",
+      "X30-X32",
+      "X34-X39",
+      "X50",
+      "X52",
+      "X58",
+      "X71-X83",
+      "X92-X99",
+      "Y00-Y04",
+      "Y07-Y09",
+      "Y21-Y33",
+      "Y35-Y38"
+    ],
+    "icd10_category_ranges_note": "paper/reporting reference only; actual matching uses exact allowlist from clean Excel ICD-10 sheet",
+    "vent_mode_itemids": [
+      "223849",
+      "229314"
+    ],
+    "o2_device_itemids": [
+      "226732"
+    ],
+    "invasive_o2_devices": [
+      "Endotracheal tube"
+    ],
+    "ventilation_types": [
+      "InvasiveVent"
+    ],
+    "ventilation_day_definition": "count distinct CHARTEVENTS chart dates with MIMIC-IV mimic-code InvasiveVent evidence; tracheostomy-only and oxygen-only events are not counted",
+    "flow_style": "paper_style: Hospital Admission -> Valid Trauma Patients, with side exclusions for invalid hospital admission and non-trauma admission"
+  }
+}

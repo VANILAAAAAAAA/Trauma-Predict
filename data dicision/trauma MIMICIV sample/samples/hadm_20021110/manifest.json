@@ -1,0 +1,134 @@
+{
+  "hadm_id": "20021110",
+  "subject_ids": [
+    "19891610"
+  ],
+  "stay_ids": [
+    "35923619"
+  ],
+  "output_dir": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110",
+  "cohort_rows": 1,
+  "tables": {
+    "admissions": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/hosp/admissions.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/01_admissions_raw.csv",
+      "rows_scanned": 431231,
+      "key_matched_rows": 1,
+      "field_matched_rows": 1,
+      "written_rows": 1
+    },
+    "patients": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/hosp/patients.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/02_patients_raw.csv",
+      "rows_scanned": 299712,
+      "key_matched_rows": 1,
+      "field_matched_rows": 1,
+      "written_rows": 1
+    },
+    "icustays": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/icu/icustays.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/03_icustays_raw.csv",
+      "rows_scanned": 73181,
+      "key_matched_rows": 1,
+      "field_matched_rows": 1,
+      "written_rows": 1
+    },
+    "diagnoses_icd": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/hosp/diagnoses_icd.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/04_diagnoses_icd_raw.csv",
+      "rows_scanned": 4756326,
+      "key_matched_rows": 25,
+      "field_matched_rows": 25,
+      "written_rows": 25
+    },
+    "ed_linkage": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/mimiciv_patient_ed_ids.csv",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/05_ed_linkage_raw.csv",
+      "written_rows": 1,
+      "ed_stay_ids": [
+        "38771541"
+      ]
+    },
+    "edstays": {
+      "source": "/mnt/d/Data/mimic-iv-ed/2.2/ed/edstays.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/06_edstays_raw.csv",
+      "rows_scanned": 425087,
+      "key_matched_rows": 1,
+      "field_matched_rows": 1,
+      "written_rows": 1
+    },
+    "ed_triage": {
+      "source": "/mnt/d/Data/mimic-iv-ed/2.2/ed/triage.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/07_ed_triage_raw.csv",
+      "rows_scanned": 425087,
+      "key_matched_rows": 1,
+      "field_matched_rows": 1,
+      "written_rows": 1
+    },
+    "ed_vitalsign": {
+      "source": "/mnt/d/Data/mimic-iv-ed/2.2/ed/vitalsign.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/08_ed_vitalsign_raw.csv",
+      "rows_scanned": 1564610,
+      "key_matched_rows": 21,
+      "field_matched_rows": 21,
+      "written_rows": 21
+    },
+    "ed_diagnosis": {
+      "source": "/mnt/d/Data/mimic-iv-ed/2.2/ed/diagnosis.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/09_ed_diagnosis_raw.csv",
+      "rows_scanned": 899050,
+      "key_matched_rows": 1,
+      "field_matched_rows": 1,
+      "written_rows": 1
+    },
+    "chartevents": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/icu/chartevents.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/10_chartevents_G1_G3_raw.csv",
+      "rows_scanned": 313645063,
+      "key_matched_rows": 2042,
+      "field_matched_rows": 259,
+      "written_rows": 259
+    },
+    "labevents": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/hosp/labevents.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/20_labevents_G4_raw.csv",
+      "rows_scanned": 118171367,
+      "key_matched_rows": 561,
+      "field_matched_rows": 138,
+      "written_rows": 138
+    },
+    "inputevents": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/icu/inputevents.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/30_inputevents_G3_raw.csv",
+      "rows_scanned": 8978893,
+      "key_matched_rows": 17,
+      "field_matched_rows": 5,
+      "written_rows": 5
+    },
+    "outputevents": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/icu/outputevents.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/40_outputevents_G4_uop_raw.csv",
+      "rows_scanned": 4234967,
+      "key_matched_rows": 25,
+      "field_matched_rows": 24,
+      "written_rows": 24
+    },
+    "procedureevents": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/icu/procedureevents.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/50_procedureevents_G3_raw.csv",
+      "rows_scanned": 696092,
+      "key_matched_rows": 2,
+      "field_matched_rows": 0,
+      "written_rows": 0
+    },
+    "prescriptions_abx": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/hosp/prescriptions.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20021110/60_prescriptions_antibiotics_raw.csv",
+      "rows_scanned": 15416708,
+      "key_matched_rows": 61,
+      "field_matched_rows": 3,
+      "written_rows": 3
+    }
+  },
+  "note": "Raw filtered rows only. No hourly/daily summary or aggregation performed."
+}

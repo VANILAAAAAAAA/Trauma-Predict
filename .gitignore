@@ -1,0 +1,26 @@
+# Data files
+/mnt/
+*.csv.gz
+*.csv
+*.parquet
+*.h5
+*.pkl
+*.joblib
+
+# Token / secrets
+github_token.txt
+*.token
+.env
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# Large artifacts
+agent-artifact/
+audit/

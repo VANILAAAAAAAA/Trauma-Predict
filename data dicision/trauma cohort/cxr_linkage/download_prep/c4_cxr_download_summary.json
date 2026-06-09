@@ -1,0 +1,15 @@
+{
+  "cohort": "C4",
+  "layer": "L3_icu_window_cxr",
+  "hadm_count": 1760,
+  "subject_count": 1730,
+  "study_count": 9608,
+  "file_count": 11004,
+  "estimated_total_size_mb": 11004.0,
+  "estimated_total_size_gb": 10.7,
+  "output_list": "/home/vanila/code/EHR-Predict/data dicision/trauma cohort/cxr_linkage/download_prep/c4_cxr_download_list_L3_icu_window.txt",
+  "default_output_list": "/home/vanila/code/EHR-Predict/data dicision/trauma cohort/cxr_linkage/download_prep/c4_cxr_download_list.txt",
+  "source_dicom_layer_csv": "/home/vanila/code/EHR-Predict/data dicision/trauma cohort/cxr_linkage/c4_cxr_dicom_layers.csv",
+  "download_command": "wget -c --user <PHYSIONET_USER> --password <PHYSIONET_PASS> -i '/home/vanila/code/EHR-Predict/data dicision/trauma cohort/cxr_linkage/download_prep/c4_cxr_download_list.txt' -P /mnt/d/Data/mimic-cxr-jpg-c4/",
+  "note": "Exact image-row filter from c4_cxr_dicom_layers.csv; does not include unrelated CXR from same subject."
+}

@@ -1,0 +1,100 @@
+{
+  "hadm_id": "20002252",
+  "subject_ids": [
+    "18826698"
+  ],
+  "stay_ids": [
+    "33941577"
+  ],
+  "output_dir": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252",
+  "cohort_rows": 1,
+  "tables": {
+    "admissions": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/hosp/admissions.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/01_admissions_raw.csv",
+      "rows_scanned": 431231,
+      "key_matched_rows": 1,
+      "field_matched_rows": 1,
+      "written_rows": 1
+    },
+    "patients": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/hosp/patients.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/02_patients_raw.csv",
+      "rows_scanned": 299712,
+      "key_matched_rows": 1,
+      "field_matched_rows": 1,
+      "written_rows": 1
+    },
+    "icustays": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/icu/icustays.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/03_icustays_raw.csv",
+      "rows_scanned": 73181,
+      "key_matched_rows": 1,
+      "field_matched_rows": 1,
+      "written_rows": 1
+    },
+    "diagnoses_icd": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/hosp/diagnoses_icd.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/04_diagnoses_icd_raw.csv",
+      "rows_scanned": 4756326,
+      "key_matched_rows": 9,
+      "field_matched_rows": 9,
+      "written_rows": 9
+    },
+    "ed_linkage": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/mimiciv_patient_ed_ids.csv",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/05_ed_linkage_raw.csv",
+      "written_rows": 0,
+      "ed_stay_ids": []
+    },
+    "chartevents": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/icu/chartevents.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/10_chartevents_G1_G3_raw.csv",
+      "rows_scanned": 313645063,
+      "key_matched_rows": 645,
+      "field_matched_rows": 81,
+      "written_rows": 81
+    },
+    "labevents": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/hosp/labevents.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/20_labevents_G4_raw.csv",
+      "rows_scanned": 118171367,
+      "key_matched_rows": 99,
+      "field_matched_rows": 14,
+      "written_rows": 14
+    },
+    "inputevents": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/icu/inputevents.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/30_inputevents_G3_raw.csv",
+      "rows_scanned": 8978893,
+      "key_matched_rows": 4,
+      "field_matched_rows": 0,
+      "written_rows": 0
+    },
+    "outputevents": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/icu/outputevents.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/40_outputevents_G4_uop_raw.csv",
+      "rows_scanned": 4234967,
+      "key_matched_rows": 4,
+      "field_matched_rows": 4,
+      "written_rows": 4
+    },
+    "procedureevents": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/icu/procedureevents.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/50_procedureevents_G3_raw.csv",
+      "rows_scanned": 696092,
+      "key_matched_rows": 3,
+      "field_matched_rows": 0,
+      "written_rows": 0
+    },
+    "prescriptions_abx": {
+      "source": "/mnt/d/Data/mimic-iv-2.2/hosp/prescriptions.csv.gz",
+      "output": "/home/vanila/code/EHR-Predict/data dicision/trauma MIMICIV sample/samples/hadm_20002252/60_prescriptions_antibiotics_raw.csv",
+      "rows_scanned": 15416708,
+      "key_matched_rows": 39,
+      "field_matched_rows": 1,
+      "written_rows": 1
+    }
+  },
+  "note": "Raw filtered rows only. No hourly/daily summary or aggregation performed."
+}
