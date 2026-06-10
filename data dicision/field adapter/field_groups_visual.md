@@ -28,6 +28,8 @@
 <tr><td><code>mechanism_cat</code></td><td>category</td><td>Injury mechanism category</td></tr>
 <tr><td><code>transfer</code></td><td>category</td><td>Transfer or arrival context before ICU</td></tr>
 <tr><td><code>initial_ed_sbp</code></td><td>mmHg</td><td>Initial ED systolic blood pressure</td></tr>
+<tr><td><code>rsi</code></td><td>ratio</td><td>Reverse shock index = SBP / HR</td></tr>
+<tr><td><code>head_injury</code></td><td>binary</td><td>Head injury from ICD (S00-S09 / 800-854)</td></tr>
 </tbody>
 </table>
 </div>
