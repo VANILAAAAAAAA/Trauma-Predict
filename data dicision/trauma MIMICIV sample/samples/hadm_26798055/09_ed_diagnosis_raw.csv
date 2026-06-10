@@ -1,0 +1,4 @@
+uw_group,canonical_variable,subject_id,stay_id,seq_num,icd_code,icd_version,icd_title
+,,19040738,32699276,1,85300,9,TRAUMATIC BRAIN HEM NEC
+,,19040738,32699276,2,E8889,9,UNSPECIFIED FALL
+,,19040738,32699276,3,41519,9,PULM EMBOLISM/INFARCT

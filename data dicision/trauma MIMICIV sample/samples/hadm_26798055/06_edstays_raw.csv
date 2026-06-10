@@ -1,0 +1,2 @@
+uw_group,canonical_variable,subject_id,hadm_id,stay_id,intime,outtime,gender,race,arrival_transport,disposition
+,,19040738,26798055,32699276,2143-06-12 08:51:00,2143-06-12 16:11:00,M,UNKNOWN,AMBULANCE,ADMITTED

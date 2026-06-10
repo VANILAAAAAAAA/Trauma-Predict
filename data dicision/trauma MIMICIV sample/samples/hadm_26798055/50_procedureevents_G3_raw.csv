@@ -1,0 +1,6 @@
+uw_group,canonical_variable,subject_id,hadm_id,stay_id,caregiver_id,starttime,endtime,storetime,itemid,value,valueuom,location,locationcategory,orderid,linkorderid,ordercategoryname,ordercategorydescription,patientweight,isopenbag,continueinnextdept,statusdescription,originalamount,originalrate
+procedureevents_g3_raw,or_sent,19040738,26798055,31603200,2547,2143-06-13 15:45:00,2143-06-13 15:46:00,2143-06-13 16:01:00,225470,1,None,,,6179190,6179190,Significant Events,Task,80,0,0,FinishedRunning,1,0
+procedureevents_g3_raw,vent_invasive,19040738,26798055,31603200,3009,2143-06-12 16:13:00,2143-06-20 08:00:00,2143-06-20 17:22:00,225792,11027,min,,,381784,381784,Ventilation,ContinuousProcess,80,1,0,FinishedRunning,11027,1
+procedureevents_g3_raw,or_sent,19040738,26798055,31603200,40302,2143-06-16 15:30:00,2143-06-16 15:31:00,2143-06-16 20:40:00,225470,1,None,,,3731254,3731254,Significant Events,Task,80,0,0,FinishedRunning,1,0
+procedureevents_g3_raw,or_received,19040738,26798055,31603200,40302,2143-06-16 17:25:00,2143-06-16 17:26:00,2143-06-16 20:41:00,225469,1,None,,,6622308,6622308,Significant Events,Task,80,0,0,FinishedRunning,1,0
+procedureevents_g3_raw,or_received,19040738,26798055,31603200,47425,2143-06-13 19:25:00,2143-06-13 19:26:00,2143-06-13 22:28:00,225469,1,None,,,8065098,8065098,Significant Events,Task,80,0,0,FinishedRunning,1,0
