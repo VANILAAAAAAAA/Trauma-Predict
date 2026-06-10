@@ -1,0 +1,1854 @@
+{
+  "tokens": [
+    {
+      "code": "STATIC",
+      "type": "code",
+      "description": "structural",
+      "tokenization": {}
+    },
+    {
+      "code": "SEP",
+      "type": "code",
+      "description": "structural",
+      "tokenization": {}
+    },
+    {
+      "code": "MASK",
+      "type": "code",
+      "description": "structural",
+      "tokenization": {}
+    },
+    {
+      "code": "PAD",
+      "type": "code",
+      "description": "structural",
+      "tokenization": {}
+    },
+    {
+      "code": "CLS",
+      "type": "code",
+      "description": "structural",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_1",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_2",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_3",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_4",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_5",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_6",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_7",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_8",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_9",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_10",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_11",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_12",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_13",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_14",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_15",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_16",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_17",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_18",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_19",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_20",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_21",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_22",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_23",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_24",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_25",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_26",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_27",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_28",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_29",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_30",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_31",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "DAY_32",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_0",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_1",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_2",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_3",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_4",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_5",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_6",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_7",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_8",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_9",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_10",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_11",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_12",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_13",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_14",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_15",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_16",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_17",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_18",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_19",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_20",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_21",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_22",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_23",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "HOUR_24",
+      "type": "code",
+      "description": "time_block",
+      "tokenization": {}
+    },
+    {
+      "code": "FIRST48",
+      "type": "code",
+      "description": "first48",
+      "tokenization": {}
+    },
+    {
+      "code": "hr",
+      "type": "code",
+      "description": "Heart rate",
+      "tokenization": {}
+    },
+    {
+      "code": "hr",
+      "type": "numerical_range",
+      "description": "Heart rate [0-50]",
+      "tokenization": {
+        "unit": "bpm",
+        "range_start": 0,
+        "range_end": 50
+      }
+    },
+    {
+      "code": "hr",
+      "type": "numerical_range",
+      "description": "Heart rate [50-60]",
+      "tokenization": {
+        "unit": "bpm",
+        "range_start": 50,
+        "range_end": 60
+      }
+    },
+    {
+      "code": "hr",
+      "type": "numerical_range",
+      "description": "Heart rate [60-80]",
+      "tokenization": {
+        "unit": "bpm",
+        "range_start": 60,
+        "range_end": 80
+      }
+    },
+    {
+      "code": "hr",
+      "type": "numerical_range",
+      "description": "Heart rate [80-100]",
+      "tokenization": {
+        "unit": "bpm",
+        "range_start": 80,
+        "range_end": 100
+      }
+    },
+    {
+      "code": "hr",
+      "type": "numerical_range",
+      "description": "Heart rate [100-120]",
+      "tokenization": {
+        "unit": "bpm",
+        "range_start": 100,
+        "range_end": 120
+      }
+    },
+    {
+      "code": "hr",
+      "type": "numerical_range",
+      "description": "Heart rate [120-200]",
+      "tokenization": {
+        "unit": "bpm",
+        "range_start": 120,
+        "range_end": 200
+      }
+    },
+    {
+      "code": "sbp",
+      "type": "code",
+      "description": "Systolic blood pressure",
+      "tokenization": {}
+    },
+    {
+      "code": "sbp",
+      "type": "numerical_range",
+      "description": "Systolic blood pressure [0-80]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 0,
+        "range_end": 80
+      }
+    },
+    {
+      "code": "sbp",
+      "type": "numerical_range",
+      "description": "Systolic blood pressure [80-90]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 80,
+        "range_end": 90
+      }
+    },
+    {
+      "code": "sbp",
+      "type": "numerical_range",
+      "description": "Systolic blood pressure [90-110]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 90,
+        "range_end": 110
+      }
+    },
+    {
+      "code": "sbp",
+      "type": "numerical_range",
+      "description": "Systolic blood pressure [110-140]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 110,
+        "range_end": 140
+      }
+    },
+    {
+      "code": "sbp",
+      "type": "numerical_range",
+      "description": "Systolic blood pressure [140-180]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 140,
+        "range_end": 180
+      }
+    },
+    {
+      "code": "sbp",
+      "type": "numerical_range",
+      "description": "Systolic blood pressure [180-300]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 180,
+        "range_end": 300
+      }
+    },
+    {
+      "code": "dbp",
+      "type": "code",
+      "description": "Diastolic blood pressure",
+      "tokenization": {}
+    },
+    {
+      "code": "dbp",
+      "type": "numerical_range",
+      "description": "Diastolic blood pressure [0-50]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 0,
+        "range_end": 50
+      }
+    },
+    {
+      "code": "dbp",
+      "type": "numerical_range",
+      "description": "Diastolic blood pressure [50-60]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 50,
+        "range_end": 60
+      }
+    },
+    {
+      "code": "dbp",
+      "type": "numerical_range",
+      "description": "Diastolic blood pressure [60-80]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 60,
+        "range_end": 80
+      }
+    },
+    {
+      "code": "dbp",
+      "type": "numerical_range",
+      "description": "Diastolic blood pressure [80-100]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 80,
+        "range_end": 100
+      }
+    },
+    {
+      "code": "dbp",
+      "type": "numerical_range",
+      "description": "Diastolic blood pressure [100-200]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 100,
+        "range_end": 200
+      }
+    },
+    {
+      "code": "map",
+      "type": "code",
+      "description": "Mean arterial pressure",
+      "tokenization": {}
+    },
+    {
+      "code": "map",
+      "type": "numerical_range",
+      "description": "Mean arterial pressure [0-60]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 0,
+        "range_end": 60
+      }
+    },
+    {
+      "code": "map",
+      "type": "numerical_range",
+      "description": "Mean arterial pressure [60-70]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 60,
+        "range_end": 70
+      }
+    },
+    {
+      "code": "map",
+      "type": "numerical_range",
+      "description": "Mean arterial pressure [70-90]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 70,
+        "range_end": 90
+      }
+    },
+    {
+      "code": "map",
+      "type": "numerical_range",
+      "description": "Mean arterial pressure [90-110]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 90,
+        "range_end": 110
+      }
+    },
+    {
+      "code": "map",
+      "type": "numerical_range",
+      "description": "Mean arterial pressure [110-200]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 110,
+        "range_end": 200
+      }
+    },
+    {
+      "code": "rr",
+      "type": "code",
+      "description": "Respiratory rate",
+      "tokenization": {}
+    },
+    {
+      "code": "rr",
+      "type": "numerical_range",
+      "description": "Respiratory rate [0-8]",
+      "tokenization": {
+        "unit": "breaths/min",
+        "range_start": 0,
+        "range_end": 8
+      }
+    },
+    {
+      "code": "rr",
+      "type": "numerical_range",
+      "description": "Respiratory rate [8-12]",
+      "tokenization": {
+        "unit": "breaths/min",
+        "range_start": 8,
+        "range_end": 12
+      }
+    },
+    {
+      "code": "rr",
+      "type": "numerical_range",
+      "description": "Respiratory rate [12-20]",
+      "tokenization": {
+        "unit": "breaths/min",
+        "range_start": 12,
+        "range_end": 20
+      }
+    },
+    {
+      "code": "rr",
+      "type": "numerical_range",
+      "description": "Respiratory rate [20-28]",
+      "tokenization": {
+        "unit": "breaths/min",
+        "range_start": 20,
+        "range_end": 28
+      }
+    },
+    {
+      "code": "rr",
+      "type": "numerical_range",
+      "description": "Respiratory rate [28-60]",
+      "tokenization": {
+        "unit": "breaths/min",
+        "range_start": 28,
+        "range_end": 60
+      }
+    },
+    {
+      "code": "temp",
+      "type": "code",
+      "description": "Temperature",
+      "tokenization": {}
+    },
+    {
+      "code": "temp",
+      "type": "numerical_range",
+      "description": "Temperature [30-35]",
+      "tokenization": {
+        "unit": "\u00b0C",
+        "range_start": 30,
+        "range_end": 35
+      }
+    },
+    {
+      "code": "temp",
+      "type": "numerical_range",
+      "description": "Temperature [35-36]",
+      "tokenization": {
+        "unit": "\u00b0C",
+        "range_start": 35,
+        "range_end": 36
+      }
+    },
+    {
+      "code": "temp",
+      "type": "numerical_range",
+      "description": "Temperature [36-37.5]",
+      "tokenization": {
+        "unit": "\u00b0C",
+        "range_start": 36,
+        "range_end": 37.5
+      }
+    },
+    {
+      "code": "temp",
+      "type": "numerical_range",
+      "description": "Temperature [37.5-38.5]",
+      "tokenization": {
+        "unit": "\u00b0C",
+        "range_start": 37.5,
+        "range_end": 38.5
+      }
+    },
+    {
+      "code": "temp",
+      "type": "numerical_range",
+      "description": "Temperature [38.5-42]",
+      "tokenization": {
+        "unit": "\u00b0C",
+        "range_start": 38.5,
+        "range_end": 42
+      }
+    },
+    {
+      "code": "fio2",
+      "type": "code",
+      "description": "Fraction of inspired oxygen",
+      "tokenization": {}
+    },
+    {
+      "code": "fio2",
+      "type": "numerical_range",
+      "description": "Fraction of inspired oxygen [0-0.21]",
+      "tokenization": {
+        "unit": "fraction",
+        "range_start": 0,
+        "range_end": 0.21
+      }
+    },
+    {
+      "code": "fio2",
+      "type": "numerical_range",
+      "description": "Fraction of inspired oxygen [0.21-0.4]",
+      "tokenization": {
+        "unit": "fraction",
+        "range_start": 0.21,
+        "range_end": 0.4
+      }
+    },
+    {
+      "code": "fio2",
+      "type": "numerical_range",
+      "description": "Fraction of inspired oxygen [0.4-0.6]",
+      "tokenization": {
+        "unit": "fraction",
+        "range_start": 0.4,
+        "range_end": 0.6
+      }
+    },
+    {
+      "code": "fio2",
+      "type": "numerical_range",
+      "description": "Fraction of inspired oxygen [0.6-1.0]",
+      "tokenization": {
+        "unit": "fraction",
+        "range_start": 0.6,
+        "range_end": 1.0
+      }
+    },
+    {
+      "code": "age",
+      "type": "code",
+      "description": "Age at admission",
+      "tokenization": {}
+    },
+    {
+      "code": "age",
+      "type": "numerical_range",
+      "description": "Age at admission [0-18]",
+      "tokenization": {
+        "unit": "years",
+        "range_start": 0,
+        "range_end": 18
+      }
+    },
+    {
+      "code": "age",
+      "type": "numerical_range",
+      "description": "Age at admission [18-30]",
+      "tokenization": {
+        "unit": "years",
+        "range_start": 18,
+        "range_end": 30
+      }
+    },
+    {
+      "code": "age",
+      "type": "numerical_range",
+      "description": "Age at admission [30-45]",
+      "tokenization": {
+        "unit": "years",
+        "range_start": 30,
+        "range_end": 45
+      }
+    },
+    {
+      "code": "age",
+      "type": "numerical_range",
+      "description": "Age at admission [45-60]",
+      "tokenization": {
+        "unit": "years",
+        "range_start": 45,
+        "range_end": 60
+      }
+    },
+    {
+      "code": "age",
+      "type": "numerical_range",
+      "description": "Age at admission [60-75]",
+      "tokenization": {
+        "unit": "years",
+        "range_start": 60,
+        "range_end": 75
+      }
+    },
+    {
+      "code": "age",
+      "type": "numerical_range",
+      "description": "Age at admission [75-90]",
+      "tokenization": {
+        "unit": "years",
+        "range_start": 75,
+        "range_end": 90
+      }
+    },
+    {
+      "code": "male",
+      "type": "code",
+      "description": "Sex; M=male F=female",
+      "tokenization": {}
+    },
+    {
+      "code": "male",
+      "type": "categorical",
+      "description": "Sex; M=male F=female=M",
+      "tokenization": {
+        "category": "M",
+        "values": [
+          "M",
+          "F"
+        ]
+      }
+    },
+    {
+      "code": "male",
+      "type": "categorical",
+      "description": "Sex; M=male F=female=F",
+      "tokenization": {
+        "category": "F",
+        "values": [
+          "M",
+          "F"
+        ]
+      }
+    },
+    {
+      "code": "mechanism_cat",
+      "type": "code",
+      "description": "Injury mechanism",
+      "tokenization": {}
+    },
+    {
+      "code": "mechanism_cat",
+      "type": "categorical",
+      "description": "Injury mechanism=B",
+      "tokenization": {
+        "category": "B",
+        "values": [
+          "B",
+          "P",
+          "O"
+        ]
+      }
+    },
+    {
+      "code": "mechanism_cat",
+      "type": "categorical",
+      "description": "Injury mechanism=P",
+      "tokenization": {
+        "category": "P",
+        "values": [
+          "B",
+          "P",
+          "O"
+        ]
+      }
+    },
+    {
+      "code": "mechanism_cat",
+      "type": "categorical",
+      "description": "Injury mechanism=O",
+      "tokenization": {
+        "category": "O",
+        "values": [
+          "B",
+          "P",
+          "O"
+        ]
+      }
+    },
+    {
+      "code": "transfer",
+      "type": "code",
+      "description": "Transfer context",
+      "tokenization": {}
+    },
+    {
+      "code": "transfer",
+      "type": "categorical",
+      "description": "Transfer context=D",
+      "tokenization": {
+        "category": "D",
+        "values": [
+          "D",
+          "T"
+        ]
+      }
+    },
+    {
+      "code": "transfer",
+      "type": "categorical",
+      "description": "Transfer context=T",
+      "tokenization": {
+        "category": "T",
+        "values": [
+          "D",
+          "T"
+        ]
+      }
+    },
+    {
+      "code": "initial_ed_sbp",
+      "type": "code",
+      "description": "Initial ED SBP",
+      "tokenization": {}
+    },
+    {
+      "code": "initial_ed_sbp",
+      "type": "numerical_range",
+      "description": "Initial ED SBP [0-90]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 0,
+        "range_end": 90
+      }
+    },
+    {
+      "code": "initial_ed_sbp",
+      "type": "numerical_range",
+      "description": "Initial ED SBP [90-111]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 90,
+        "range_end": 111
+      }
+    },
+    {
+      "code": "initial_ed_sbp",
+      "type": "numerical_range",
+      "description": "Initial ED SBP [111-140]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 111,
+        "range_end": 140
+      }
+    },
+    {
+      "code": "initial_ed_sbp",
+      "type": "numerical_range",
+      "description": "Initial ED SBP [140-180]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 140,
+        "range_end": 180
+      }
+    },
+    {
+      "code": "initial_ed_sbp",
+      "type": "numerical_range",
+      "description": "Initial ED SBP [180-300]",
+      "tokenization": {
+        "unit": "mmHg",
+        "range_start": 180,
+        "range_end": 300
+      }
+    },
+    {
+      "code": "rsi",
+      "type": "code",
+      "description": "Reverse shock index = SBP/HR",
+      "tokenization": {}
+    },
+    {
+      "code": "rsi",
+      "type": "numerical_range",
+      "description": "Reverse shock index = SBP/HR [0-1.0]",
+      "tokenization": {
+        "unit": "ratio",
+        "range_start": 0,
+        "range_end": 1.0
+      }
+    },
+    {
+      "code": "rsi",
+      "type": "numerical_range",
+      "description": "Reverse shock index = SBP/HR [1.0-1.1]",
+      "tokenization": {
+        "unit": "ratio",
+        "range_start": 1.0,
+        "range_end": 1.1
+      }
+    },
+    {
+      "code": "rsi",
+      "type": "numerical_range",
+      "description": "Reverse shock index = SBP/HR [1.1-1.8]",
+      "tokenization": {
+        "unit": "ratio",
+        "range_start": 1.1,
+        "range_end": 1.8
+      }
+    },
+    {
+      "code": "rsi",
+      "type": "numerical_range",
+      "description": "Reverse shock index = SBP/HR [1.8-3.0]",
+      "tokenization": {
+        "unit": "ratio",
+        "range_start": 1.8,
+        "range_end": 3.0
+      }
+    },
+    {
+      "code": "rsi",
+      "type": "numerical_range",
+      "description": "Reverse shock index = SBP/HR [3.0-20.0]",
+      "tokenization": {
+        "unit": "ratio",
+        "range_start": 3.0,
+        "range_end": 20.0
+      }
+    },
+    {
+      "code": "head_injury",
+      "type": "code",
+      "description": "Head injury from ICD",
+      "tokenization": {}
+    },
+    {
+      "code": "head_injury",
+      "type": "categorical",
+      "description": "Head injury from ICD=Y",
+      "tokenization": {
+        "category": "Y",
+        "values": [
+          "Y",
+          "N"
+        ]
+      }
+    },
+    {
+      "code": "head_injury",
+      "type": "categorical",
+      "description": "Head injury from ICD=N",
+      "tokenization": {
+        "category": "N",
+        "values": [
+          "Y",
+          "N"
+        ]
+      }
+    },
+    {
+      "code": "base_def_48",
+      "type": "code",
+      "description": "First-48h base deficit",
+      "tokenization": {}
+    },
+    {
+      "code": "base_def_48",
+      "type": "numerical_range",
+      "description": "First-48h base deficit [0-3]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 0,
+        "range_end": 3
+      }
+    },
+    {
+      "code": "base_def_48",
+      "type": "numerical_range",
+      "description": "First-48h base deficit [3-6]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 3,
+        "range_end": 6
+      }
+    },
+    {
+      "code": "base_def_48",
+      "type": "numerical_range",
+      "description": "First-48h base deficit [6-10]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 6,
+        "range_end": 10
+      }
+    },
+    {
+      "code": "base_def_48",
+      "type": "numerical_range",
+      "description": "First-48h base deficit [10-30]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 10,
+        "range_end": 30
+      }
+    },
+    {
+      "code": "lactate_48",
+      "type": "code",
+      "description": "First-48h lactate",
+      "tokenization": {}
+    },
+    {
+      "code": "lactate_48",
+      "type": "numerical_range",
+      "description": "First-48h lactate [0-3.0]",
+      "tokenization": {
+        "unit": "mmol/L",
+        "range_start": 0,
+        "range_end": 3.0
+      }
+    },
+    {
+      "code": "lactate_48",
+      "type": "numerical_range",
+      "description": "First-48h lactate [3.0-5.0]",
+      "tokenization": {
+        "unit": "mmol/L",
+        "range_start": 3.0,
+        "range_end": 5.0
+      }
+    },
+    {
+      "code": "lactate_48",
+      "type": "numerical_range",
+      "description": "First-48h lactate [5.0-10.0]",
+      "tokenization": {
+        "unit": "mmol/L",
+        "range_start": 5.0,
+        "range_end": 10.0
+      }
+    },
+    {
+      "code": "lactate_48",
+      "type": "numerical_range",
+      "description": "First-48h lactate [10.0-30.0]",
+      "tokenization": {
+        "unit": "mmol/L",
+        "range_start": 10.0,
+        "range_end": 30.0
+      }
+    },
+    {
+      "code": "rbc_48",
+      "type": "code",
+      "description": "First-48h RBC volume",
+      "tokenization": {}
+    },
+    {
+      "code": "rbc_48",
+      "type": "numerical_range",
+      "description": "First-48h RBC volume [0-500]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 0,
+        "range_end": 500
+      }
+    },
+    {
+      "code": "rbc_48",
+      "type": "numerical_range",
+      "description": "First-48h RBC volume [500-2000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 500,
+        "range_end": 2000
+      }
+    },
+    {
+      "code": "rbc_48",
+      "type": "numerical_range",
+      "description": "First-48h RBC volume [2000-5000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 2000,
+        "range_end": 5000
+      }
+    },
+    {
+      "code": "rbc_48",
+      "type": "numerical_range",
+      "description": "First-48h RBC volume [5000-10000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 5000,
+        "range_end": 10000
+      }
+    },
+    {
+      "code": "crys_48",
+      "type": "code",
+      "description": "First-48h crystalloid volume",
+      "tokenization": {}
+    },
+    {
+      "code": "crys_48",
+      "type": "numerical_range",
+      "description": "First-48h crystalloid volume [0-2000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 0,
+        "range_end": 2000
+      }
+    },
+    {
+      "code": "crys_48",
+      "type": "numerical_range",
+      "description": "First-48h crystalloid volume [2000-5000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 2000,
+        "range_end": 5000
+      }
+    },
+    {
+      "code": "crys_48",
+      "type": "numerical_range",
+      "description": "First-48h crystalloid volume [5000-10000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 5000,
+        "range_end": 10000
+      }
+    },
+    {
+      "code": "crys_48",
+      "type": "numerical_range",
+      "description": "First-48h crystalloid volume [10000-30000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 10000,
+        "range_end": 30000
+      }
+    },
+    {
+      "code": "bolus_sum_until_h",
+      "type": "code",
+      "description": "Cumulative crystalloid",
+      "tokenization": {}
+    },
+    {
+      "code": "bolus_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative crystalloid [0-2000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 0,
+        "range_end": 2000
+      }
+    },
+    {
+      "code": "bolus_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative crystalloid [2000-5000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 2000,
+        "range_end": 5000
+      }
+    },
+    {
+      "code": "bolus_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative crystalloid [5000-10000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 5000,
+        "range_end": 10000
+      }
+    },
+    {
+      "code": "bolus_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative crystalloid [10000-30000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 10000,
+        "range_end": 30000
+      }
+    },
+    {
+      "code": "rbc_sum_until_h",
+      "type": "code",
+      "description": "Cumulative RBC",
+      "tokenization": {}
+    },
+    {
+      "code": "rbc_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative RBC [0-500]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 0,
+        "range_end": 500
+      }
+    },
+    {
+      "code": "rbc_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative RBC [500-2000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 500,
+        "range_end": 2000
+      }
+    },
+    {
+      "code": "rbc_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative RBC [2000-5000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 2000,
+        "range_end": 5000
+      }
+    },
+    {
+      "code": "rbc_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative RBC [5000-10000]",
+      "tokenization": {
+        "unit": "mL",
+        "range_start": 5000,
+        "range_end": 10000
+      }
+    },
+    {
+      "code": "vent_h",
+      "type": "code",
+      "description": "Current ventilation",
+      "tokenization": {}
+    },
+    {
+      "code": "vent_day_sum_until_h",
+      "type": "code",
+      "description": "Cumulative vent days",
+      "tokenization": {}
+    },
+    {
+      "code": "vent_day_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative vent days [0-1]",
+      "tokenization": {
+        "unit": "days",
+        "range_start": 0,
+        "range_end": 1
+      }
+    },
+    {
+      "code": "vent_day_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative vent days [1-3]",
+      "tokenization": {
+        "unit": "days",
+        "range_start": 1,
+        "range_end": 3
+      }
+    },
+    {
+      "code": "vent_day_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative vent days [3-7]",
+      "tokenization": {
+        "unit": "days",
+        "range_start": 3,
+        "range_end": 7
+      }
+    },
+    {
+      "code": "vent_day_sum_until_h",
+      "type": "numerical_range",
+      "description": "Cumulative vent days [7-14]",
+      "tokenization": {
+        "unit": "days",
+        "range_start": 7,
+        "range_end": 14
+      }
+    },
+    {
+      "code": "bicarb",
+      "type": "code",
+      "description": "Bicarbonate",
+      "tokenization": {}
+    },
+    {
+      "code": "bicarb",
+      "type": "numerical_range",
+      "description": "Bicarbonate [0-15]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 0,
+        "range_end": 15
+      }
+    },
+    {
+      "code": "bicarb",
+      "type": "numerical_range",
+      "description": "Bicarbonate [15-22]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 15,
+        "range_end": 22
+      }
+    },
+    {
+      "code": "bicarb",
+      "type": "numerical_range",
+      "description": "Bicarbonate [22-26]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 22,
+        "range_end": 26
+      }
+    },
+    {
+      "code": "bicarb",
+      "type": "numerical_range",
+      "description": "Bicarbonate [26-32]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 26,
+        "range_end": 32
+      }
+    },
+    {
+      "code": "bicarb",
+      "type": "numerical_range",
+      "description": "Bicarbonate [32-50]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 32,
+        "range_end": 50
+      }
+    },
+    {
+      "code": "strong_ion",
+      "type": "code",
+      "description": "Strong ion difference",
+      "tokenization": {}
+    },
+    {
+      "code": "strong_ion",
+      "type": "numerical_range",
+      "description": "Strong ion difference [0-20]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 0,
+        "range_end": 20
+      }
+    },
+    {
+      "code": "strong_ion",
+      "type": "numerical_range",
+      "description": "Strong ion difference [20-30]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 20,
+        "range_end": 30
+      }
+    },
+    {
+      "code": "strong_ion",
+      "type": "numerical_range",
+      "description": "Strong ion difference [30-40]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 30,
+        "range_end": 40
+      }
+    },
+    {
+      "code": "strong_ion",
+      "type": "numerical_range",
+      "description": "Strong ion difference [40-50]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 40,
+        "range_end": 50
+      }
+    },
+    {
+      "code": "strong_ion",
+      "type": "numerical_range",
+      "description": "Strong ion difference [50-80]",
+      "tokenization": {
+        "unit": "mEq/L",
+        "range_start": 50,
+        "range_end": 80
+      }
+    },
+    {
+      "code": "bun",
+      "type": "code",
+      "description": "Blood urea nitrogen",
+      "tokenization": {}
+    },
+    {
+      "code": "bun",
+      "type": "numerical_range",
+      "description": "Blood urea nitrogen [0-10]",
+      "tokenization": {
+        "unit": "mg/dL",
+        "range_start": 0,
+        "range_end": 10
+      }
+    },
+    {
+      "code": "bun",
+      "type": "numerical_range",
+      "description": "Blood urea nitrogen [10-20]",
+      "tokenization": {
+        "unit": "mg/dL",
+        "range_start": 10,
+        "range_end": 20
+      }
+    },
+    {
+      "code": "bun",
+      "type": "numerical_range",
+      "description": "Blood urea nitrogen [20-40]",
+      "tokenization": {
+        "unit": "mg/dL",
+        "range_start": 20,
+        "range_end": 40
+      }
+    },
+    {
+      "code": "bun",
+      "type": "numerical_range",
+      "description": "Blood urea nitrogen [40-80]",
+      "tokenization": {
+        "unit": "mg/dL",
+        "range_start": 40,
+        "range_end": 80
+      }
+    },
+    {
+      "code": "bun",
+      "type": "numerical_range",
+      "description": "Blood urea nitrogen [80-200]",
+      "tokenization": {
+        "unit": "mg/dL",
+        "range_start": 80,
+        "range_end": 200
+      }
+    },
+    {
+      "code": "creatinine",
+      "type": "code",
+      "description": "Creatinine",
+      "tokenization": {}
+    },
+    {
+      "code": "creatinine",
+      "type": "numerical_range",
+      "description": "Creatinine [0-0.5]",
+      "tokenization": {
+        "unit": "mg/dL",
+        "range_start": 0,
+        "range_end": 0.5
+      }
+    },
+    {
+      "code": "creatinine",
+      "type": "numerical_range",
+      "description": "Creatinine [0.5-1.0]",
+      "tokenization": {
+        "unit": "mg/dL",
+        "range_start": 0.5,
+        "range_end": 1.0
+      }
+    },
+    {
+      "code": "creatinine",
+      "type": "numerical_range",
+      "description": "Creatinine [1.0-1.5]",
+      "tokenization": {
+        "unit": "mg/dL",
+        "range_start": 1.0,
+        "range_end": 1.5
+      }
+    },
+    {
+      "code": "creatinine",
+      "type": "numerical_range",
+      "description": "Creatinine [1.5-3.0]",
+      "tokenization": {
+        "unit": "mg/dL",
+        "range_start": 1.5,
+        "range_end": 3.0
+      }
+    },
+    {
+      "code": "creatinine",
+      "type": "numerical_range",
+      "description": "Creatinine [3.0-15.0]",
+      "tokenization": {
+        "unit": "mg/dL",
+        "range_start": 3.0,
+        "range_end": 15.0
+      }
+    },
+    {
+      "code": "wbc",
+      "type": "code",
+      "description": "White blood cell count",
+      "tokenization": {}
+    },
+    {
+      "code": "wbc",
+      "type": "numerical_range",
+      "description": "White blood cell count [0-4]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 0,
+        "range_end": 4
+      }
+    },
+    {
+      "code": "wbc",
+      "type": "numerical_range",
+      "description": "White blood cell count [4-10]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 4,
+        "range_end": 10
+      }
+    },
+    {
+      "code": "wbc",
+      "type": "numerical_range",
+      "description": "White blood cell count [10-15]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 10,
+        "range_end": 15
+      }
+    },
+    {
+      "code": "wbc",
+      "type": "numerical_range",
+      "description": "White blood cell count [15-30]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 15,
+        "range_end": 30
+      }
+    },
+    {
+      "code": "wbc",
+      "type": "numerical_range",
+      "description": "White blood cell count [30-100]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 30,
+        "range_end": 100
+      }
+    },
+    {
+      "code": "lymphocytes",
+      "type": "code",
+      "description": "Absolute lymphocyte count",
+      "tokenization": {}
+    },
+    {
+      "code": "lymphocytes",
+      "type": "numerical_range",
+      "description": "Absolute lymphocyte count [0-0.5]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 0,
+        "range_end": 0.5
+      }
+    },
+    {
+      "code": "lymphocytes",
+      "type": "numerical_range",
+      "description": "Absolute lymphocyte count [0.5-1.5]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 0.5,
+        "range_end": 1.5
+      }
+    },
+    {
+      "code": "lymphocytes",
+      "type": "numerical_range",
+      "description": "Absolute lymphocyte count [1.5-5.0]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 1.5,
+        "range_end": 5.0
+      }
+    },
+    {
+      "code": "lymphocytes",
+      "type": "numerical_range",
+      "description": "Absolute lymphocyte count [5.0-100]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 5.0,
+        "range_end": 100
+      }
+    },
+    {
+      "code": "neutrophils",
+      "type": "code",
+      "description": "Absolute neutrophil count",
+      "tokenization": {}
+    },
+    {
+      "code": "neutrophils",
+      "type": "numerical_range",
+      "description": "Absolute neutrophil count [0-1.5]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 0,
+        "range_end": 1.5
+      }
+    },
+    {
+      "code": "neutrophils",
+      "type": "numerical_range",
+      "description": "Absolute neutrophil count [1.5-7.0]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 1.5,
+        "range_end": 7.0
+      }
+    },
+    {
+      "code": "neutrophils",
+      "type": "numerical_range",
+      "description": "Absolute neutrophil count [7.0-15.0]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 7.0,
+        "range_end": 15.0
+      }
+    },
+    {
+      "code": "neutrophils",
+      "type": "numerical_range",
+      "description": "Absolute neutrophil count [15.0-60]",
+      "tokenization": {
+        "unit": "K/uL",
+        "range_start": 15.0,
+        "range_end": 60
+      }
+    },
+    {
+      "code": "uop",
+      "type": "code",
+      "description": "Urine output",
+      "tokenization": {}
+    },
+    {
+      "code": "uop",
+      "type": "numerical_range",
+      "description": "Urine output [0-30]",
+      "tokenization": {
+        "unit": "mL/h",
+        "range_start": 0,
+        "range_end": 30
+      }
+    },
+    {
+      "code": "uop",
+      "type": "numerical_range",
+      "description": "Urine output [30-50]",
+      "tokenization": {
+        "unit": "mL/h",
+        "range_start": 30,
+        "range_end": 50
+      }
+    },
+    {
+      "code": "uop",
+      "type": "numerical_range",
+      "description": "Urine output [50-100]",
+      "tokenization": {
+        "unit": "mL/h",
+        "range_start": 50,
+        "range_end": 100
+      }
+    },
+    {
+      "code": "uop",
+      "type": "numerical_range",
+      "description": "Urine output [100-200]",
+      "tokenization": {
+        "unit": "mL/h",
+        "range_start": 100,
+        "range_end": 200
+      }
+    },
+    {
+      "code": "uop",
+      "type": "numerical_range",
+      "description": "Urine output [200-500]",
+      "tokenization": {
+        "unit": "mL/h",
+        "range_start": 200,
+        "range_end": 500
+      }
+    }
+  ],
+  "n_tokens": 220
+}

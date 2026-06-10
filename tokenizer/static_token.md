@@ -1,0 +1,178 @@
+# EHRPredict Static Token List
+
+Total tokens: 220
+
+## Structural (5)
+- `[STATIC]`
+- `[SEP]`
+- `[MASK]`
+- `[PAD]`
+- `[CLS]`
+## Days (32)
+- `[DAY_1]` ... `[DAY_32]` (32 days, 12 needed + 20 buffer)
+## Hours (25)
+- `[HOUR_0]` ... `[HOUR_24]` (25 hours)
+## G2* Marker
+- `[FIRST48]`
+## Field Identity (30)
+- `[age]`  _Age at admission_
+- `[base_def_48]`  _First-48h base deficit_
+- `[bicarb]`  _Bicarbonate_
+- `[bolus_sum_until_h]`  _Cumulative crystalloid_
+- `[bun]`  _Blood urea nitrogen_
+- `[creatinine]`  _Creatinine_
+- `[crys_48]`  _First-48h crystalloid volume_
+- `[dbp]`  _Diastolic blood pressure_
+- `[fio2]`  _Fraction of inspired oxygen_
+- `[head_injury]`  _Head injury from ICD_
+- `[hr]`  _Heart rate_
+- `[initial_ed_sbp]`  _Initial ED SBP_
+- `[lactate_48]`  _First-48h lactate_
+- `[lymphocytes]`  _Absolute lymphocyte count_
+- `[male]`  _Sex; M=male F=female_
+- `[map]`  _Mean arterial pressure_
+- `[mechanism_cat]`  _Injury mechanism_
+- `[neutrophils]`  _Absolute neutrophil count_
+- `[rbc_48]`  _First-48h RBC volume_
+- `[rbc_sum_until_h]`  _Cumulative RBC_
+- `[rr]`  _Respiratory rate_
+- `[rsi]`  _Reverse shock index = SBP/HR_
+- `[sbp]`  _Systolic blood pressure_
+- `[strong_ion]`  _Strong ion difference_
+- `[temp]`  _Temperature_
+- `[transfer]`  _Transfer context_
+- `[uop]`  _Urine output_
+- `[vent_day_sum_until_h]`  _Cumulative vent days_
+- `[vent_h]`  _Current ventilation_
+- `[wbc]`  _White blood cell count_
+
+## Categorical Values (9)
+- `[head_injury_N]`
+- `[head_injury_Y]`
+- `[male_F]`
+- `[male_M]`
+- `[mechanism_cat_B]`
+- `[mechanism_cat_O]`
+- `[mechanism_cat_P]`
+- `[transfer_D]`
+- `[transfer_T]`
+
+## Numerical Buckets (118)
+- `[age_BIN_0_18]`  _years_
+- `[age_BIN_18_30]`  _years_
+- `[age_BIN_30_45]`  _years_
+- `[age_BIN_45_60]`  _years_
+- `[age_BIN_60_75]`  _years_
+- `[age_BIN_75_90]`  _years_
+- `[base_def_48_BIN_0_3]`  _mEq/L_
+- `[base_def_48_BIN_3_6]`  _mEq/L_
+- `[base_def_48_BIN_6_10]`  _mEq/L_
+- `[base_def_48_BIN_10_30]`  _mEq/L_
+- `[bicarb_BIN_0_15]`  _mEq/L_
+- `[bicarb_BIN_15_22]`  _mEq/L_
+- `[bicarb_BIN_22_26]`  _mEq/L_
+- `[bicarb_BIN_26_32]`  _mEq/L_
+- `[bicarb_BIN_32_50]`  _mEq/L_
+- `[bolus_sum_until_h_BIN_0_2000]`  _mL_
+- `[bolus_sum_until_h_BIN_2000_5000]`  _mL_
+- `[bolus_sum_until_h_BIN_5000_10000]`  _mL_
+- `[bolus_sum_until_h_BIN_10000_30000]`  _mL_
+- `[bun_BIN_0_10]`  _mg/dL_
+- `[bun_BIN_10_20]`  _mg/dL_
+- `[bun_BIN_20_40]`  _mg/dL_
+- `[bun_BIN_40_80]`  _mg/dL_
+- `[bun_BIN_80_200]`  _mg/dL_
+- `[creatinine_BIN_0_0.5]`  _mg/dL_
+- `[creatinine_BIN_0.5_1.0]`  _mg/dL_
+- `[creatinine_BIN_1.0_1.5]`  _mg/dL_
+- `[creatinine_BIN_1.5_3.0]`  _mg/dL_
+- `[creatinine_BIN_3.0_15.0]`  _mg/dL_
+- `[crys_48_BIN_0_2000]`  _mL_
+- `[crys_48_BIN_2000_5000]`  _mL_
+- `[crys_48_BIN_5000_10000]`  _mL_
+- `[crys_48_BIN_10000_30000]`  _mL_
+- `[dbp_BIN_0_50]`  _mmHg_
+- `[dbp_BIN_50_60]`  _mmHg_
+- `[dbp_BIN_60_80]`  _mmHg_
+- `[dbp_BIN_80_100]`  _mmHg_
+- `[dbp_BIN_100_200]`  _mmHg_
+- `[fio2_BIN_0_0.21]`  _fraction_
+- `[fio2_BIN_0.21_0.4]`  _fraction_
+- `[fio2_BIN_0.4_0.6]`  _fraction_
+- `[fio2_BIN_0.6_1.0]`  _fraction_
+- `[hr_BIN_0_50]`  _bpm_
+- `[hr_BIN_50_60]`  _bpm_
+- `[hr_BIN_60_80]`  _bpm_
+- `[hr_BIN_80_100]`  _bpm_
+- `[hr_BIN_100_120]`  _bpm_
+- `[hr_BIN_120_200]`  _bpm_
+- `[initial_ed_sbp_BIN_0_90]`  _mmHg_
+- `[initial_ed_sbp_BIN_90_111]`  _mmHg_
+- `[initial_ed_sbp_BIN_111_140]`  _mmHg_
+- `[initial_ed_sbp_BIN_140_180]`  _mmHg_
+- `[initial_ed_sbp_BIN_180_300]`  _mmHg_
+- `[lactate_48_BIN_0_3.0]`  _mmol/L_
+- `[lactate_48_BIN_3.0_5.0]`  _mmol/L_
+- `[lactate_48_BIN_5.0_10.0]`  _mmol/L_
+- `[lactate_48_BIN_10.0_30.0]`  _mmol/L_
+- `[lymphocytes_BIN_0_0.5]`  _K/uL_
+- `[lymphocytes_BIN_0.5_1.5]`  _K/uL_
+- `[lymphocytes_BIN_1.5_5.0]`  _K/uL_
+- `[lymphocytes_BIN_5.0_100]`  _K/uL_
+- `[map_BIN_0_60]`  _mmHg_
+- `[map_BIN_60_70]`  _mmHg_
+- `[map_BIN_70_90]`  _mmHg_
+- `[map_BIN_90_110]`  _mmHg_
+- `[map_BIN_110_200]`  _mmHg_
+- `[neutrophils_BIN_0_1.5]`  _K/uL_
+- `[neutrophils_BIN_1.5_7.0]`  _K/uL_
+- `[neutrophils_BIN_7.0_15.0]`  _K/uL_
+- `[neutrophils_BIN_15.0_60]`  _K/uL_
+- `[rbc_48_BIN_0_500]`  _mL_
+- `[rbc_48_BIN_500_2000]`  _mL_
+- `[rbc_48_BIN_2000_5000]`  _mL_
+- `[rbc_48_BIN_5000_10000]`  _mL_
+- `[rbc_sum_until_h_BIN_0_500]`  _mL_
+- `[rbc_sum_until_h_BIN_500_2000]`  _mL_
+- `[rbc_sum_until_h_BIN_2000_5000]`  _mL_
+- `[rbc_sum_until_h_BIN_5000_10000]`  _mL_
+- `[rr_BIN_0_8]`  _breaths/min_
+- `[rr_BIN_8_12]`  _breaths/min_
+- `[rr_BIN_12_20]`  _breaths/min_
+- `[rr_BIN_20_28]`  _breaths/min_
+- `[rr_BIN_28_60]`  _breaths/min_
+- `[rsi_BIN_0_1.0]`  _ratio_
+- `[rsi_BIN_1.0_1.1]`  _ratio_
+- `[rsi_BIN_1.1_1.8]`  _ratio_
+- `[rsi_BIN_1.8_3.0]`  _ratio_
+- `[rsi_BIN_3.0_20.0]`  _ratio_
+- `[sbp_BIN_0_80]`  _mmHg_
+- `[sbp_BIN_80_90]`  _mmHg_
+- `[sbp_BIN_90_110]`  _mmHg_
+- `[sbp_BIN_110_140]`  _mmHg_
+- `[sbp_BIN_140_180]`  _mmHg_
+- `[sbp_BIN_180_300]`  _mmHg_
+- `[strong_ion_BIN_0_20]`  _mEq/L_
+- `[strong_ion_BIN_20_30]`  _mEq/L_
+- `[strong_ion_BIN_30_40]`  _mEq/L_
+- `[strong_ion_BIN_40_50]`  _mEq/L_
+- `[strong_ion_BIN_50_80]`  _mEq/L_
+- `[temp_BIN_30_35]`  _°C_
+- `[temp_BIN_35_36]`  _°C_
+- `[temp_BIN_36_37.5]`  _°C_
+- `[temp_BIN_37.5_38.5]`  _°C_
+- `[temp_BIN_38.5_42]`  _°C_
+- `[uop_BIN_0_30]`  _mL/h_
+- `[uop_BIN_30_50]`  _mL/h_
+- `[uop_BIN_50_100]`  _mL/h_
+- `[uop_BIN_100_200]`  _mL/h_
+- `[uop_BIN_200_500]`  _mL/h_
+- `[vent_day_sum_until_h_BIN_0_1]`  _days_
+- `[vent_day_sum_until_h_BIN_1_3]`  _days_
+- `[vent_day_sum_until_h_BIN_3_7]`  _days_
+- `[vent_day_sum_until_h_BIN_7_14]`  _days_
+- `[wbc_BIN_0_4]`  _K/uL_
+- `[wbc_BIN_4_10]`  _K/uL_
+- `[wbc_BIN_10_15]`  _K/uL_
+- `[wbc_BIN_15_30]`  _K/uL_
+- `[wbc_BIN_30_100]`  _K/uL_
