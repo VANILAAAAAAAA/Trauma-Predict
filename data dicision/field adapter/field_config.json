@@ -1,0 +1,78 @@
+{
+  "cohort": "C4 trauma ICU",
+  "temporal_window": "first 13 ICU days (312h)",
+  "groups": {
+    "G1": {
+      "label": "Vital Signs",
+      "role": "hourly",
+      "fields": [
+        {"field": "hr", "unit": "bpm", "desc": "Heart rate"},
+        {"field": "sbp", "unit": "mmHg", "desc": "Systolic blood pressure"},
+        {"field": "dbp", "unit": "mmHg", "desc": "Diastolic blood pressure"},
+        {"field": "map", "unit": "mmHg", "desc": "Mean arterial pressure"},
+        {"field": "rr", "unit": "breaths/min", "desc": "Respiratory rate"},
+        {"field": "temp", "unit": "°C", "desc": "Temperature"},
+        {"field": "fio2", "unit": "fraction", "desc": "Fraction of inspired oxygen"}
+      ]
+    },
+    "G2": {
+      "label": "Static Profile",
+      "role": "static",
+      "fields": [
+        {"field": "age", "unit": "years", "desc": "Age at admission", "type": "int"},
+        {"field": "male", "unit": "binary", "desc": "Sex; M=male F=female", "type": "cat", "values": ["M", "F"]},
+        {"field": "mechanism_cat", "unit": "category", "desc": "Injury mechanism", "type": "cat", "values": ["B", "P", "O"]},
+        {"field": "transfer", "unit": "category", "desc": "Transfer context", "type": "cat", "values": ["D", "T"]},
+        {"field": "initial_ed_sbp", "unit": "mmHg", "desc": "Initial ED SBP", "type": "float"},
+        {"field": "rsi", "unit": "ratio", "desc": "Reverse shock index = SBP/HR", "type": "float"},
+        {"field": "head_injury", "unit": "binary", "desc": "Head injury from ICD", "type": "cat", "values": ["Y", "N"]}
+      ]
+    },
+    "G2*": {
+      "label": "First 48h Summary",
+      "role": "conditional_summary",
+      "availability": "only when completed history >= 48h",
+      "placement": "daily block day-2+",
+      "fields": [
+        {"field": "base_def_48", "unit": "mEq/L", "desc": "First-48h base deficit"},
+        {"field": "lactate_48", "unit": "mmol/L", "desc": "First-48h lactate"},
+        {"field": "rbc_48", "unit": "mL", "desc": "First-48h RBC volume"},
+        {"field": "crys_48", "unit": "mL", "desc": "First-48h crystalloid volume"}
+      ]
+    },
+    "G3": {
+      "label": "Cumulative Exposures",
+      "role": "hourly_cumulative",
+      "fields": [
+        {"field": "bolus_sum_until_h", "unit": "mL", "desc": "Cumulative crystalloid"},
+        {"field": "rbc_sum_until_h", "unit": "mL", "desc": "Cumulative RBC"},
+        {"field": "vent_h", "unit": "binary", "desc": "Current ventilation"},
+        {"field": "vent_day_sum_until_h", "unit": "days", "desc": "Cumulative vent days"}
+      ]
+    },
+    "G4": {
+      "label": "Laboratory Result",
+      "role": "lab_memory",
+      "fields": [
+        {"field": "bicarb", "unit": "mEq/L", "desc": "Bicarbonate"},
+        {"field": "strong_ion", "unit": "mEq/L", "desc": "Strong ion difference"},
+        {"field": "bun", "unit": "mg/dL", "desc": "Blood urea nitrogen"},
+        {"field": "creatinine", "unit": "mg/dL", "desc": "Creatinine"},
+        {"field": "wbc", "unit": "K/uL", "desc": "White blood cell count"},
+        {"field": "lymphocytes", "unit": "K/uL", "desc": "Absolute lymphocyte count"},
+        {"field": "neutrophils", "unit": "K/uL", "desc": "Absolute neutrophil count"},
+        {"field": "uop", "unit": "mL/h", "desc": "Urine output"}
+      ]
+    }
+  },
+  "intermediate": {
+    "lab": ["na", "k", "cl", "base_excess", "lactate"],
+    "treatment": ["iv_fluid_ml_1h", "rbc_ml_1h"]
+  },
+  "hold": {
+    "category_fields": ["Initial.ED.SBPCat", "rSICat", "baseDef48Cat", "lactate48Cat", "crys48Cat", "acidosisCat", "er_dispCat"],
+    "audit_pending": ["abx48", "surg48", "surgHours", "surgSum"],
+    "exclude": ["Apache"],
+    "note": "Cat thresholds confirmed but reserved for evaluation, not model input. Surgery and ABX need audit before include."
+  }
+}
