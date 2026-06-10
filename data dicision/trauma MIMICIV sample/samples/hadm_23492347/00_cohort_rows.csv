@@ -1,0 +1,2 @@
+subject_id,hadm_id,stay_id,admittime,dischtime,hospital_los_hours,hospital_expire_flag,age_at_admit,gender,anchor_age,anchor_year,intime,outtime,icu_los_days,vent_day_count,is_vent3_subset,has_chartevents_data,trauma_icd_codes,trauma_icd_versions,trauma_seq_nums,trauma_mechanisms,trauma_intents,trauma_types
+17727739,23492347,37222849,2150-09-27 11:09:00,2150-10-11 12:15:00,337.10,0,50,M,50,2150,2150-09-27 11:36:00,2150-10-11 12:45:27,14.048229166666667,15,1,1,E8160,9,13,MV,,MV_U

@@ -1,0 +1,4 @@
+uw_group,canonical_variable,subject_id,hadm_id,stay_id,caregiver_id,starttime,endtime,storetime,itemid,value,valueuom,location,locationcategory,orderid,linkorderid,ordercategoryname,ordercategorydescription,patientweight,isopenbag,continueinnextdept,statusdescription,originalamount,originalrate
+procedureevents_g3_raw,or_sent,17727739,23492347,37222849,55291,2150-09-29 14:20:00,2150-09-29 14:21:00,2150-09-29 14:20:00,225470,1,None,,,4427776,4427776,Significant Events,Task,107.3,0,0,FinishedRunning,1,0
+procedureevents_g3_raw,or_received,17727739,23492347,37222849,83221,2150-09-29 20:45:00,2150-09-29 20:46:00,2150-09-29 21:43:00,225469,1,None,,,2091170,2091170,Significant Events,Task,107.3,0,0,FinishedRunning,1,0
+procedureevents_g3_raw,vent_invasive,17727739,23492347,37222849,,2150-09-27 11:51:00,2150-10-11 12:45:00,2150-10-11 12:45:31.94,225792,20214,min,,,3024399,3024399,Ventilation,ContinuousProcess,107.3,1,0,FinishedRunning,20214,1
