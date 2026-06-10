@@ -20,7 +20,7 @@ from statistics import mean
 DT_FORMATS = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"]
 
 G1_FIELDS = ["hr", "sbp", "dbp", "map", "rr", "temp", "fio2"]
-STATIC_FIELDS = ["age", "male", "mechanism_cat", "transfer", "initial_ed_sbp"]
+STATIC_FIELDS = ["age", "male", "mechanism_cat", "transfer", "initial_ed_sbp", "rsi", "head_injury"]
 G2STAR_FIELDS = ["base_def_48", "lactate_48", "rbc_48", "crys_48"]
 G3_FIELDS = ["bolus_sum_until_h", "rbc_sum_until_h", "vent_h", "vent_day_sum_until_h"]
 G4_FIELDS = ["bicarb", "strong_ion", "bun", "creatinine", "wbc", "lymphocytes", "neutrophils", "uop"]
@@ -111,13 +111,62 @@ def build_static(raw_dir: Path) -> tuple[dict, list[dict]]:
     cohort = read_csv(raw_dir / "00_cohort_rows.csv")[0]
     admissions = read_csv(raw_dir / "01_admissions_raw.csv")
     adm = admissions[0] if admissions else {}
+    diagnoses = read_csv(raw_dir / "04_diagnoses_icd_raw.csv")
     age = to_float(cohort.get("age_at_admit"))
     male = 1 if (cohort.get("gender") or "").upper() == "M" else 0 if cohort.get("gender") else None
     mech, mech_rule = mechanism_to_cat(cohort)
     loc = " ".join([adm.get("admission_location", ""), adm.get("admission_type", "")]).upper()
     transfer = 1 if "TRANSFER" in loc else 0 if loc else None
-    # No ED linkage in this sample; keep missing rather than inventing ED SBP from ICU values.
+
+    # ED-derived fields
     initial_ed_sbp = None
+    rsi = None
+    ed_triage = read_csv(raw_dir / "07_ed_triage_raw.csv")
+    ed_vs = read_csv(raw_dir / "08_ed_vitalsign_raw.csv")
+    # Try triage SBP first
+    for r in ed_triage:
+        v = to_float(r.get("sbp"))
+        if v is not None and v > 0:
+            initial_ed_sbp = v
+            break
+    if initial_ed_sbp is None:
+        for r in ed_vs:
+            v = to_float(r.get("sbp"))
+            if v is not None and v > 0:
+                initial_ed_sbp = v
+                break
+    # rSI = SBP / HR; need both
+    ed_hr = None
+    for r in ed_triage:
+        v = to_float(r.get("heartrate"))
+        if v is not None and v > 0:
+            ed_hr = v
+            break
+    if ed_hr is None:
+        for r in ed_vs:
+            v = to_float(r.get("heartrate"))
+            if v is not None and v > 0:
+                ed_hr = v
+                break
+    if initial_ed_sbp is not None and ed_hr is not None and ed_hr > 0:
+        rsi = initial_ed_sbp / ed_hr
+    # head_injury from ICD
+    head_injury = 0
+    head_icd_codes = []
+    for r in diagnoses:
+        code = (r.get("icd_code") or "").strip().upper()
+        ver = r.get("icd_version", "")
+        if not code:
+            continue
+        # ICD-10: S00-S09
+        if code[:3] in [f"S0{i}" for i in range(10)]:
+            head_injury = 1
+            head_icd_codes.append(code)
+        # ICD-9: 800-804, 850-854
+        elif code[:3] in [f"{i}" for i in range(800, 805)] + [f"{i}" for i in range(850, 855)]:
+            head_injury = 1
+            head_icd_codes.append(code)
+
     row = {
         "hadm_id": cohort.get("hadm_id"),
         "subject_id": cohort.get("subject_id"),
@@ -127,13 +176,17 @@ def build_static(raw_dir: Path) -> tuple[dict, list[dict]]:
         "mechanism_cat": mech,
         "transfer": transfer,
         "initial_ed_sbp": initial_ed_sbp,
+        "rsi": round(rsi, 3) if rsi is not None else None,
+        "head_injury": head_injury,
     }
     provenance = [
         {"field": "age", "source": "00_cohort_rows.age_at_admit", "status": "observed", "rule": "use cohort age_at_admit"},
         {"field": "male", "source": "00_cohort_rows.gender", "status": "observed", "rule": "M=1, otherwise 0"},
         {"field": "mechanism_cat", "source": "00_cohort_rows.trauma_mechanisms/trauma_types", "status": "derived", "rule": mech_rule},
         {"field": "transfer", "source": "01_admissions_raw.admission_location/admission_type", "status": "derived", "rule": "contains TRANSFER -> 1 else 0"},
-        {"field": "initial_ed_sbp", "source": "ED triage/vitalsign", "status": "missing", "rule": "no ED linkage rows for this HADM"},
+        {"field": "initial_ed_sbp", "source": "ED triage.sbp / vitalsign", "status": "observed" if initial_ed_sbp is not None else "missing", "rule": "triage SBP preferred; vitalsign fallback; NA if no ED"},
+        {"field": "rsi", "source": "ED SBP / ED HR", "status": "derived" if rsi is not None else "missing", "rule": "rSI = SBP / HR; NA if no ED"},
+        {"field": "head_injury", "source": "04_diagnoses_icd_raw", "status": "derived", "rule": f"ICD broad rule (S00-S09/800-854); codes: {','.join(head_icd_codes) if head_icd_codes else 'none'}"},
     ]
     return row, provenance
 

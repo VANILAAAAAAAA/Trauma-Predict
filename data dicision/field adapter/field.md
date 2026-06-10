@@ -3,7 +3,7 @@
 | Group | Fields                                                       | Count |
 | :---- | :----------------------------------------------------------- | :---- |
 | G1    | `hr, sbp, dbp, map, rr, temp, fio2`                          | 7     |
-| G2    | `age, male, mechanism_cat, transfer, initial_ed_sbp`         | 5     |
+| G2    | `age, male, mechanism_cat, transfer, initial_ed_sbp, rsi, head_injury` | 7     |
 | G2*   | `base_def_48, lactate_48, rbc_48, crys_48`                   | 4     |
 | G3    | `bolus_sum_until_h, rbc_sum_until_h, vent_h, vent_day_sum_until_h` | 4     |
 | G4    | `bicarb, strong_ion, bun, creatinine, wbc, lymphocytes, neutrophils, uop` | 8     |
@@ -29,6 +29,8 @@
 | `mechanism_cat` | category | Injury mechanism category |
 | `transfer` | category | Transfer or arrival context before ICU |
 | `initial_ed_sbp` | mmHg | Initial ED systolic blood pressure |
+| `rsi` | ratio | Reverse shock index = SBP / HR |
+| `head_injury` | binary | Head injury from diagnoses_icd (S00-S09 / 800-854) |
 
 ## G2* — First 48h Summary
 

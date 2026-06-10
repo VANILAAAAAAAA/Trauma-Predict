@@ -3,4 +3,6 @@ age,00_cohort_rows.age_at_admit,observed,use cohort age_at_admit
 male,00_cohort_rows.gender,observed,"M=1, otherwise 0"
 mechanism_cat,00_cohort_rows.trauma_mechanisms/trauma_types,derived,blunt_by_trauma_mechanisms
 transfer,01_admissions_raw.admission_location/admission_type,derived,contains TRANSFER -> 1 else 0
-initial_ed_sbp,ED triage/vitalsign,missing,no ED linkage rows for this HADM
+initial_ed_sbp,ED triage.sbp / vitalsign,missing,triage SBP preferred; vitalsign fallback; NA if no ED
+rsi,ED SBP / ED HR,missing,rSI = SBP / HR; NA if no ED
+head_injury,04_diagnoses_icd_raw,derived,ICD broad rule (S00-S09/800-854); codes: none
