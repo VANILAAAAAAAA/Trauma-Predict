@@ -1,66 +1,54 @@
 # STATIC Token Vocabulary
 
-Scope: only tokens used by the STATIC block. Other token families are in separate files.
-
-## STATIC Sequence
-
-Current model-side sequence template:
+## Sequence
 
 ```text
-[STATIC] [age] <age_value> [age_BIN_*] [male_M/F] [mechanism_cat_B/P/O] [transfer_D/T] [initial_ed_sbp] <sbp_value> [initial_ed_sbp_BIN_*] [rsi] <rsi_value> [rsi_BIN_*] [head_injury_Y/N] [SEP]
+[STATIC]
+[age] value
+[sex_M|sex_F]
+[injury_mechanism_blunt|injury_mechanism_penetrating|injury_mechanism_other]
+[transfer_direct|transfer_transfer]
+[ed_linkage_yes|ed_linkage_no]
+[initial_ed_sbp] value [initial_ed_sbp_bin_*]
+[reverse_shock_index] value [reverse_shock_index_bin_*]
+[head_injury_yes|head_injury_no]
+[SEP]
 ```
 
-> Formal Method 1 note: raw numeric values should become value tensors for an MLP projector, not ordinary tokenizer IDs.
+## Field Tokens
 
-## Structural Tokens Used by STATIC
+| Source field | Token | Value path | Bucket |
+|---|---|---|---|
+| `age` | `[age]` | value tensor | none frozen |
+| `male` | `[sex]` | categorical token | no |
+| `mechanism_cat` | `[injury_mechanism]` | categorical token | no |
+| `transfer` | `[transfer]` | categorical token | no |
+| ED linkage | `[ed_linkage]` | categorical token | no |
+| `initial_ed_sbp` | `[initial_ed_sbp]` | value tensor | UW Cat |
+| `rsi` | `[reverse_shock_index]` | value tensor | UW Cat |
+| `head_injury` | `[head_injury]` | categorical token | no |
 
-- `[STATIC]`
-- `[SEP]`
+## Categorical Tokens
 
-## Field Identity Tokens
+| Field | Tokens |
+|---|---|
+| sex | `[sex_M]`, `[sex_F]` |
+| injury mechanism | `[injury_mechanism_blunt]`, `[injury_mechanism_penetrating]`, `[injury_mechanism_other]` |
+| transfer | `[transfer_direct]`, `[transfer_transfer]` |
+| ED linkage | `[ed_linkage_yes]`, `[ed_linkage_no]` |
+| head injury | `[head_injury_yes]`, `[head_injury_no]` |
 
-- `[age]` — Age at admission
-- `[male]` — Sex; M=male F=female
-- `[mechanism_cat]` — Injury mechanism
-- `[transfer]` — Transfer context
-- `[initial_ed_sbp]` — Initial ED SBP
-- `[rsi]` — Reverse shock index = SBP/HR
-- `[head_injury]` — Head injury from ICD
+## Evidence-backed Buckets
 
-## Categorical Value Tokens
+| Field | Tokens | Evidence |
+|---|---|---|
+| initial ED SBP | `[initial_ed_sbp_bin_severely_low]`, `[initial_ed_sbp_bin_mildly_low]`, `[initial_ed_sbp_bin_normal]` | `Initial.ED.SBPCat`: ≤89 / 90–110 / ≥111 |
+| reverse shock index | `[reverse_shock_index_bin_high_risk]`, `[reverse_shock_index_bin_moderate_risk]`, `[reverse_shock_index_bin_low_risk]` | `rSICat`: ≤1.0 / 1.1–1.7 / ≥1.8 |
 
-- `[male_F]` — Sex; M=male F=female=F
-- `[male_M]` — Sex; M=male F=female=M
-- `[mechanism_cat_B]` — Injury mechanism=B
-- `[mechanism_cat_O]` — Injury mechanism=O
-- `[mechanism_cat_P]` — Injury mechanism=P
-- `[transfer_D]` — Transfer context=D
-- `[transfer_T]` — Transfer context=T
-- `[head_injury_N]` — Head injury from ICD=N
-- `[head_injury_Y]` — Head injury from ICD=Y
+## Do Not Freeze Yet
 
-## Numerical Bucket Tokens
-
-- `[age_BIN_0_18]` — years
-- `[age_BIN_18_30]` — years
-- `[age_BIN_30_45]` — years
-- `[age_BIN_45_60]` — years
-- `[age_BIN_60_75]` — years
-- `[age_BIN_75_90]` — years
-- `[initial_ed_sbp_BIN_0_90]` — mmHg
-- `[initial_ed_sbp_BIN_90_111]` — mmHg
-- `[initial_ed_sbp_BIN_111_140]` — mmHg
-- `[initial_ed_sbp_BIN_140_180]` — mmHg
-- `[initial_ed_sbp_BIN_180_300]` — mmHg
-- `[rsi_BIN_0_1.0]` — ratio
-- `[rsi_BIN_1.0_1.1]` — ratio
-- `[rsi_BIN_1.1_1.8]` — ratio
-- `[rsi_BIN_1.8_3.0]` — ratio
-- `[rsi_BIN_3.0_20.0]` — ratio
-
-## Current Caveats Before Freezing
-
-1. Token names are still field-code oriented (`male`, `mechanism_cat`, `rsi`). Before final vocab freeze, consider semantic aliases: `sex`, `injury_mechanism`, `reverse_shock_index`.
-2. Single-letter category values are compact, but custom vocab no longer needs this compression. Consider replacing `[mechanism_cat_B]` with `[injury_mechanism_blunt]` for interpretability.
-3. `rsi` means reverse shock index here; avoid confusion with rapid sequence intubation by renaming the token before training.
-4. Missingness should be represented explicitly in model records (`observed_flag`, `ed_linkage`) rather than only omitting values.
+| Item | Reason |
+|---|---|
+| age bucket | no accepted threshold evidence yet |
+| extra SBP hypertension bins | not supported by UW Cat evidence |
+| abbreviation tokens (`rsi`, `mech`, `B/P/O`) | custom vocab should use semantic names |

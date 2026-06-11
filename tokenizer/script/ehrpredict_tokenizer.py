@@ -75,11 +75,38 @@ class EHRPredictTokenizer(PreTrainedTokenizer):
 # ── Block tokenizer helpers ──
 
 CAT_MAP = {
-    'male': {'1': 'M', '0': 'F'},
-    'mechanism_cat': {'1': 'B', '2': 'P', '3': 'O'},
-    'transfer': {'1': 'T', '0': 'D'},
-    'head_injury': {'1': 'Y', '0': 'N'},
+    'male': {'1': ('sex', 'M'), '0': ('sex', 'F'), 'M': ('sex', 'M'), 'F': ('sex', 'F')},
+    'mechanism_cat': {'1': ('injury_mechanism', 'blunt'), '2': ('injury_mechanism', 'penetrating'), '3': ('injury_mechanism', 'other'), 'B': ('injury_mechanism', 'blunt'), 'P': ('injury_mechanism', 'penetrating'), 'O': ('injury_mechanism', 'other')},
+    'transfer': {'1': ('transfer', 'transfer'), '0': ('transfer', 'direct'), 'T': ('transfer', 'transfer'), 'D': ('transfer', 'direct')},
+    'head_injury': {'1': ('head_injury', 'yes'), '0': ('head_injury', 'no'), 'Y': ('head_injury', 'yes'), 'N': ('head_injury', 'no')},
 }
+
+FIELD_ALIASES = {
+    'male': 'sex',
+    'mechanism_cat': 'injury_mechanism',
+    'rsi': 'reverse_shock_index',
+    'hr': 'heart_rate',
+    'sbp': 'systolic_bp',
+    'dbp': 'diastolic_bp',
+    'map': 'mean_arterial_pressure',
+    'rr': 'respiratory_rate',
+    'temp': 'temperature',
+    'bolus_sum_until_h': 'crystalloid_cumulative',
+    'rbc_sum_until_h': 'rbc_cumulative',
+    'vent_h': 'ventilation_status',
+    'vent_day_sum_until_h': 'ventilation_days_cumulative',
+    'bicarb': 'bicarbonate',
+    'strong_ion': 'strong_ion_difference',
+    'uop': 'urine_output',
+    'base_def_48': 'base_deficit_48h',
+    'lactate_48': 'lactate_48h',
+    'rbc_48': 'rbc_48h',
+    'crys_48': 'crystalloid_48h',
+}
+
+
+def token_code(field: str) -> str:
+    return FIELD_ALIASES.get(field, field)
 
 
 def tokenize_static(fields: dict, tokenizer: EHRPredictTokenizer) -> List[str]:
@@ -89,12 +116,13 @@ def tokenize_static(fields: dict, tokenizer: EHRPredictTokenizer) -> List[str]:
         val = fields.get(fname)
         if val is None or val == '':
             continue
-        ft = tokenizer.field_token.get(fname)
+        code = token_code(fname)
+        ft = tokenizer.field_token.get(code)
         if ft:
             tokens.append(ft)
         if fname in CAT_MAP:
-            cat_val = CAT_MAP[fname].get(str(val), str(val))
-            ct = tokenizer.cat_tokens.get((fname, cat_val))
+            cat_pair = CAT_MAP[fname].get(str(val), (code, str(val)))
+            ct = tokenizer.cat_tokens.get(cat_pair)
             if ct:
                 tokens.append(ct)
         else:
@@ -110,7 +138,9 @@ def tokenize_daily(day_idx: int, daily_row: dict, tokenizer: EHRPredictTokenizer
         if val is None or val == '':
             continue
         base = key.split('_')[0]
-        ft = tokenizer.field_token.get(key) or tokenizer.field_token.get(base)
+        code = token_code(key)
+        base_code = token_code(base)
+        ft = tokenizer.field_token.get(code) or tokenizer.field_token.get(base_code)
         if ft:
             tokens.append(ft)
         tokens.append(str(val))
@@ -128,7 +158,8 @@ def tokenize_hourly(hour_idx: int, hourly_row: dict, tokenizer: EHRPredictTokeni
         val = hourly_row.get(fname)
         if val is None or val == '':
             continue
-        ft = tokenizer.field_token.get(fname)
+        code = token_code(fname)
+        ft = tokenizer.field_token.get(code)
         if ft:
             tokens.append(ft)
         tokens.append(str(val))

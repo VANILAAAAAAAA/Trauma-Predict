@@ -59,6 +59,9 @@ class NumericalRangeTCE(TokenConfigEntry):
     })
 
     def to_token(self) -> str:
+        label = self.tokenization.get('label')
+        if label:
+            return f"[{self.code}_bin_{label}]"
         return f"[{self.code}_BIN_{self.tokenization['range_start']}_{self.tokenization['range_end']}]"
 
 
