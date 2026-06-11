@@ -523,12 +523,12 @@
     {
       "code": "initial_ed_sbp",
       "type": "numerical_range",
-      "description": "Initial ED SBP: severely_low; source=initial_ed_sbp",
+      "description": "Initial ED SBP: hypotension; source=initial_ed_sbp",
       "tokenization": {
         "unit": "mmHg",
         "range_start": null,
         "range_end": 90,
-        "label": "severely_low",
+        "label": "hypotension",
         "source": "UW Initial.ED.SBPCat: <=89 / 90-110 / >=111",
         "source_field": "initial_ed_sbp"
       }
@@ -536,12 +536,12 @@
     {
       "code": "initial_ed_sbp",
       "type": "numerical_range",
-      "description": "Initial ED SBP: mildly_low; source=initial_ed_sbp",
+      "description": "Initial ED SBP: borderline_low; source=initial_ed_sbp",
       "tokenization": {
         "unit": "mmHg",
         "range_start": 90,
         "range_end": 111,
-        "label": "mildly_low",
+        "label": "borderline_low",
         "source": "UW Initial.ED.SBPCat: <=89 / 90-110 / >=111",
         "source_field": "initial_ed_sbp"
       }
@@ -549,12 +549,12 @@
     {
       "code": "initial_ed_sbp",
       "type": "numerical_range",
-      "description": "Initial ED SBP: normal; source=initial_ed_sbp",
+      "description": "Initial ED SBP: not_low; source=initial_ed_sbp",
       "tokenization": {
         "unit": "mmHg",
         "range_start": 111,
         "range_end": null,
-        "label": "normal",
+        "label": "not_low",
         "source": "UW Initial.ED.SBPCat: <=89 / 90-110 / >=111",
         "source_field": "initial_ed_sbp"
       }
@@ -581,12 +581,12 @@
     {
       "code": "reverse_shock_index",
       "type": "numerical_range",
-      "description": "Reverse shock index = SBP/HR: moderate_risk; source=rsi",
+      "description": "Reverse shock index = SBP/HR: intermediate; source=rsi",
       "tokenization": {
         "unit": "ratio",
         "range_start": 1.1,
         "range_end": 1.8,
-        "label": "moderate_risk",
+        "label": "intermediate",
         "source": "UW rSICat: <=1.0 / 1.1-1.7 / >=1.8; implemented as <1.1 / 1.1-1.8 / >=1.8",
         "source_field": "rsi"
       }

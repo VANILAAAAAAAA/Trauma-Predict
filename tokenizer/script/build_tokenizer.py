@@ -58,16 +58,16 @@ BUCKET_DEFS = {
     "initial_ed_sbp": {
         "source": "UW Initial.ED.SBPCat: <=89 / 90-110 / >=111",
         "bins": [
-            (None, 90, "severely_low"),
-            (90, 111, "mildly_low"),
-            (111, None, "normal"),
+            (None, 90, "hypotension"),
+            (90, 111, "borderline_low"),
+            (111, None, "not_low"),
         ],
     },
     "rsi": {
         "source": "UW rSICat: <=1.0 / 1.1-1.7 / >=1.8; implemented as <1.1 / 1.1-1.8 / >=1.8",
         "bins": [
             (None, 1.1, "high_risk"),
-            (1.1, 1.8, "moderate_risk"),
+            (1.1, 1.8, "intermediate"),
             (1.8, None, "low_risk"),
         ],
     },

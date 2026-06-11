@@ -42,8 +42,8 @@
 
 | Field | Tokens | Evidence |
 |---|---|---|
-| initial ED SBP | `[initial_ed_sbp_bin_severely_low]`, `[initial_ed_sbp_bin_mildly_low]`, `[initial_ed_sbp_bin_normal]` | `Initial.ED.SBPCat`: ≤89 / 90–110 / ≥111 |
-| reverse shock index | `[reverse_shock_index_bin_high_risk]`, `[reverse_shock_index_bin_moderate_risk]`, `[reverse_shock_index_bin_low_risk]` | `rSICat`: ≤1.0 / 1.1–1.7 / ≥1.8 |
+| initial ED SBP | `[initial_ed_sbp_bin_hypotension]`, `[initial_ed_sbp_bin_borderline_low]`, `[initial_ed_sbp_bin_not_low]` | `Initial.ED.SBPCat`: ≤89 / 90–110 / ≥111; meaning is interpreted, not official UW codebook |
+| reverse shock index | `[reverse_shock_index_bin_high_risk]`, `[reverse_shock_index_bin_intermediate]`, `[reverse_shock_index_bin_low_risk]` | `rSICat`: ≤1.0 / 1.1–1.7 / ≥1.8; meaning inferred from rSI=SBP/HR and SI literature |
 
 ## Do Not Freeze Yet
 
