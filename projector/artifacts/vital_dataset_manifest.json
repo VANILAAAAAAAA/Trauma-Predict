@@ -1,0 +1,115 @@
+{
+  "dataset": "/home/vanila/code/EHR-Predict/projector/artifacts/vital_dataset_sample.npz",
+  "n_examples": 2661,
+  "shape": {
+    "vital_values": [
+      2661,
+      24,
+      7
+    ],
+    "vital_mask": [
+      2661,
+      24,
+      7
+    ],
+    "target_values": [
+      2661,
+      7
+    ],
+    "target_mask": [
+      2661,
+      7
+    ]
+  },
+  "vital_order": [
+    "hr",
+    "sbp",
+    "dbp",
+    "map",
+    "rr",
+    "temp",
+    "fio2"
+  ],
+  "split_counts": {
+    "train": 2158,
+    "val": 478,
+    "test": 25
+  },
+  "input_observed_rate_by_vital": {
+    "hr": 0.9776399731636047,
+    "sbp": 0.942236602306366,
+    "dbp": 0.9423149228096008,
+    "map": 0.941641628742218,
+    "rr": 0.9482493996620178,
+    "temp": 0.3703494966030121,
+    "fio2": 0.26387321949005127
+  },
+  "target_observed_rate_by_vital": {
+    "hr": 0.9939872026443481,
+    "sbp": 0.9597895741462708,
+    "dbp": 0.9601653218269348,
+    "map": 0.9594137668609619,
+    "rr": 0.9658023118972778,
+    "temp": 0.3686583936214447,
+    "fio2": 0.2653138041496277
+  },
+  "mean": {
+    "hr": 90.69429779052734,
+    "sbp": 121.90666198730469,
+    "dbp": 62.335205078125,
+    "map": 80.18115234375,
+    "rr": 21.71855926513672,
+    "temp": 37.28028869628906,
+    "fio2": 0.4649324417114258
+  },
+  "std": {
+    "hr": 20.49867820739746,
+    "sbp": 20.219228744506836,
+    "dbp": 12.73657512664795,
+    "map": 13.970770835876465,
+    "rr": 7.235734462738037,
+    "temp": 0.7260408997535706,
+    "fio2": 0.10721895098686218
+  },
+  "source": "official MIMIC-IV chartevents, selected C4 trauma stays from day_samples.jsonl",
+  "no_locf": true,
+  "valid_range_filter": {
+    "hr": [
+      20.0,
+      250.0
+    ],
+    "sbp": [
+      40.0,
+      300.0
+    ],
+    "dbp": [
+      20.0,
+      200.0
+    ],
+    "map": [
+      30.0,
+      200.0
+    ],
+    "rr": [
+      4.0,
+      80.0
+    ],
+    "temp": [
+      25.0,
+      45.0
+    ],
+    "fio2": [
+      0.21,
+      1.0
+    ]
+  },
+  "rejected_by_range": {
+    "hr": 1,
+    "sbp": 1,
+    "dbp": 0,
+    "map": 10,
+    "rr": 23,
+    "temp": 0,
+    "fio2": 0
+  }
+}

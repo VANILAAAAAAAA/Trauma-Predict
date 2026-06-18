@@ -1,0 +1,59 @@
+{
+  "cohort_csv": "/mnt/d/Data/Trauma cohort MIMICIV/cohort/mimiciv_trauma_cohort_los48.csv",
+  "mimic_root": "/mnt/d/Data/mimic-iv-2.2",
+  "output_dir": "/mnt/d/Data/Trauma cohort MIMICIV/uw_state_v1",
+  "max_hours": 312,
+  "mode": "sample",
+  "sample_max_hadm": 25,
+  "tables": {
+    "admissions": "hosp/admissions.csv.gz",
+    "patients": "hosp/patients.csv.gz",
+    "diagnoses_icd": "hosp/diagnoses_icd.csv.gz",
+    "chartevents": "icu/chartevents.csv.gz",
+    "labevents": "hosp/labevents.csv.gz",
+    "inputevents": "icu/inputevents.csv.gz",
+    "outputevents": "icu/outputevents.csv.gz",
+    "procedureevents": "icu/procedureevents.csv.gz"
+  },
+  "itemids": {
+    "chartevents": {
+      "hr": [220045],
+      "sbp": [220050, 225309, 220179, 224167, 227243],
+      "dbp": [220051, 225310, 220180, 224643, 227242],
+      "map": [220052, 220181],
+      "rr": [220210],
+      "temp_c": [223762, 226329],
+      "temp_f": [223761],
+      "fio2": [223835],
+      "vent_mode_observed": [223849, 229314],
+      "base_excess_chartevents": [224828]
+    },
+    "labevents": {
+      "bicarb": [50803, 50882, 51739],
+      "base_excess": [50802],
+      "lactate": [50813, 52442, 53154],
+      "bun": [51006, 52647],
+      "creatinine": [50912, 52546],
+      "wbc": [51300, 51301],
+      "lymphocytes": [51244, 51245, 51690],
+      "neutrophils": [51256],
+      "sodium": [50983, 52623],
+      "potassium": [50971, 52610],
+      "chloride": [50902, 52535]
+    },
+    "inputevents": {
+      "rbc_ml": [225168, 226368, 227070],
+      "crystalloid_ml": [220949, 220950, 220952, 225944, 226364, 226375],
+      "antibiotic_dose": [225798, 225837, 225838, 225840, 225842, 225843, 225844, 225845, 225847, 225848, 225850, 225851, 225853, 225855, 225859, 225860, 225863, 225865, 225875, 225879, 225881, 225883, 225884, 225885, 225893, 225899, 229061, 229064]
+    },
+    "outputevents": {
+      "uop_ml": [226559, 226560, 226566, 226627, 226631, 226713, 227489]
+    },
+    "procedureevents": {
+      "vent_invasive": [225792],
+      "vent_noninvasive": [225794],
+      "or_sent": [225470],
+      "or_received": [225469]
+    }
+  }
+}
