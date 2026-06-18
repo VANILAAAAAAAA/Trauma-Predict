@@ -1,0 +1,66 @@
+{
+  "hadm_id": "20002252",
+  "subject_ids": [
+    "18826698"
+  ],
+  "stay_ids": [
+    "33941577"
+  ],
+  "output_dir": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252",
+  "note": "sample_MtoU_raw: official MIMIC-IV raw rows filtered to UW G1-G4 relevant fields; no hourly/daily summary or aggregation.",
+  "prescriptions_scan": {
+    "rows_scanned": 15416708,
+    "hadm_rows": 39,
+    "antibiotic_rows": 1
+  },
+  "tables": {
+    "00_cohort_rows.csv": {
+      "written_rows_excluding_header": 1,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/00_cohort_rows.csv"
+    },
+    "00_field_map.csv": {
+      "written_rows_excluding_header": 29,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/00_field_map.csv"
+    },
+    "01_admissions_raw.csv": {
+      "written_rows_excluding_header": 1,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/01_admissions_raw.csv"
+    },
+    "02_patients_raw.csv": {
+      "written_rows_excluding_header": 1,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/02_patients_raw.csv"
+    },
+    "03_icustays_raw.csv": {
+      "written_rows_excluding_header": 1,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/03_icustays_raw.csv"
+    },
+    "04_diagnoses_icd_raw.csv": {
+      "written_rows_excluding_header": 9,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/04_diagnoses_icd_raw.csv"
+    },
+    "10_chartevents_G1_G3_raw.csv": {
+      "written_rows_excluding_header": 81,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/10_chartevents_G1_G3_raw.csv"
+    },
+    "20_labevents_G4_raw.csv": {
+      "written_rows_excluding_header": 23,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/20_labevents_G4_raw.csv"
+    },
+    "30_inputevents_G3_raw.csv": {
+      "written_rows_excluding_header": 0,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/30_inputevents_G3_raw.csv"
+    },
+    "40_outputevents_G4_uop_raw.csv": {
+      "written_rows_excluding_header": 4,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/40_outputevents_G4_uop_raw.csv"
+    },
+    "50_procedureevents_G3_raw.csv": {
+      "written_rows_excluding_header": 0,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/50_procedureevents_G3_raw.csv"
+    },
+    "60_prescriptions_antibiotics_raw.csv": {
+      "written_rows_excluding_header": 1,
+      "path": "/mnt/d/Data/Trauma cohort MIMICIV/sample_MtoU_raw/hadm_20002252/60_prescriptions_antibiotics_raw.csv"
+    }
+  }
+}

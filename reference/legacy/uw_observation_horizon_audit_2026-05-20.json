@@ -1,0 +1,128 @@
+{
+  "input_path": "/mnt/d/Data/layers_2012_2019_preprocessed_noimputation.csv",
+  "n_patients": 2802,
+  "n_rows": 776736,
+  "columns_have_absolute_time_like": [],
+  "relative_time_note": "No absolute calendar/admission/discharge/death timestamp column detected in this CSV; only relative day/hour/hourTally and infectionDay/infectionHour are available.",
+  "length_distribution": {
+    "48": 29,
+    "72": 46,
+    "96": 71,
+    "120": 65,
+    "144": 62,
+    "168": 71,
+    "192": 77,
+    "216": 89,
+    "240": 81,
+    "264": 89,
+    "288": 102,
+    "312": 2020
+  },
+  "share_312h": 0.7209136331192005,
+  "shorter_than_312": 782,
+  "category_counts": {
+    "sepsis_event_with_onset": 486,
+    "infection_time_but_Sepsis0_audit": 61,
+    "no_event_no_infection_time": 2255
+  },
+  "length_312_by_category": {
+    "infection_time_but_Sepsis0_audit": {
+      "n": 61,
+      "L312": 51,
+      "L312_rate": 0.8360655737704918,
+      "shorter": 10
+    },
+    "no_event_no_infection_time": {
+      "n": 2255,
+      "L312": 1540,
+      "L312_rate": 0.6829268292682927,
+      "shorter": 715
+    },
+    "sepsis_event": {
+      "n": 486,
+      "L312": 429,
+      "L312_rate": 0.8827160493827161,
+      "shorter": 57
+    }
+  },
+  "dayhour_mismatch_patients": 1,
+  "onset_within_observed_for_sepsis_events": 486,
+  "sepsis_onset_hourTally_summary": {
+    "min": 26,
+    "max": 311,
+    "p25": 86,
+    "median": 132,
+    "p75": 182,
+    "p90": 232
+  },
+  "sepsis_onset_24h_block_distribution": {
+    "2": 20,
+    "3": 60,
+    "4": 66,
+    "5": 72,
+    "6": 83,
+    "7": 42,
+    "8": 40,
+    "9": 40,
+    "10": 18,
+    "11": 14,
+    "12": 22,
+    "13": 9
+  },
+  "sepsis_post_onset_observation_hour_summary": {
+    "min": 1,
+    "max": 286,
+    "p25": 108,
+    "median": 176,
+    "p75": 223,
+    "p90": 248
+  },
+  "horizon_counts_min_history_hours": 24,
+  "horizon_counts": {
+    "4": {
+      "valid": 607190,
+      "positive": 1942,
+      "negative": 605248,
+      "positive_rate": 0.003198339893608261,
+      "masked_censored_tail": 9020,
+      "post_event_excluded": 79243,
+      "policy": "Sepsis=1 with infectionDay/infectionHour is event; Sepsis=0 with infection timing is excluded for codebook audit."
+    },
+    "6": {
+      "valid": 602680,
+      "positive": 2912,
+      "negative": 599768,
+      "positive_rate": 0.004831751509922347,
+      "masked_censored_tail": 13530,
+      "post_event_excluded": 79243,
+      "policy": "Sepsis=1 with infectionDay/infectionHour is event; Sepsis=0 with infection timing is excluded for codebook audit."
+    },
+    "8": {
+      "valid": 598170,
+      "positive": 3879,
+      "negative": 594291,
+      "positive_rate": 0.006484778574652691,
+      "masked_censored_tail": 18040,
+      "post_event_excluded": 79243,
+      "policy": "Sepsis=1 with infectionDay/infectionHour is event; Sepsis=0 with infection timing is excluded for codebook audit."
+    },
+    "12": {
+      "valid": 589150,
+      "positive": 5808,
+      "negative": 583342,
+      "positive_rate": 0.009858270389544259,
+      "masked_censored_tail": 27060,
+      "post_event_excluded": 79243,
+      "policy": "Sepsis=1 with infectionDay/infectionHour is event; Sepsis=0 with infection timing is excluded for codebook audit."
+    },
+    "24": {
+      "valid": 562090,
+      "positive": 11469,
+      "negative": 550621,
+      "positive_rate": 0.020404205732178122,
+      "masked_censored_tail": 54120,
+      "post_event_excluded": 79243,
+      "policy": "Sepsis=1 with infectionDay/infectionHour is event; Sepsis=0 with infection timing is excluded for codebook audit."
+    }
+  }
+}

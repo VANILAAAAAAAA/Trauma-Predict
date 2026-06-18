@@ -1,0 +1,84 @@
+{
+  "dataset": "/home/vanila/code/EHR-Predict/projector/artifacts/vital_dataset_sample.npz",
+  "n_train": 2158,
+  "n_val": 478,
+  "n_test": 25,
+  "input_shape": [
+    2661,
+    24,
+    7
+  ],
+  "target_shape": [
+    2661,
+    7
+  ],
+  "vital_order": [
+    "hr",
+    "sbp",
+    "dbp",
+    "map",
+    "rr",
+    "temp",
+    "fio2"
+  ],
+  "input_observed_rate_by_vital": {
+    "hr": 0.9776399731636047,
+    "sbp": 0.942236602306366,
+    "dbp": 0.9423149228096008,
+    "map": 0.941641628742218,
+    "rr": 0.9482493996620178,
+    "temp": 0.3703494966030121,
+    "fio2": 0.26387321949005127
+  },
+  "target_observed_rate_by_vital": {
+    "hr": 0.9939872026443481,
+    "sbp": 0.9597895741462708,
+    "dbp": 0.9601653218269348,
+    "map": 0.9594137668609619,
+    "rr": 0.9658023118972778,
+    "temp": 0.3686583936214447,
+    "fio2": 0.2653138041496277
+  },
+  "initial_val_loss": 0.5035209142014572,
+  "final_val_loss": 0.4958781714718711,
+  "test_loss": 0.34712493419647217,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.37404925688976925,
+      "val_loss": 0.47908301508077517
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.3482881025156564,
+      "val_loss": 0.5221972233580745
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.33847543406641184,
+      "val_loss": 0.4660949300522585
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.318104178569624,
+      "val_loss": 0.6491640564288056
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.29629065050804804,
+      "val_loss": 0.5461882330383716
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.2698557939487436,
+      "val_loss": 0.4958781714718711
+    }
+  ],
+  "model": {
+    "projector": "field_emb + time_emb + mask_emb + masked value_mlp -> hour pooling",
+    "encoder": "2-layer TransformerEncoder",
+    "head": "next-hour 7-vital regression",
+    "loss": "masked Huber on standardized targets"
+  },
+  "status": "ok"
+}

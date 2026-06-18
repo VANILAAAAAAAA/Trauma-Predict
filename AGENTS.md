@@ -5,7 +5,9 @@
 1. `agent-artifact/project_state.yaml` — current cohort and pipeline status
 2. `agent-artifact/path_registry.yaml` — authoritative paths
 3. `agent-artifact/active_pipeline.yaml` — active stage contracts
-4. `README.md` — human-facing structure
+4. `agent-artifact/codex/EHRPREDICT_CODEX_SKILL.md` — Codex migration/runbook contract
+5. `agent-artifact/codex/CODEX_BOOTSTRAP.md` — first Codex prompt and user migration steps
+6. `README.md` — human-facing structure
 
 ## Pipeline Stages
 

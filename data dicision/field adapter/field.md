@@ -18,7 +18,7 @@
 | `map` | mmHg | Mean arterial pressure |
 | `rr` | breaths/min | Respiratory rate |
 | `temp` | °C | Temperature |
-| `fio2` | fraction | Fraction of inspired oxygen |
+| `fio2` | canonical fraction | Fraction of inspired oxygen; raw percent values are converted by `/100` |
 
 ## G2 — Static Profile
 
@@ -38,15 +38,15 @@
 |---|---:|---|
 | `base_def_48` | mEq/L | First-48h base deficit summary |
 | `lactate_48` | mmol/L | First-48h lactate summary |
-| `rbc_48` | mL | First-48h RBC transfusion volume |
+| `rbc_48` | source-scale / canonical audit | First-48h RBC transfusion exposure; MIMIC implementation should define canonical unit, UW source scale must not be assumed as mL |
 | `crys_48` | mL | First-48h crystalloid volume |
 
 ## G3 — Cumulative Exposures
 
 | Field | Unit | Description |
 |---|---:|---|
-| `bolus_sum_until_h` | mL | Cumulative crystalloid exposure until current hour |
-| `rbc_sum_until_h` | mL | Cumulative RBC transfusion exposure until current hour |
+| `bolus_sum_until_h` | UW source scale / canonical audit | UW cumulative bolus scale; HOUR design uses positive deltas as events, not mL thresholds |
+| `rbc_sum_until_h` | UW source scale / canonical audit | UW cumulative RBC scale; HOUR design uses positive deltas as events, not mL thresholds |
 | `vent_h` | binary | Current ventilation status |
 | `vent_day_sum_until_h` | days | Cumulative ventilation days until current hour |
 

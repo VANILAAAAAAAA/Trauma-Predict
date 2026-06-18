@@ -1,0 +1,57 @@
+{
+  "hadm_id": "26488509",
+  "stay_id": "31292653",
+  "current_day_index": 3,
+  "pred_hour_in_day": 12,
+  "recent_h": 24,
+  "observed_until": "2192-03-21 10:05:53",
+  "static_tokens": "[STATIC] [age_bin_75_84] [sex_M] [injury_mechanism_other] [transfer_direct] [ed_linkage_yes] [initial_ed_sbp] <143> [initial_ed_sbp_bin_not_low] [reverse_shock_index] <2.01> [reverse_shock_index_bin_low_risk] [head_injury_no] [SEP]",
+  "day_blocks": [
+    {
+      "day_rel": -3,
+      "source_day_index": 0,
+      "tokens": "[day_window_len_24h] [perfusion_shock] [map_low_hours_bin_prolonged] [systolic_bp_min_bin_hypotension] [oxygenation_ventilation] [vent_hours_bin_partial_window] [vent_course_bin_first_day] [fio2_max_bin_very_high_support] [renal_metabolic] [bicarbonate_min_bin_low] [immune_hematologic] [rbc_transfusion_event_present] [data_quality] [core_vital_slots_partial] [uop_measured]"
+    },
+    {
+      "day_rel": -2,
+      "source_day_index": 1,
+      "tokens": "[day_window_len_24h] [perfusion_shock] [map_low_hours_bin_brief] [systolic_bp_min_bin_low] [lactate_48h_bin_severe] [base_deficit_48h_bin_severe] [oxygenation_ventilation] [vent_hours_bin_full_window] [vent_course_bin_early] [fio2_max_bin_high_support] [renal_metabolic] [creatinine_change_bin_kdigo_delta] [creatinine_ratio_bin_kdigo_ratio] [bicarbonate_min_bin_low] [immune_hematologic] [rbc_transfusion_event_present] [resuscitation_burden] [rbc_48h_event_present] [data_quality] [core_vital_slots_dense] [uop_measured]"
+    },
+    {
+      "day_rel": -1,
+      "source_day_index": 2,
+      "tokens": "[day_window_len_24h] [perfusion_shock] [map_low_hours_bin_intermittent] [systolic_bp_min_bin_low] [oxygenation_ventilation] [vent_hours_bin_full_window] [vent_course_bin_early] [fio2_max_bin_high_support] [renal_metabolic] [creatinine_change_bin_kdigo_delta] [bicarbonate_min_bin_low] [immune_hematologic] [rbc_transfusion_event_present] [data_quality] [core_vital_slots_dense] [uop_measured]"
+    },
+    {
+      "day_rel": 0,
+      "source_day_index": 3,
+      "tokens": "[day_window_len_13h] [perfusion_shock] [map_low_hours_bin_brief] [systolic_bp_min_bin_low] [oxygenation_ventilation] [vent_hours_bin_full_window] [vent_course_bin_prolonged] [renal_metabolic] [bicarbonate_min_bin_low] [data_quality] [core_vital_slots_dense] [uop_measured]"
+    }
+  ],
+  "hour_blocks": [
+    "[HOUR_REL_-23] [heart_rate] <64> [systolic_bp] <119> [diastolic_bp] <52> [mean_arterial_pressure] <69> [respiratory_rate] <22> [temperature] <37.6> [fio2] <0.50> [vent_on] [SEP]",
+    "[HOUR_REL_-22] [heart_rate] <63> [systolic_bp] <138> [diastolic_bp] <57> [mean_arterial_pressure] <78> [respiratory_rate] <22> [temperature] <37.6> [vent_on] [SEP]",
+    "[HOUR_REL_-21] [heart_rate] <74> [systolic_bp] <107> [diastolic_bp] <45> [mean_arterial_pressure] <63> [respiratory_rate] <22> [temperature] <37.4> [vent_on] [SEP]",
+    "[HOUR_REL_-20] [heart_rate] <72> [systolic_bp] <125> [diastolic_bp] <94> [mean_arterial_pressure] <103> [respiratory_rate] <22> [temperature] <37.3> [vent_on] [SEP]",
+    "[HOUR_REL_-19] [heart_rate] <72> [systolic_bp] <102> [diastolic_bp] <89> [mean_arterial_pressure] <92> [respiratory_rate] <22> [temperature] <37.4> [vent_on] [SEP]",
+    "[HOUR_REL_-18] [heart_rate] <76> [systolic_bp] <141> [diastolic_bp] <58> [mean_arterial_pressure] <82> [respiratory_rate] <22> [temperature] <37.4> [fio2] <0.50> [vent_on] [SEP]",
+    "[HOUR_REL_-17] [heart_rate] <65> [systolic_bp] <139> [diastolic_bp] <57> [mean_arterial_pressure] <80> [respiratory_rate] <22> [temperature] <37.5> [vent_on] [SEP]",
+    "[HOUR_REL_-16] [heart_rate] <73> [systolic_bp] <128> [diastolic_bp] <54> [mean_arterial_pressure] <75> [respiratory_rate] <22> [temperature] <37.5> [fio2] <0.40> [vent_on] [SEP]",
+    "[HOUR_REL_-15] [heart_rate] <79> [systolic_bp] <111> [diastolic_bp] <49> [mean_arterial_pressure] <66> [respiratory_rate] <22> [temperature] <37.6> [fio2] <0.40> [vent_on] [SEP]",
+    "[HOUR_REL_-14] [heart_rate] <75> [systolic_bp] <123> [diastolic_bp] <56> [mean_arterial_pressure] <74> [respiratory_rate] <22> [temperature] <37.7> [vent_on] [SEP]",
+    "[HOUR_REL_-13] [heart_rate] <67> [systolic_bp] <120> [diastolic_bp] <53> [mean_arterial_pressure] <71> [respiratory_rate] <22> [temperature] <37.7> [vent_on] [SEP]",
+    "[HOUR_REL_-12] [heart_rate] <67> [systolic_bp] <122> [diastolic_bp] <57> [mean_arterial_pressure] <75> [respiratory_rate] <22> [temperature] <37.6> [vent_on] [SEP]",
+    "[HOUR_REL_-11] [heart_rate] <63> [systolic_bp] <105> [diastolic_bp] <50> [mean_arterial_pressure] <66> [respiratory_rate] <22> [temperature] <37.6> [fio2] <0.40> [vent_on] [SEP]",
+    "[HOUR_REL_-10] [heart_rate] <70> [systolic_bp] <116> [diastolic_bp] <55> [mean_arterial_pressure] <73> [respiratory_rate] <22> [temperature] <37.5> [vent_on] [SEP]",
+    "[HOUR_REL_-9] [heart_rate] <67> [systolic_bp] <120> [diastolic_bp] <55> [mean_arterial_pressure] <73> [respiratory_rate] <22> [temperature] <37.4> [vent_on] [SEP]",
+    "[HOUR_REL_-8] [heart_rate] <66> [systolic_bp] <111> [diastolic_bp] <52> [mean_arterial_pressure] <70> [respiratory_rate] <22> [temperature] <37.4> [vent_on] [SEP]",
+    "[HOUR_REL_-7] [heart_rate] <65> [systolic_bp] <140> [diastolic_bp] <55> [mean_arterial_pressure] <81> [respiratory_rate] <22> [temperature] <37.3> [fio2] <0.40> [vent_on] [SEP]",
+    "[HOUR_REL_-6] [heart_rate] <65> [systolic_bp] <132> [diastolic_bp] <57> [mean_arterial_pressure] <80> [respiratory_rate] <22> [temperature] <37.1> [vent_on] [SEP]",
+    "[HOUR_REL_-5] [heart_rate] <69> [systolic_bp] <136> [diastolic_bp] <50> [mean_arterial_pressure] <73> [respiratory_rate] <22> [temperature] <37.0> [vent_on] [SEP]",
+    "[HOUR_REL_-4] [heart_rate] <67> [systolic_bp] <133> [diastolic_bp] <50> [mean_arterial_pressure] <71> [respiratory_rate] <22> [temperature] <37.0> [vent_on] [SEP]",
+    "[HOUR_REL_-3] [heart_rate] <68> [systolic_bp] <126> [diastolic_bp] <48> [mean_arterial_pressure] <68> [respiratory_rate] <22> [temperature] <37.0> [fio2] <0.40> [vent_on] [SEP]",
+    "[HOUR_REL_-2] [heart_rate] <68> [systolic_bp] <125> [diastolic_bp] <49> [mean_arterial_pressure] <67> [respiratory_rate] <22> [temperature] <37.1> [vent_on] [SEP]",
+    "[HOUR_REL_-1] [heart_rate] <71> [systolic_bp] <100> [diastolic_bp] <47> [mean_arterial_pressure] <61> [respiratory_rate] <22> [temperature] <37.2> [vent_on] [SEP]",
+    "[HOUR_REL_0] [heart_rate] <68> [systolic_bp] <139> [diastolic_bp] <56> [mean_arterial_pressure] <77> [respiratory_rate] <22> [temperature] <37.2> [vent_on] [CUR] [SEP]"
+  ]
+}

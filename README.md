@@ -41,6 +41,8 @@ EHR-Predict/
     ├── active_pipeline.yaml
     ├── MANIFEST.yaml
     ├── INDEX.jsonl
+    ├── codex/EHRPREDICT_CODEX_SKILL.md
+    ├── codex/CODEX_BOOTSTRAP.md
     └── archive/
 ```
 
@@ -58,7 +60,7 @@ trauma cohort → trauma MIMICIV sample → field adapter → Input design → s
 | trauma MIMICIV sample | done: one-HADM raw source-row sample under `data dicision/trauma MIMICIV sample/samples/hadm_20002252/` |
 | field adapter | pending: build current UW↔MIMIC field registry |
 | input design | in progress: `Input design/` |
-| summary design | in progress: `Input design/summary design/report_schema_v1.md` |
+| summary design | in progress: `Input design/summary design/day_rule_mapper.py`; `summary_builder.py` is legacy |
 | sample builder | not started; active folders must stay empty until input+summary schema are fixed |
 
 ## Key Paths
@@ -68,6 +70,8 @@ trauma cohort → trauma MIMICIV sample → field adapter → Input design → s
 - Raw MIMIC-IV sample: `data dicision/trauma MIMICIV sample/samples/hadm_20002252/`
 - Field registry reference: `agent-artifact/archive/compiled_202605xx/uw_mimic_field_registry_v0_20260523.yaml`
 - Raw-row extraction reference, not active sample builder: `reference/pipeline_hold/02_sample_mtou_raw_not_active/raw_mimic_rows/`
+- Codex migration skill: `agent-artifact/codex/EHRPREDICT_CODEX_SKILL.md`
+- Codex first-run bootstrap: `agent-artifact/codex/CODEX_BOOTSTRAP.md`
 - Data root: `/mnt/d/Data`
 - MIMIC-IV: `/mnt/d/Data/mimic-iv-2.2`
 
