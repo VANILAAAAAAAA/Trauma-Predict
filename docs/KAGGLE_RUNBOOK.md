@@ -28,10 +28,33 @@ Recommended first run:
 4. Clone this repository in the notebook.
 5. Point `TRAUMA_PREDICT_DATA_ROOT` to the mounted dataset path under `/kaggle/input/...`.
 
-Notebook setup cell:
+Notebook setup cell if the repository is public:
 
 ```bash
 git clone https://github.com/VANILAAAAAAAA/Trauma-Predict.git
+cd Trauma-Predict
+pip install -r requirements-kaggle.txt
+```
+
+If the repository remains private, create a Kaggle Secret named `GITHUB_TOKEN`
+with a read-only GitHub token, then clone without printing the token:
+
+```python
+from kaggle_secrets import UserSecretsClient
+import subprocess
+
+token = UserSecretsClient().get_secret("GITHUB_TOKEN")
+repo_url = f"https://x-access-token:{token}@github.com/VANILAAAAAAAA/Trauma-Predict.git"
+subprocess.run(["git", "clone", repo_url], check=True)
+subprocess.run(
+    ["git", "-C", "Trauma-Predict", "remote", "set-url", "origin", "https://github.com/VANILAAAAAAAA/Trauma-Predict.git"],
+    check=True,
+)
+```
+
+Then:
+
+```bash
 cd Trauma-Predict
 pip install -r requirements-kaggle.txt
 ```
@@ -46,6 +69,45 @@ os.environ["TRAUMA_PREDICT_OUTPUT_ROOT"] = "/kaggle/working/trauma-predict-runs"
 ```
 
 Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned commit is more reproducible than relying on notebook sync state.
+
+## Private Dataset Upload Pattern
+
+The clean data path is:
+
+```text
+local EHR-Predict sample artifact -> private Kaggle Dataset -> Kaggle Notebook /kaggle/input mount
+```
+
+Google Drive can be used as a transfer or backup location, but the training
+notebook should read from a Kaggle private Dataset whenever possible. Pulling
+from Drive on every notebook run is slower, less reproducible, and requires
+extra credential handling.
+
+Local upload with Kaggle CLI:
+
+```bash
+python3 -m pip install kaggle
+kaggle auth login
+
+cp -r /tmp/trauma_predict_first_train_8h /tmp/kaggle_trauma_predict_first_train_8h
+cat > /tmp/kaggle_trauma_predict_first_train_8h/dataset-metadata.json <<'JSON'
+{
+  "title": "trauma-predict-first-train-8h",
+  "id": "VANILAAAAAAAA/trauma-predict-first-train-8h",
+  "licenses": [{"name": "other"}]
+}
+JSON
+
+kaggle datasets create -p /tmp/kaggle_trauma_predict_first_train_8h
+```
+
+For later refreshes:
+
+```bash
+kaggle datasets version \
+  -p /tmp/kaggle_trauma_predict_first_train_8h \
+  -m "Refresh first training artifact"
+```
 
 ## Launch
 
