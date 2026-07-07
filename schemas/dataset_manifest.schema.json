@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/VANILAAAAAAAA/Trauma-Predict/schemas/dataset_manifest.schema.json",
+  "title": "Trauma-Predict Dataset Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "sample_unit",
+    "split_key",
+    "created_at",
+    "source",
+    "counts",
+    "shards"
+  ],
+  "properties": {
+    "schema_version": { "const": "trauma_predict.dataset_manifest.v1" },
+    "dataset_id": { "type": "string", "minLength": 1 },
+    "sample_unit": { "const": "icu_stay_anchor" },
+    "split_key": { "const": "subject_id" },
+    "created_at": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "required": ["ehr_predict_commit", "field_adapter_version", "sample_builder_version"],
+      "properties": {
+        "ehr_predict_commit": { "type": "string", "minLength": 7 },
+        "field_adapter_version": { "type": "string", "minLength": 1 },
+        "sample_builder_version": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "counts": {
+      "type": "object",
+      "required": ["subjects", "hadm", "stays", "samples"],
+      "properties": {
+        "subjects": { "type": "integer", "minimum": 1 },
+        "hadm": { "type": "integer", "minimum": 1 },
+        "stays": { "type": "integer", "minimum": 1 },
+        "samples": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "shards": {
+      "type": "object",
+      "required": ["train", "val", "test"],
+      "properties": {
+        "train": { "type": "array", "items": { "type": "string" } },
+        "val": { "type": "array", "items": { "type": "string" } },
+        "test": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

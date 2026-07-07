@@ -1,6 +1,0 @@
-uw_group,canonical_variable,subject_id,hadm_id,pharmacy_id,poe_id,poe_seq,order_provider_id,starttime,stoptime,drug_type,drug,formulary_drug_cd,gsn,ndc,prod_strength,form_rx,dose_val_rx,dose_unit_rx,form_val_disp,form_unit_disp,doses_per_24_hrs,route
-g2_or_g3_medication_raw,antibiotic_or_antimicrobial,19040738,26798055,17971923,19040738-345,345,P75HZC,2143-06-15 12:00:00,2143-06-18 10:00:00,MAIN,MetRONIDAZOLE (FLagyl),METR500PM,009588,00338105548,500mg Premix Bag,,500,mg,1,BAG,3,IV
-g2_or_g3_medication_raw,antibiotic_or_antimicrobial,19040738,26798055,38887733,19040738-489,489,P75HZC,2143-06-15 12:00:00,2143-06-25 11:00:00,MAIN,CeftriaXONE,CEFR1MB,009162,00781320895,1g Vial (For Mini Bag plus),,1,gm,1,VIAL,1,IV
-g2_or_g3_medication_raw,antibiotic_or_antimicrobial,19040738,26798055,40702719,19040738-268,268,P75HZC,2143-06-15 12:00:00,2143-06-16 11:00:00,MAIN,Azithromycin ,AZIT500I,031452,62756051244,500mg Vial,,500,mg,1,VIAL,1,IV
-g2_or_g3_medication_raw,antibiotic_or_antimicrobial,19040738,26798055,43403356,19040738-69,69,P75HZC,2143-06-12 17:00:00,2143-06-13 16:00:00,MAIN,CefazoLIN,CEFA2D,068632,00264310511,2g Duplex Bag,,2,g,1,BAG,1,IV
-g2_or_g3_medication_raw,antibiotic_or_antimicrobial,19040738,26798055,54985289,19040738-344,344,P75HZC,2143-06-16 12:00:00,2143-06-18 10:00:00,MAIN,Azithromycin ,AZIT500I,031452,62756051244,500mg Vial,,250,mg,0.5,VIAL,1,IV

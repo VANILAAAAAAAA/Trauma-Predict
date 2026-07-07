@@ -1,2 +1,0 @@
-uw_group,canonical_variable,subject_id,hadm_id,admittime,dischtime,deathtime,admission_type,admit_provider_id,admission_location,discharge_location,insurance,language,marital_status,race,edregtime,edouttime,hospital_expire_flag
-,,19040738,26798055,2143-06-12 15:06:00,2143-07-04 16:00:00,,EW EMER.,P34SFE,EMERGENCY ROOM,REHAB,Other,ENGLISH,MARRIED,WHITE,2143-06-12 08:51:00,2143-06-12 16:11:00,0

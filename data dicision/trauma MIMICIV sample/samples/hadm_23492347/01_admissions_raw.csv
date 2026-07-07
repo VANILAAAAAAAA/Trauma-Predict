@@ -1,2 +1,0 @@
-uw_group,canonical_variable,subject_id,hadm_id,admittime,dischtime,deathtime,admission_type,admit_provider_id,admission_location,discharge_location,insurance,language,marital_status,race,edregtime,edouttime,hospital_expire_flag
-,,17727739,23492347,2150-09-27 11:09:00,2150-10-11 12:15:00,,EW EMER.,P19SWB,EMERGENCY ROOM,REHAB,Other,ENGLISH,SINGLE,WHITE,2150-09-27 10:25:00,2150-09-27 11:36:00,0

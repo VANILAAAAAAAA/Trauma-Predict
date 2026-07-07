@@ -1,2 +1,0 @@
-subject_id,hadm_id,stay_id,admittime,dischtime,hospital_los_hours,hospital_expire_flag,age_at_admit,gender,anchor_age,anchor_year,intime,outtime,icu_los_days,vent_day_count,is_vent3_subset,has_chartevents_data,trauma_icd_codes,trauma_icd_versions,trauma_seq_nums,trauma_mechanisms,trauma_intents,trauma_types
-19040738,26798055,31603200,2143-06-12 15:06:00,2143-07-04 16:00:00,528.90,0,67,M,67,2143,2143-06-12 16:11:00,2143-06-21 22:33:48,9.265833333333333,9,1,1,E9192,9,14,MACHINE,,MACHINE_U

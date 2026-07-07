@@ -1,0 +1,16 @@
+schema_version: trauma_predict.dataset_config.v1
+dataset_manifest: ${TRAUMA_PREDICT_DATA_ROOT}/dataset_manifest.json
+sample_manifest: ${TRAUMA_PREDICT_DATA_ROOT}/sample_manifest.csv
+train_shards: ${TRAUMA_PREDICT_DATA_ROOT}/train/*.jsonl.zst
+val_shards: ${TRAUMA_PREDICT_DATA_ROOT}/val/*.jsonl.zst
+test_shards: ${TRAUMA_PREDICT_DATA_ROOT}/test/*.jsonl.zst
+sample_unit: icu_stay_anchor
+split_key: subject_id
+required_sample_fields:
+  - sample_id
+  - subject_id
+  - hadm_id
+  - stay_id
+  - prediction_hour
+  - input_text
+  - target_text

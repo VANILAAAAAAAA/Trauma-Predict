@@ -1,6 +1,0 @@
-E-codes are not used for registry, 
-but for epidemiology analysis.
-
-ICD injury diagnosis + additional rules(complicated) -> trauma registry
-this process is impossible for automatic
-E-codes + ISS/AIS -> epidemiology analysis

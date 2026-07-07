@@ -1,0 +1,22 @@
+schema_version: trauma_predict.train_config.v1
+run_name: t4x2_first_run
+seed: 20260707
+model:
+  base_model: distilbert-base-uncased
+  task: causal_or_seq2seq_placeholder
+data:
+  config_path: configs/dataset/first_train.yaml
+training:
+  precision: fp16
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8
+  max_steps: 5000
+  eval_steps: 250
+  save_steps: 500
+  logging_steps: 25
+  max_checkpoints: 3
+  resume: true
+outputs:
+  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_first_run
+  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_first_run/metrics.jsonl

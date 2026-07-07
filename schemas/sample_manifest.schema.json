@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/VANILAAAAAAAA/Trauma-Predict/schemas/sample_manifest.schema.json",
+  "title": "Trauma-Predict Sample Manifest Row",
+  "type": "object",
+  "required": [
+    "sample_id",
+    "subject_id",
+    "hadm_id",
+    "stay_id",
+    "prediction_hour",
+    "split",
+    "shard_path"
+  ],
+  "properties": {
+    "sample_id": { "type": "string", "minLength": 1 },
+    "subject_id": { "type": "string", "minLength": 1 },
+    "hadm_id": { "type": "string", "minLength": 1 },
+    "stay_id": { "type": "string", "minLength": 1 },
+    "prediction_hour": { "type": "number", "minimum": 0, "exclusiveMaximum": 336 },
+    "split": { "enum": ["train", "val", "test"] },
+    "shard_path": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": true
+}

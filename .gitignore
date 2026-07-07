@@ -1,26 +1,64 @@
-# Data files
-/mnt/
-*.csv.gz
-*.csv
-*.parquet
-*.h5
-*.pkl
-*.joblib
+# Local data and generated artifacts
+/data/
+/datasets/
+/artifacts/
+/outputs/
+/runs/
+/checkpoints/
+/wandb/
+/mlruns/
 
-# Token / secrets
-github_token.txt
-*.token
+# MIMIC / derived restricted data files
+*.csv
+*.csv.gz
+*.tsv
+*.tsv.gz
+*.jsonl
+*.jsonl.gz
+*.jsonl.zst
+*.parquet
+*.arrow
+*.feather
+*.npz
+*.npy
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+
+# Model weights and training state
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+*.onnx
+
+# Secrets and local configuration
 .env
+.env.*
+!.env.example
+/secrets/
+*.pem
+*.key
 
 # Python
 __pycache__/
-*.pyc
-.ipynb_checkpoints/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
 
-# IDE
+# Notebooks and editor state
+.ipynb_checkpoints/
 .vscode/
 .idea/
 
-# Large artifacts
-agent-artifact/
-audit/
+# OS / transfer noise
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
