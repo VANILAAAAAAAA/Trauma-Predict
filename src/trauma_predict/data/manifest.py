@@ -23,7 +23,7 @@ class DatasetManifest:
             dataset_id=str(payload["dataset_id"]),
             sample_unit=str(payload["sample_unit"]),
             split_key=str(payload["split_key"]),
-            counts={key: int(value) for key, value in payload["counts"].items()},
+            counts={key: int(payload["counts"][key]) for key in ("subjects", "hadm", "stays", "samples")},
             shards={key: list(value) for key, value in payload["shards"].items()},
             source=dict(payload["source"]),
         )

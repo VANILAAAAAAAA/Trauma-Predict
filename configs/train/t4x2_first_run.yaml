@@ -3,7 +3,7 @@ run_name: t4x2_first_run
 seed: 20260707
 model:
   base_model: distilbert-base-uncased
-  task: causal_or_seq2seq_placeholder
+  task: next24_text_generation
 data:
   config_path: configs/dataset/first_train.yaml
 training:

@@ -59,13 +59,14 @@ cd Trauma-Predict
 pip install -r requirements-kaggle.txt
 ```
 
-Environment setup:
+Environment setup in the Kaggle notebook:
 
-```python
-import os
-
-os.environ["TRAUMA_PREDICT_DATA_ROOT"] = "/kaggle/input/<your-private-dataset-name>"
-os.environ["TRAUMA_PREDICT_OUTPUT_ROOT"] = "/kaggle/working/trauma-predict-runs"
+```bash
+export TRAUMA_PREDICT_DATA_ROOT="/kaggle/input/<your-private-dataset-name>"
+export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
+test -f "$TRAUMA_PREDICT_DATA_ROOT/dataset_manifest.json"
+test -f "$TRAUMA_PREDICT_DATA_ROOT/sample_manifest.csv"
+find "$TRAUMA_PREDICT_DATA_ROOT" -maxdepth 2 -type f | sort | sed -n '1,40p'
 ```
 
 Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned commit is more reproducible than relying on notebook sync state.
@@ -111,7 +112,23 @@ kaggle datasets version \
 
 ## Launch
 
+Run the data preflight first. This validates the mounted private Dataset, checks patient-level split integrity, verifies declared shards, and reads the JSONL records before any training loop is attached.
+
 ```bash
+export TRAUMA_PREDICT_DATA_ROOT="/kaggle/input/<your-private-dataset-name>"
+export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
+
+python notebooks/kaggle/train_kaggle.py \
+  --config configs/train/t4x2_first_run.yaml \
+  --dry-run
+```
+
+Accelerate entry:
+
+```bash
+export TRAUMA_PREDICT_DATA_ROOT="/kaggle/input/<your-private-dataset-name>"
+export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
+
 pip install -r requirements-kaggle.txt
 accelerate launch \
   --config_file configs/accelerate/t4x2.yaml \
