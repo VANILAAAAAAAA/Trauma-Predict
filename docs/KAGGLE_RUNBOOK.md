@@ -9,12 +9,43 @@ Kaggle should receive a prebuilt data artifact mounted outside Git:
 ```text
 dataset_manifest.json
 sample_manifest.csv
-train/*.jsonl.zst
-val/*.jsonl.zst
-test/*.jsonl.zst
+train/*.jsonl.gz
+val/*.jsonl.gz
+test/*.jsonl.gz
 ```
 
 The source MIMIC extraction, field adapter, sample builder, and patient split generation are performed before Kaggle.
+
+## Code and Data Wiring
+
+Do not store training samples in GitHub. Use GitHub only for code.
+
+Recommended first run:
+
+1. Create or upload a private Kaggle Dataset that contains the prebuilt artifact above.
+2. Create a Kaggle Notebook with Internet enabled.
+3. Add the private Dataset through the notebook's `Add Data` panel.
+4. Clone this repository in the notebook.
+5. Point `TRAUMA_PREDICT_DATA_ROOT` to the mounted dataset path under `/kaggle/input/...`.
+
+Notebook setup cell:
+
+```bash
+git clone https://github.com/VANILAAAAAAAA/Trauma-Predict.git
+cd Trauma-Predict
+pip install -r requirements-kaggle.txt
+```
+
+Environment setup:
+
+```python
+import os
+
+os.environ["TRAUMA_PREDICT_DATA_ROOT"] = "/kaggle/input/<your-private-dataset-name>"
+os.environ["TRAUMA_PREDICT_OUTPUT_ROOT"] = "/kaggle/working/trauma-predict-runs"
+```
+
+Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned commit is more reproducible than relying on notebook sync state.
 
 ## Launch
 
