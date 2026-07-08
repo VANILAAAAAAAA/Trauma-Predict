@@ -125,15 +125,20 @@ python notebooks/kaggle/train_kaggle.py \
   --dry-run
 ```
 
-Training entry after the dry run passes:
+Training entry after the dry run passes. Use `torchrun` for the first Kaggle
+run; it avoids the `accelerate` CLI import path that can pull in incompatible
+vision packages on Kaggle images.
 
 ```bash
 export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-first-train-8h"
 export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
+export PYTHONPATH="/kaggle/working/Trauma-Predict/src:${PYTHONPATH:-}"
+export TOKENIZERS_PARALLELISM=false
 
 pip install -r requirements-kaggle.txt
-accelerate launch \
-  --config_file configs/accelerate/t4x2.yaml \
+python -m torch.distributed.run \
+  --standalone \
+  --nproc_per_node=2 \
   notebooks/kaggle/train_kaggle.py \
   --config configs/train/t4x2_first_run.yaml
 ```
@@ -143,9 +148,19 @@ Fallback:
 ```bash
 export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-first-train-8h"
 export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
+export PYTHONPATH="/kaggle/working/Trauma-Predict/src:${PYTHONPATH:-}"
+export TOKENIZERS_PARALLELISM=false
 
-accelerate launch \
-  --config_file configs/accelerate/single_gpu.yaml \
+python notebooks/kaggle/train_kaggle.py \
+  --config configs/train/t4x2_first_run.yaml
+```
+
+Alternative single-GPU distributed launch:
+
+```bash
+python -m torch.distributed.run \
+  --standalone \
+  --nproc_per_node=1 \
   notebooks/kaggle/train_kaggle.py \
   --config configs/train/t4x2_first_run.yaml
 ```
