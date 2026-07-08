@@ -17,6 +17,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `docs/REPO_STRUCTURE.md` | docs | Directory structure and design rules. | No data. |
 | `notebooks/kaggle/README.md` | kaggle | Explains Kaggle launcher folder boundary. | No data. |
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
+| `notebooks/kaggle/train_full_first_run.ipynb` | kaggle | End-to-end Kaggle notebook for reconstructing the full first training artifact and launching training. | No data. |
 | `notebooks/kaggle/verify_private_dataset.ipynb` | kaggle | Kaggle notebook that verifies private Dataset mounting or API download before preflight. | No data. |
 | `pyproject.toml` | packaging | Python package, optional dependencies, and test config. | No data. |
 | `requirements-kaggle.txt` | packaging | Kaggle install requirements. | No data. |
