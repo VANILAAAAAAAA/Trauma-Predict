@@ -101,8 +101,8 @@ kaggle auth login
 cp -r /tmp/trauma_predict_first_train_8h /tmp/kaggle_trauma_predict_first_train_8h
 cat > /tmp/kaggle_trauma_predict_first_train_8h/dataset-metadata.json <<'JSON'
 {
-  "title": "trauma-predict-first-train-8h",
-  "id": "vanilaaaa/trauma-predict-first-train-8h",
+  "title": "trauma-predict-main-route-first-train-8h-v2",
+  "id": "vanilaaaa/trauma-predict-main-route-first-train-8h-v2",
   "licenses": [{"name": "other"}]
 }
 JSON
@@ -125,7 +125,7 @@ Run `notebooks/kaggle/verify_private_dataset.ipynb` first. It handles both attac
 The direct preflight command expects the reconstructed artifact root, not the raw Kaggle upload folder:
 
 ```bash
-export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-first-train-8h"
+export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-main-route-first-train-8h-v2"
 export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
 
 python notebooks/kaggle/train_kaggle.py \
@@ -157,7 +157,7 @@ run; it avoids the `accelerate` CLI import path that can pull in incompatible
 vision packages on Kaggle images.
 
 ```bash
-export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-first-train-8h"
+export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-main-route-first-train-8h-v2"
 export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
 export PYTHONPATH="/kaggle/working/Trauma-Predict/src:${PYTHONPATH:-}"
 export TOKENIZERS_PARALLELISM=false
@@ -173,7 +173,7 @@ python -m torch.distributed.run \
 Fallback:
 
 ```bash
-export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-first-train-8h"
+export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-main-route-first-train-8h-v2"
 export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
 export PYTHONPATH="/kaggle/working/Trauma-Predict/src:${PYTHONPATH:-}"
 export TOKENIZERS_PARALLELISM=false
