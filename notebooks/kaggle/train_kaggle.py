@@ -8,6 +8,11 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
 from trauma_predict.data.preflight import preflight_training_artifact
 from trauma_predict.training.config import load_yaml_config
 from trauma_predict.training.seq2seq import run_seq2seq_training

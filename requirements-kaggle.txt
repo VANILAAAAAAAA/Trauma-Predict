@@ -5,4 +5,4 @@ safetensors>=0.4
 sentencepiece>=0.2
 torch>=2.3
 tqdm>=4.66
-transformers>=4.44
+transformers>=4.44,<5
