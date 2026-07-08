@@ -27,13 +27,16 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `src/trauma_predict/data/__init__.py` | package | Data utility namespace. | No data. |
 | `src/trauma_predict/data/manifest.py` | package | Dataset manifest loading and validation helpers. | No data. |
 | `src/trauma_predict/data/preflight.py` | package | Validates generated training artifacts before Kaggle execution. | No data. |
+| `src/trauma_predict/data/records.py` | package | Reads generated JSONL shard records for training. | No data. |
 | `src/trauma_predict/data/splits.py` | package | Patient-level split invariant helpers. | No data. |
 | `src/trauma_predict/eval/__init__.py` | package | Evaluation namespace. | No data. |
 | `src/trauma_predict/eval/metrics.py` | package | Basic metric aggregation helpers. | No data. |
 | `src/trauma_predict/training/__init__.py` | package | Training namespace. | No data. |
 | `src/trauma_predict/training/checkpoints.py` | package | Checkpoint retention helpers. | No data. |
 | `src/trauma_predict/training/config.py` | package | YAML config loading and environment expansion. | No data. |
+| `src/trauma_predict/training/seq2seq.py` | package | Hugging Face seq2seq training loop for input-to-NEXT_24H targets. | No data. |
 | `tests/test_data_preflight.py` | tests | Tests generated artifact preflight checks with synthetic rows. | Synthetic records only. |
 | `tests/test_manifest_contracts.py` | tests | Tests schema and manifest helper behavior. | Synthetic records only. |
 | `tests/test_repo_hygiene.py` | tests | Tests file index and forbidden repository paths. | No data. |
+| `tests/test_training_seq2seq.py` | tests | Tests shard record loading and seq2seq config validation. | Synthetic records only. |
 | `tools/update_file_index.py` | tools | Validates that all tracked files appear in this index. | No data. |

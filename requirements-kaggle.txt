@@ -1,6 +1,8 @@
 accelerate>=0.34
 jsonschema>=4.0
 pyyaml>=6.0
+safetensors>=0.4
+sentencepiece>=0.2
 torch>=2.3
 tqdm>=4.66
 transformers>=4.44

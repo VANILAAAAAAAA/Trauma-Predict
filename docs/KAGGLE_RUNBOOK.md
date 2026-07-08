@@ -125,10 +125,10 @@ python notebooks/kaggle/train_kaggle.py \
   --dry-run
 ```
 
-Accelerate entry:
+Training entry after the dry run passes:
 
 ```bash
-export TRAUMA_PREDICT_DATA_ROOT="/kaggle/input/<your-private-dataset-name>"
+export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-first-train-8h"
 export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
 
 pip install -r requirements-kaggle.txt
@@ -141,6 +141,9 @@ accelerate launch \
 Fallback:
 
 ```bash
+export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-first-train-8h"
+export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
+
 accelerate launch \
   --config_file configs/accelerate/single_gpu.yaml \
   notebooks/kaggle/train_kaggle.py \
@@ -153,8 +156,10 @@ Write outputs under `/kaggle/working` or the configured output root:
 
 - `metrics.jsonl`
 - resumable checkpoints
+- `final_model/`
 - validation predictions
 - run config snapshot
 - environment snapshot
+- `training_result.json`
 
 Do not commit these outputs to Git.

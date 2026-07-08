@@ -2,21 +2,31 @@ schema_version: trauma_predict.train_config.v1
 run_name: t4x2_first_run
 seed: 20260707
 model:
-  base_model: distilbert-base-uncased
+  base_model: google/flan-t5-base
   task: next24_text_generation
+  max_input_tokens: 1024
+  max_target_tokens: 256
+  generation_max_new_tokens: 256
 data:
   config_path: configs/dataset/first_train.yaml
 training:
   precision: fp16
-  per_device_train_batch_size: 2
-  per_device_eval_batch_size: 2
-  gradient_accumulation_steps: 8
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 2.0e-5
+  warmup_steps: 200
+  weight_decay: 0.01
+  gradient_checkpointing: true
+  dataloader_num_workers: 2
   max_steps: 5000
   eval_steps: 250
   save_steps: 500
   logging_steps: 25
   max_checkpoints: 3
   resume: true
+evaluation:
+  max_prediction_samples: 32
 outputs:
   output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_first_run
   metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_first_run/metrics.jsonl
