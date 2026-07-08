@@ -41,6 +41,7 @@
 /secrets/
 *.pem
 *.key
+api.txt
 
 # Python
 __pycache__/
@@ -62,3 +63,4 @@ venv/
 .DS_Store
 Thumbs.db
 *:Zone.Identifier
+notebooks/kaggle/*.png

@@ -189,6 +189,9 @@ def run_seq2seq_training(
     )
 
     checkpoint = latest_checkpoint(output_dir) if bool(training_config.get("resume", True)) else None
+    quarantined_rng_files = quarantine_rng_state_files(checkpoint)
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        torch.distributed.barrier()
     if trainer.is_world_process_zero():
         write_environment_snapshot(output_dir / "environment_snapshot.json", preflight)
         append_jsonl(metrics_path, {
@@ -199,6 +202,7 @@ def run_seq2seq_training(
             "eval_samples": len(eval_records),
             "preflight": preflight.to_dict(),
             "resume_checkpoint": checkpoint,
+            "quarantined_rng_state_files": quarantined_rng_files,
             "torch": torch.__version__,
         })
 
@@ -276,6 +280,40 @@ def maybe_cap_records(records: list[dict[str, Any]], cap: Any) -> list[dict[str,
 def latest_checkpoint(output_dir: Path) -> str | None:
     checkpoints = sorted_checkpoints(output_dir)
     return str(checkpoints[-1]) if checkpoints else None
+
+
+def quarantine_rng_state_files(checkpoint: str | None) -> list[str]:
+    if not checkpoint:
+        return []
+    checkpoint_path = Path(checkpoint)
+    paths = []
+    for name in ("rng_state.pth",):
+        paths.append(checkpoint_path / name)
+    paths.extend(sorted(checkpoint_path.glob("rng_state_*.pth")))
+
+    quarantined: list[str] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        target = _unused_quarantine_path(path)
+        try:
+            path.rename(target)
+        except FileNotFoundError:
+            continue
+        quarantined.append(str(target))
+    return quarantined
+
+
+def _unused_quarantine_path(path: Path) -> Path:
+    base = path.with_name(f"{path.name}.ignored_for_torch_weights_only")
+    if not base.exists():
+        return base
+    index = 1
+    while True:
+        candidate = path.with_name(f"{path.name}.ignored_for_torch_weights_only.{index}")
+        if not candidate.exists():
+            return candidate
+        index += 1
 
 
 def append_jsonl(path: Path, payload: dict[str, Any]) -> None:

@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from trauma_predict.data.records import load_text_records, resolve_shard_paths
-from trauma_predict.training.seq2seq import validate_seq2seq_config
+from trauma_predict.training.seq2seq import quarantine_rng_state_files, validate_seq2seq_config
 
 
 class TrainingSeq2SeqTest(unittest.TestCase):
@@ -80,6 +80,22 @@ class TrainingSeq2SeqTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "fp16 is disabled"):
             validate_seq2seq_config(config)
+
+    def test_quarantine_rng_state_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint = Path(tmp) / "checkpoint-500"
+            checkpoint.mkdir()
+            rng_state = checkpoint / "rng_state_0.pth"
+            model_file = checkpoint / "model.safetensors"
+            rng_state.write_bytes(b"rng")
+            model_file.write_bytes(b"model")
+
+            quarantined = quarantine_rng_state_files(str(checkpoint))
+
+            self.assertFalse(rng_state.exists())
+            self.assertTrue((checkpoint / "rng_state_0.pth.ignored_for_torch_weights_only").exists())
+            self.assertTrue(model_file.exists())
+            self.assertEqual(len(quarantined), 1)
 
 
 if __name__ == "__main__":
