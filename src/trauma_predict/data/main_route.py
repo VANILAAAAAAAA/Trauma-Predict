@@ -78,11 +78,21 @@ class MainRouteBatchCollator:
         max_input_tokens: int,
         normalizer: HourValueNormalizer,
         pad_to_multiple_of: int | None = None,
+        active_losses: dict[str, bool] | None = None,
     ) -> None:
         self.tokenizer = tokenizer
         self.max_input_tokens = max_input_tokens
         self.normalizer = normalizer
         self.pad_to_multiple_of = pad_to_multiple_of
+        self.active_losses = {
+            "next_hour_values": True,
+            "next_hour_vent": True,
+            "next24_domain": True,
+            "next24_binary": True,
+            "next24_multiclass": True,
+        }
+        if active_losses is not None:
+            self.active_losses.update({key: bool(value) for key, value in active_losses.items()})
         if getattr(tokenizer, "padding_side", "right") != "right":
             raise ValueError("main-route collator requires tokenizer.padding_side='right'")
         self.state_token_id = tokenizer.convert_tokens_to_ids(STATE_TOKEN)
@@ -147,17 +157,23 @@ class MainRouteBatchCollator:
             hour_masks.append([[float(item) for item in row] for row in raw_masks])
             hour_vents.append([[float(row[0])] for row in record["hour_vent"]])
 
-            target = record["targets"]["next_hour"]
-            next_hour_values.append(
-                self.normalizer.normalize_row(list(target["hour_values"]), list(target["hour_mask"]))
-            )
-            next_hour_masks.append([float(item) for item in target["hour_mask"]])
-            next_hour_vents.append([float(target["hour_vent"][0])])
+            if self.active_losses["next_hour_values"] or self.active_losses["next_hour_vent"]:
+                target = record["targets"]["next_hour"]
+                next_hour_values.append(
+                    self.normalizer.normalize_row(list(target["hour_values"]), list(target["hour_mask"]))
+                )
+                next_hour_masks.append([float(item) for item in target["hour_mask"]])
+                next_hour_vents.append([float(target["hour_vent"][0])])
 
-            labels = encode_next24_labels(record["targets"]["next24h"])
-            domain_labels.append(labels["domains"])
-            binary_labels.append(labels["binary_fields"])
-            multiclass_labels.append(labels["multiclass_fields"])
+            if (
+                self.active_losses["next24_domain"]
+                or self.active_losses["next24_binary"]
+                or self.active_losses["next24_multiclass"]
+            ):
+                labels = encode_next24_labels(record["targets"]["next24h"])
+                domain_labels.append(labels["domains"])
+                binary_labels.append(labels["binary_fields"])
+                multiclass_labels.append(labels["multiclass_fields"])
 
         batch = self.tokenizer.pad(
             encoded_items,
@@ -172,7 +188,7 @@ class MainRouteBatchCollator:
         ]
 
         max_hours = max(len(item) for item in hour_values)
-        return {
+        batch_payload = {
             "input_ids": input_ids_tensor,
             "attention_mask": batch["attention_mask"],
             "hour_values": torch.tensor(_pad_3d(hour_values, max_hours, len(HOUR_VALUE_ORDER), 0.0), dtype=torch.float32),
@@ -182,13 +198,19 @@ class MainRouteBatchCollator:
             "hour_position_mask": torch.tensor(_pad_2d(hour_position_masks, max_hours, 0), dtype=torch.bool),
             "hour_time_indices": torch.tensor(_pad_2d(hour_time_indices, max_hours, 0), dtype=torch.long),
             "state_position": torch.tensor(state_positions, dtype=torch.long),
-            "next_hour_values": torch.tensor(next_hour_values, dtype=torch.float32),
-            "next_hour_mask": torch.tensor(next_hour_masks, dtype=torch.float32),
-            "next_hour_vent": torch.tensor(next_hour_vents, dtype=torch.float32),
-            "next24_domain_labels": torch.tensor(domain_labels, dtype=torch.float32),
-            "next24_binary_labels": torch.tensor(binary_labels, dtype=torch.float32),
-            "next24_multiclass_labels": torch.tensor(multiclass_labels, dtype=torch.long),
         }
+        if self.active_losses["next_hour_values"]:
+            batch_payload["next_hour_values"] = torch.tensor(next_hour_values, dtype=torch.float32)
+            batch_payload["next_hour_mask"] = torch.tensor(next_hour_masks, dtype=torch.float32)
+        if self.active_losses["next_hour_vent"]:
+            batch_payload["next_hour_vent"] = torch.tensor(next_hour_vents, dtype=torch.float32)
+        if self.active_losses["next24_domain"]:
+            batch_payload["next24_domain_labels"] = torch.tensor(domain_labels, dtype=torch.float32)
+        if self.active_losses["next24_binary"]:
+            batch_payload["next24_binary_labels"] = torch.tensor(binary_labels, dtype=torch.float32)
+        if self.active_losses["next24_multiclass"]:
+            batch_payload["next24_multiclass_labels"] = torch.tensor(multiclass_labels, dtype=torch.long)
+        return batch_payload
 
     def _single_token_position(
         self,

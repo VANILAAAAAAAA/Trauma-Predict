@@ -1,6 +1,6 @@
 # Kaggle Runbook
 
-First target: GPU T4 x2 with fp16. P100 is the fallback path. TPU is not in the first training path because it adds XLA-specific debugging and checkpoint friction.
+First formal target: Stage A `NEXT_HOUR` training on GPU T4 x2 with fp16. P100 is the fallback path. TPU is not in the first training path because it adds XLA-specific debugging and checkpoint friction.
 
 ## Expected Inputs
 
@@ -12,6 +12,8 @@ sample_manifest.csv
 train/*.jsonl.gz
 val/*.jsonl.gz
 test/*.jsonl.gz
+patient_split.csv      optional run metadata
+anchor_plan.csv        optional run metadata
 ```
 
 The source MIMIC extraction, field adapter, sample builder, and patient split generation are performed before Kaggle.
@@ -34,7 +36,7 @@ Notebook setup cell if the repository is public:
 git clone https://github.com/VANILAAAAAAAA/Trauma-Predict.git
 cd Trauma-Predict
 git fetch origin --tags
-git checkout --detach main-route-v1-training-20260708
+git checkout --detach stage-a-hour-training-20260708
 pip install -r requirements-kaggle.txt
 python -m pip check || true
 ```
@@ -48,7 +50,15 @@ import subprocess
 
 token = UserSecretsClient().get_secret("GITHUB_TOKEN")
 repo_url = f"https://x-access-token:{token}@github.com/VANILAAAAAAAA/Trauma-Predict.git"
-subprocess.run(["git", "clone", repo_url], check=True)
+result = subprocess.run(
+    ["git", "clone", repo_url],
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    check=False,
+)
+if result.returncode != 0:
+    raise RuntimeError("Private GitHub clone failed; token was not printed.")
 subprocess.run(
     ["git", "-C", "Trauma-Predict", "remote", "set-url", "origin", "https://github.com/VANILAAAAAAAA/Trauma-Predict.git"],
     check=True,
@@ -60,7 +70,7 @@ Then:
 ```bash
 cd Trauma-Predict
 git fetch origin --tags
-git checkout --detach main-route-v1-training-20260708
+git checkout --detach stage-a-hour-training-20260708
 pip install -r requirements-kaggle.txt
 python -m pip check || true
 ```
@@ -75,9 +85,35 @@ test -f "$TRAUMA_PREDICT_DATA_ROOT/sample_manifest.csv"
 find "$TRAUMA_PREDICT_DATA_ROOT" -maxdepth 2 -type f | sort | sed -n '1,40p'
 ```
 
-Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned tag is more reproducible than relying on notebook sync state. Update the tag name only when the committed training contract changes.
+Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned tag is more reproducible than relying on notebook sync state. Use `stage-a-hour-training-20260708` for the Stage A run after that tag is pushed.
 
 The Kaggle requirements intentionally do not install `torch`. Use Kaggle's preinstalled CUDA PyTorch, then pin the Hugging Face stack from `requirements-kaggle.txt`. Kaggle base images often have unrelated global `pip check` conflicts from preinstalled packages, so the notebook treats `pip check` as diagnostic only. The scoped runtime guard is the blocking check: it verifies CUDA, the PyTorch wheel, and the exact Hugging Face package versions used by this repository.
+
+Manual runtime guard after `pip install -r requirements-kaggle.txt`:
+
+```bash
+python - <<'PY'
+import sys
+sys.path.insert(0, "/kaggle/working/Trauma-Predict/src")
+import torch, transformers, accelerate, tokenizers, huggingface_hub
+expected = {
+    "transformers": "4.44.2",
+    "accelerate": "0.34.2",
+    "tokenizers": "0.19.1",
+    "huggingface_hub": "0.36.2",
+}
+actual = {
+    "transformers": transformers.__version__,
+    "accelerate": accelerate.__version__,
+    "tokenizers": tokenizers.__version__,
+    "huggingface_hub": huggingface_hub.__version__,
+}
+assert actual == expected, (expected, actual)
+assert torch.cuda.is_available()
+assert not torch.__version__.startswith("2.12.1+cu130")
+print("runtime_guard OK")
+PY
+```
 
 ## Private Dataset Upload Pattern
 
@@ -122,6 +158,8 @@ kaggle datasets version \
 
 Run `notebooks/kaggle/verify_private_dataset.ipynb` first. It handles both attached private Datasets under `/kaggle/input` and Kaggle API downloads into `/kaggle/working`, reconstructs `train/val/test`, and normalizes Kaggle-expanded `.jsonl` files back to the manifest-declared `.jsonl.gz` shard names.
 
+For the formal Stage A route, use `notebooks/kaggle/train_stage_a_hour.ipynb`. The older `train_full_first_run.ipynb` is a `joint_baseline` launcher and is not Stage A.
+
 The direct preflight command expects the reconstructed artifact root, not the raw Kaggle upload folder:
 
 ```bash
@@ -129,7 +167,7 @@ export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-main-route-first
 export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
 
 python notebooks/kaggle/train_kaggle.py \
-  --config configs/train/t4x2_first_run.yaml \
+  --config configs/train/t4x2_stage_a_hour.yaml \
   --dry-run
 ```
 
@@ -138,8 +176,8 @@ Run the token-length scan before training. It verifies that no sample exceeds th
 ```bash
 python notebooks/kaggle/scan_token_lengths.py \
   --dataset-config configs/dataset/first_train.yaml \
-  --train-config configs/train/t4x2_first_run.yaml \
-  --output-json "$TRAUMA_PREDICT_OUTPUT_ROOT/t4x2_first_run/token_length_summary.json"
+  --train-config configs/train/t4x2_stage_a_hour.yaml \
+  --output-json "$TRAUMA_PREDICT_OUTPUT_ROOT/t4x2_stage_a_hour/token_length_summary.json"
 ```
 
 Run the smoke config before the full run when the notebook session or dependency image has changed:
@@ -149,7 +187,7 @@ python -m torch.distributed.run \
   --standalone \
   --nproc_per_node=2 \
   notebooks/kaggle/train_kaggle.py \
-  --config configs/train/t4x2_smoke.yaml
+  --config configs/train/t4x2_stage_a_hour_smoke.yaml
 ```
 
 Training entry after dry run, token scan, and smoke pass. Use `torchrun` for the first Kaggle
@@ -167,7 +205,7 @@ python -m torch.distributed.run \
   --standalone \
   --nproc_per_node=2 \
   notebooks/kaggle/train_kaggle.py \
-  --config configs/train/t4x2_first_run.yaml
+  --config configs/train/t4x2_stage_a_hour.yaml
 ```
 
 Fallback:
@@ -179,7 +217,7 @@ export PYTHONPATH="/kaggle/working/Trauma-Predict/src:${PYTHONPATH:-}"
 export TOKENIZERS_PARALLELISM=false
 
 python notebooks/kaggle/train_kaggle.py \
-  --config configs/train/t4x2_first_run.yaml
+  --config configs/train/p100_stage_a_hour.yaml
 ```
 
 Alternative single-GPU distributed launch:
@@ -189,7 +227,7 @@ python -m torch.distributed.run \
   --standalone \
   --nproc_per_node=1 \
   notebooks/kaggle/train_kaggle.py \
-  --config configs/train/t4x2_first_run.yaml
+  --config configs/train/p100_stage_a_hour.yaml
 ```
 
 ## Required Outputs

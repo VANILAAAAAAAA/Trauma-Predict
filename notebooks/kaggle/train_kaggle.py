@@ -15,7 +15,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from trauma_predict.data.preflight import preflight_training_artifact
 from trauma_predict.training.config import load_yaml_config
-from trauma_predict.training.main_route import run_main_route_training
+from trauma_predict.training.main_route import run_main_route_training, validate_main_route_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,6 +29,7 @@ def main() -> None:
     args = parse_args()
     is_main = is_main_process()
     config = load_yaml_config(args.config)
+    validate_main_route_config(config)
     output_dir = Path(config.get("outputs", {}).get("output_dir", "outputs/kaggle_run"))
     _reject_unexpanded_path(output_dir, "outputs.output_dir")
     output_dir.mkdir(parents=True, exist_ok=True)

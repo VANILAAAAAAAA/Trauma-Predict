@@ -49,6 +49,7 @@ class MainRouteModel(_nn_module()):
         adapter_hidden_size: int = 256,
         dropout: float = 0.1,
         loss_weights: dict[str, float] | None = None,
+        active_losses: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         import torch
@@ -84,6 +85,15 @@ class MainRouteModel(_nn_module()):
         }
         if loss_weights:
             self.loss_weights.update({key: float(value) for key, value in loss_weights.items()})
+        self.active_losses = {
+            "next_hour_values": True,
+            "next_hour_vent": True,
+            "next24_domain": True,
+            "next24_binary": True,
+            "next24_multiclass": True,
+        }
+        if active_losses:
+            self.active_losses.update({key: bool(value) for key, value in active_losses.items()})
         self.supports_global_attention = str(getattr(self.encoder.config, "model_type", "")).lower() in {
             "longformer",
         }
@@ -161,7 +171,7 @@ class MainRouteModel(_nn_module()):
 
         loss = state_vector.new_tensor(0.0)
         loss_parts: dict[str, Any] = {}
-        if next_hour_values is not None and next_hour_mask is not None:
+        if self._loss_enabled("next_hour_values") and next_hour_values is not None and next_hour_mask is not None:
             observed = next_hour_mask.float()
             observed_count = observed.sum().clamp_min(1.0)
             hour_value_loss = F.smooth_l1_loss(
@@ -171,28 +181,28 @@ class MainRouteModel(_nn_module()):
             ) / observed_count
             loss = loss + self.loss_weights["next_hour_values"] * hour_value_loss
             loss_parts["next_hour_values"] = hour_value_loss.detach()
-        if next_hour_vent is not None:
+        if self._loss_enabled("next_hour_vent") and next_hour_vent is not None:
             hour_vent_loss = F.binary_cross_entropy_with_logits(
                 next_hour_vent_logits,
                 next_hour_vent.float(),
             )
             loss = loss + self.loss_weights["next_hour_vent"] * hour_vent_loss
             loss_parts["next_hour_vent"] = hour_vent_loss.detach()
-        if next24_domain_labels is not None:
+        if self._loss_enabled("next24_domain") and next24_domain_labels is not None:
             domain_loss = F.binary_cross_entropy_with_logits(
                 next24_domain_logits,
                 next24_domain_labels.float(),
             )
             loss = loss + self.loss_weights["next24_domain"] * domain_loss
             loss_parts["next24_domain"] = domain_loss.detach()
-        if next24_binary_labels is not None and next24_binary_logits.shape[-1]:
+        if self._loss_enabled("next24_binary") and next24_binary_labels is not None and next24_binary_logits.shape[-1]:
             binary_loss = F.binary_cross_entropy_with_logits(
                 next24_binary_logits,
                 next24_binary_labels.float(),
             )
             loss = loss + self.loss_weights["next24_binary"] * binary_loss
             loss_parts["next24_binary"] = binary_loss.detach()
-        if next24_multiclass_labels is not None and next24_multiclass_logits:
+        if self._loss_enabled("next24_multiclass") and next24_multiclass_labels is not None and next24_multiclass_logits:
             multiclass_losses = []
             for index, logits in enumerate(next24_multiclass_logits):
                 multiclass_losses.append(F.cross_entropy(logits, next24_multiclass_labels[:, index]))
@@ -210,6 +220,9 @@ class MainRouteModel(_nn_module()):
             "next24_multiclass_logits": tuple(next24_multiclass_logits),
             "loss_parts": loss_parts,
         }
+
+    def _loss_enabled(self, key: str) -> bool:
+        return bool(self.active_losses.get(key, False)) and float(self.loss_weights.get(key, 0.0)) != 0.0
 
     def enable_gradient_checkpointing(self) -> None:
         if hasattr(self.encoder, "gradient_checkpointing_enable"):
@@ -229,6 +242,8 @@ class MainRouteModel(_nn_module()):
             "target_domains": list(TARGET_DOMAINS),
             "binary_next24_fields": [spec.key for spec in BINARY_NEXT24_FIELD_SPECS],
             "multiclass_next24_fields": [spec.key for spec in MULTICLASS_NEXT24_FIELD_SPECS],
+            "active_losses": self.active_losses,
+            "loss_weights": self.loss_weights,
         }
         (output_dir / "main_route_model_config.json").write_text(
             json.dumps(payload, indent=2, sort_keys=True) + "\n",

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,7 +20,12 @@ from trauma_predict.data.main_route import (
     encode_next24_labels,
 )
 from trauma_predict.training.main_route import validate_main_route_config
+from trauma_predict.training.config import load_yaml_config
 from trauma_predict.training.runtime import quarantine_rng_state_files
+from trauma_predict.training.stages import resolve_training_stage_contract
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class FakeTokenizer:
@@ -80,13 +88,14 @@ class TrainingMainRouteTest(unittest.TestCase):
     def test_main_route_config_rejects_text_generation_task(self) -> None:
         config = {
             "schema_version": "trauma_predict.train_config.v1",
+            "training_stage": "joint_baseline",
             "model": {
                 "base_model": "google/flan-t5-base",
                 "task": "next24_text_generation",
                 "max_input_tokens": 1024,
                 "hour_adapter_hidden": 256,
             },
-            "training": {"learning_rate": 2e-5, "max_steps": 1},
+            "training": _training_block(active_next24=True),
         }
 
         with self.assertRaisesRegex(ValueError, "main_hour_adapter_structured_heads"):
@@ -95,14 +104,119 @@ class TrainingMainRouteTest(unittest.TestCase):
     def test_main_route_config_accepts_structured_route(self) -> None:
         validate_main_route_config({
             "schema_version": "trauma_predict.train_config.v1",
+            "training_stage": "joint_baseline",
             "model": {
                 "base_model": "allenai/longformer-base-4096",
                 "task": "main_hour_adapter_structured_heads",
                 "max_input_tokens": 4096,
                 "hour_adapter_hidden": 256,
             },
-            "training": {"precision": "fp16", "learning_rate": 2e-5, "max_steps": 1},
+            "training": _training_block(active_next24=True),
         })
+
+    def test_main_route_config_requires_explicit_training_stage(self) -> None:
+        config = {
+            "schema_version": "trauma_predict.train_config.v1",
+            "model": {
+                "base_model": "allenai/longformer-base-4096",
+                "task": "main_hour_adapter_structured_heads",
+                "max_input_tokens": 4096,
+                "hour_adapter_hidden": 256,
+            },
+            "training": _training_block(active_next24=True),
+        }
+
+        with self.assertRaisesRegex(ValueError, "training_stage"):
+            validate_main_route_config(config)
+
+    def test_stage_a_contract_allows_next_hour_losses_only(self) -> None:
+        contract = resolve_training_stage_contract({
+            "schema_version": "trauma_predict.train_config.v1",
+            "run_name": "t4x2_stage_a_hour",
+            "training_stage": "stage_a_next_hour",
+            "training": _training_block(active_next24=False),
+        })
+
+        self.assertEqual(contract.active_loss_names, ["next_hour_values", "next_hour_vent"])
+        self.assertEqual(contract.loss_weights["next24_domain"], 0.0)
+        self.assertEqual(contract.loss_weights["next24_binary"], 0.0)
+        self.assertEqual(contract.loss_weights["next24_multiclass"], 0.0)
+
+    def test_stage_a_contract_rejects_next24_loss_activation(self) -> None:
+        config = {
+            "schema_version": "trauma_predict.train_config.v1",
+            "run_name": "t4x2_stage_a_hour",
+            "training_stage": "stage_a_next_hour",
+            "training": _training_block(active_next24=True),
+        }
+
+        with self.assertRaisesRegex(ValueError, "active_losses does not match stage_a_next_hour"):
+            resolve_training_stage_contract(config)
+
+    def test_tracked_training_configs_validate_stage_contracts(self) -> None:
+        for path in sorted((REPO_ROOT / "configs" / "train").glob("*.yaml")):
+            with self.subTest(path=path.name):
+                validate_main_route_config(load_yaml_config(path))
+
+    def test_kaggle_dry_run_rejects_invalid_stage_a_before_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_root = root / "out"
+            config_path = root / "bad_stage_a.yaml"
+            config_path.write_text(
+                "\n".join([
+                    "schema_version: trauma_predict.train_config.v1",
+                    "run_name: bad_stage_a",
+                    "training_stage: stage_a_next_hour",
+                    "model:",
+                    "  base_model: allenai/longformer-base-4096",
+                    "  task: main_hour_adapter_structured_heads",
+                    "  max_input_tokens: 4096",
+                    "  hour_adapter_hidden: 256",
+                    "data:",
+                    "  config_path: configs/dataset/first_train.yaml",
+                    "training:",
+                    "  precision: fp16",
+                    "  learning_rate: 2.0e-5",
+                    "  max_steps: 1",
+                    "  active_losses:",
+                    "    next_hour_values: true",
+                    "    next_hour_vent: true",
+                    "    next24_domain: true",
+                    "    next24_binary: true",
+                    "    next24_multiclass: true",
+                    "  loss_weights:",
+                    "    next_hour_values: 1.0",
+                    "    next_hour_vent: 0.25",
+                    "    next24_domain: 0.25",
+                    "    next24_binary: 0.5",
+                    "    next24_multiclass: 0.5",
+                    "outputs:",
+                    f"  output_dir: {output_root / 'bad_stage_a'}",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(REPO_ROOT / "src")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "notebooks" / "kaggle" / "train_kaggle.py"),
+                    "--config",
+                    str(config_path),
+                    "--dry-run",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("active_losses does not match stage_a_next_hour", result.stderr)
+            self.assertFalse((output_root / "bad_stage_a" / "run_config_snapshot.json").exists())
 
     def test_next24_label_encoding_preserves_structured_slots(self) -> None:
         labels = encode_next24_labels({
@@ -170,6 +284,30 @@ class TrainingMainRouteTest(unittest.TestCase):
         self.assertEqual(batch["hour_vent"].tolist(), [[[0.0], [1.0]]])
         self.assertEqual(batch["hour_position_mask"].tolist(), [[True, True]])
         self.assertGreaterEqual(batch["state_position"].item(), 0)
+
+    @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is not installed")
+    def test_stage_a_collator_emits_only_next_hour_labels(self) -> None:
+        collator = MainRouteBatchCollator(
+            tokenizer=FakeTokenizer(),
+            max_input_tokens=128,
+            normalizer=HourValueNormalizer.from_config(None),
+            active_losses={
+                "next_hour_values": True,
+                "next_hour_vent": True,
+                "next24_domain": False,
+                "next24_binary": False,
+                "next24_multiclass": False,
+            },
+        )
+
+        batch = collator([_main_route_record()])
+
+        self.assertIn("next_hour_values", batch)
+        self.assertIn("next_hour_mask", batch)
+        self.assertIn("next_hour_vent", batch)
+        self.assertNotIn("next24_domain_labels", batch)
+        self.assertNotIn("next24_binary_labels", batch)
+        self.assertNotIn("next24_multiclass_labels", batch)
 
     def test_collator_rejects_missing_hour_special_token(self) -> None:
         tokenizer = FakeTokenizer()
@@ -312,6 +450,28 @@ def _required_fields() -> list[str]:
         "targets",
         "target_text",
     ]
+
+
+def _training_block(active_next24: bool) -> dict[str, object]:
+    return {
+        "precision": "fp16",
+        "learning_rate": 2e-5,
+        "max_steps": 1,
+        "active_losses": {
+            "next_hour_values": True,
+            "next_hour_vent": True,
+            "next24_domain": active_next24,
+            "next24_binary": active_next24,
+            "next24_multiclass": active_next24,
+        },
+        "loss_weights": {
+            "next_hour_values": 1.0,
+            "next_hour_vent": 0.25,
+            "next24_domain": 0.25 if active_next24 else 0.0,
+            "next24_binary": 0.5 if active_next24 else 0.0,
+            "next24_multiclass": 0.5 if active_next24 else 0.0,
+        },
+    }
 
 
 if __name__ == "__main__":

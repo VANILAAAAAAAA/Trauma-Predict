@@ -1,5 +1,6 @@
 schema_version: trauma_predict.train_config.v1
 run_name: t4x2_first_run
+training_stage: joint_baseline
 seed: 20260707
 model:
   base_model: allenai/longformer-base-4096
@@ -36,6 +37,12 @@ training:
   logging_steps: 25
   max_checkpoints: 3
   resume: false
+  active_losses:
+    next_hour_values: true
+    next_hour_vent: true
+    next24_domain: true
+    next24_binary: true
+    next24_multiclass: true
   loss_weights:
     next_hour_values: 1.0
     next_hour_vent: 0.25

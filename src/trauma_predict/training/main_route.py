@@ -30,6 +30,12 @@ from trauma_predict.training.runtime import (
     utc_now,
     write_environment_snapshot,
 )
+from trauma_predict.training.stages import (
+    is_next24_active,
+    is_next_hour_active,
+    labels_for_active_losses,
+    resolve_training_stage_contract,
+)
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,9 @@ class MainRouteRunResult:
     train_samples: int
     eval_samples: int
     checkpoint: str | None
+    resume_checkpoint: str | None
+    final_model: str
+    final_model_stage_metadata: str
     metrics_path: str
     prediction_path: str | None
 
@@ -47,6 +56,9 @@ class MainRouteRunResult:
             "train_samples": self.train_samples,
             "eval_samples": self.eval_samples,
             "checkpoint": self.checkpoint,
+            "resume_checkpoint": self.resume_checkpoint,
+            "final_model": self.final_model,
+            "final_model_stage_metadata": self.final_model_stage_metadata,
             "metrics_path": self.metrics_path,
             "prediction_path": self.prediction_path,
         }
@@ -59,6 +71,7 @@ def run_main_route_training(
     preflight: ArtifactPreflightResult,
 ) -> MainRouteRunResult:
     validate_main_route_config(train_config)
+    stage_contract = resolve_training_stage_contract(train_config)
 
     import torch
     from transformers import AutoTokenizer, Trainer, TrainerCallback, TrainingArguments, set_seed
@@ -93,7 +106,8 @@ def run_main_route_training(
         tokenizer_length=len(tokenizer),
         adapter_hidden_size=int(model_config.get("hour_adapter_hidden", 256)),
         dropout=float(model_config.get("dropout", 0.1)),
-        loss_weights=dict(training_config.get("loss_weights") or {}),
+        loss_weights=stage_contract.loss_weights,
+        active_losses=stage_contract.active_losses,
     )
     max_position_embeddings = int(getattr(model.encoder.config, "max_position_embeddings", 0) or 0)
     max_input_tokens = int(model_config.get("max_input_tokens", 4096))
@@ -122,6 +136,7 @@ def run_main_route_training(
         max_input_tokens=max_input_tokens,
         normalizer=normalizer,
         pad_to_multiple_of=8 if fp16 or bf16 else None,
+        active_losses=stage_contract.active_losses,
     )
 
     training_args_kwargs: dict[str, Any] = {
@@ -149,14 +164,7 @@ def run_main_route_training(
         "remove_unused_columns": False,
         "ddp_find_unused_parameters": bool(training_config.get("ddp_find_unused_parameters", True)),
         "prediction_loss_only": True,
-        "label_names": [
-            "next_hour_values",
-            "next_hour_mask",
-            "next_hour_vent",
-            "next24_domain_labels",
-            "next24_binary_labels",
-            "next24_multiclass_labels",
-        ],
+        "label_names": labels_for_active_losses(stage_contract.active_losses),
     }
     argument_names = inspect.signature(TrainingArguments.__init__).parameters
     if "eval_strategy" in argument_names:
@@ -165,10 +173,34 @@ def run_main_route_training(
         training_args_kwargs["evaluation_strategy"] = "steps"
     args = TrainingArguments(**training_args_kwargs)
 
+    def stage_metadata() -> dict[str, Any]:
+        return {
+            "training_stage": stage_contract.training_stage,
+            "active_losses": stage_contract.active_losses,
+            "loss_weights": stage_contract.loss_weights,
+            "active_loss_names": stage_contract.active_loss_names,
+        }
+
+    class MainRouteTrainer(Trainer):
+        latest_loss_parts: dict[str, float]
+
+        def compute_loss(self, model, inputs, return_outputs=False, **kwargs):  # type: ignore[no-untyped-def]
+            outputs = model(**inputs)
+            loss = outputs["loss"]
+            loss_parts = outputs.get("loss_parts") or {}
+            self.latest_loss_parts = {
+                f"train_{name}_loss": float(value.detach().cpu().item())
+                for name, value in loss_parts.items()
+            }
+            return (loss, outputs) if return_outputs else loss
+
+    trainer: MainRouteTrainer
+
     class MetricsJsonlCallback(TrainerCallback):
         def on_log(self, args, state, control, logs=None, **kwargs):  # type: ignore[no-untyped-def]
             if not logs or int(getattr(args, "process_index", 0)) != 0:
                 return
+            logs.update(getattr(trainer, "latest_loss_parts", {}))
             append_jsonl(metrics_path, {
                 "created_at": utc_now(),
                 "event": "trainer_log",
@@ -176,17 +208,34 @@ def run_main_route_training(
                 "logs": sanitize_json(logs),
             })
 
-    trainer = Trainer(
+    class CheckpointMetadataCallback(TrainerCallback):
+        def on_save(self, args, state, control, **kwargs):  # type: ignore[no-untyped-def]
+            if int(getattr(args, "process_index", 0)) != 0:
+                return
+            checkpoint_dir = Path(args.output_dir) / f"checkpoint-{int(state.global_step)}"
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "created_at": utc_now(),
+                "route": MAIN_ROUTE,
+                **stage_metadata(),
+            }
+            (checkpoint_dir / "training_stage_metadata.json").write_text(
+                json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+    trainer = MainRouteTrainer(
         model=model,
         args=args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
         data_collator=collator,
-        callbacks=[MetricsJsonlCallback()],
+        callbacks=[MetricsJsonlCallback(), CheckpointMetadataCallback()],
     )
 
     checkpoint = latest_checkpoint(output_dir) if bool(training_config.get("resume", True)) else None
+    resume_checkpoint = checkpoint
     quarantined_rng_files = quarantine_rng_state_files(checkpoint)
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         torch.distributed.barrier()
@@ -196,19 +245,22 @@ def run_main_route_training(
             "created_at": utc_now(),
             "event": "training_start",
             "route": MAIN_ROUTE,
+            **stage_metadata(),
             "base_model": base_model,
             "train_samples": len(train_records),
             "eval_samples": len(eval_records),
             "preflight": preflight.to_dict(),
-            "resume_checkpoint": checkpoint,
+            "resume_checkpoint": resume_checkpoint,
             "quarantined_rng_state_files": quarantined_rng_files,
             "torch": torch.__version__,
         })
 
     trainer.train(resume_from_checkpoint=checkpoint)
     eval_metrics = trainer.evaluate()
+    produced_checkpoint = latest_checkpoint(output_dir)
     final_model_dir = output_dir / "final_model"
     trainer.save_model(str(final_model_dir))
+    final_model_stage_metadata = final_model_dir / "training_stage_metadata.json"
 
     prediction_output: str | None = None
     if trainer.is_world_process_zero():
@@ -226,6 +278,15 @@ def run_main_route_training(
             collator,
             normalizer,
             eval_records[:max_prediction_samples],
+            stage_contract.active_losses,
+        )
+        final_model_stage_metadata.write_text(
+            json.dumps({
+                "created_at": utc_now(),
+                "route": MAIN_ROUTE,
+                **stage_metadata(),
+            }, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
         )
         prediction_output = str(prediction_path)
 
@@ -233,13 +294,17 @@ def run_main_route_training(
         output_dir=str(output_dir),
         train_samples=len(train_records),
         eval_samples=len(eval_records),
-        checkpoint=checkpoint,
+        checkpoint=produced_checkpoint,
+        resume_checkpoint=resume_checkpoint,
+        final_model=str(final_model_dir),
+        final_model_stage_metadata=str(final_model_stage_metadata),
         metrics_path=str(metrics_path),
         prediction_path=prediction_output,
     )
 
 
 def validate_main_route_config(config: dict[str, Any]) -> None:
+    resolve_training_stage_contract(config)
     if config.get("schema_version") != "trauma_predict.train_config.v1":
         raise ValueError("train config schema_version mismatch")
     model = config.get("model")
@@ -271,6 +336,7 @@ def write_validation_predictions(
     collator: MainRouteBatchCollator,
     normalizer: HourValueNormalizer,
     records: list[dict[str, Any]],
+    active_losses: dict[str, bool],
 ) -> None:
     import torch
 
@@ -283,33 +349,38 @@ def write_validation_predictions(
             batch = {key: value.to(device) for key, value in batch.items()}
             with torch.no_grad():
                 output = model(**batch)
-            next_hour_values = output["next_hour_value_logits"][0].detach().cpu().tolist()
-            next_hour_vent_probability = float(torch.sigmoid(output["next_hour_vent_logits"][0]).detach().cpu().item())
-            domain_scores = torch.sigmoid(output["next24_domain_logits"][0]).detach().cpu().tolist()
-            binary_scores = torch.sigmoid(output["next24_binary_logits"][0]).detach().cpu().tolist()
-            multiclass_indices = [
-                int(logits[0].detach().cpu().argmax().item())
-                for logits in output["next24_multiclass_logits"]
-            ]
+            prediction_payload: dict[str, Any] = {}
+            target_payload: dict[str, Any] = {}
+            if is_next_hour_active(active_losses):
+                next_hour_values = output["next_hour_value_logits"][0].detach().cpu().tolist()
+                next_hour_vent_probability = float(torch.sigmoid(output["next_hour_vent_logits"][0]).detach().cpu().item())
+                prediction_payload["next_hour"] = {
+                    "label": "NEXT_HOUR",
+                    "relative_hour": "H+1",
+                    "value_order": list(HOUR_VALUE_ORDER),
+                    "values": normalizer.denormalize_row(next_hour_values),
+                    "vent_probability": next_hour_vent_probability,
+                }
+                target_payload["next_hour"] = record["targets"]["next_hour"]
+            if is_next24_active(active_losses):
+                domain_scores = torch.sigmoid(output["next24_domain_logits"][0]).detach().cpu().tolist()
+                binary_scores = torch.sigmoid(output["next24_binary_logits"][0]).detach().cpu().tolist()
+                multiclass_indices = [
+                    int(logits[0].detach().cpu().argmax().item())
+                    for logits in output["next24_multiclass_logits"]
+                ]
+                prediction_payload["next24h"] = decode_next24_predictions(
+                    domain_scores=domain_scores,
+                    binary_scores=binary_scores,
+                    multiclass_indices=multiclass_indices,
+                )
+                target_payload["next24h"] = record["targets"]["next24h"]
             prediction = {
                 "sample_id": record["sample_id"],
                 "hadm_id": record["hadm_id"],
                 "stay_id": record["stay_id"],
                 "prediction_hour": record["prediction_hour"],
-                "prediction": {
-                    "next_hour": {
-                        "label": "NEXT_HOUR",
-                        "relative_hour": "H+1",
-                        "value_order": list(HOUR_VALUE_ORDER),
-                        "values": normalizer.denormalize_row(next_hour_values),
-                        "vent_probability": next_hour_vent_probability,
-                    },
-                    "next24h": decode_next24_predictions(
-                        domain_scores=domain_scores,
-                        binary_scores=binary_scores,
-                        multiclass_indices=multiclass_indices,
-                    ),
-                },
-                "target": record["targets"],
+                "prediction": prediction_payload,
+                "target": target_payload,
             }
             handle.write(json.dumps(prediction, sort_keys=True) + "\n")

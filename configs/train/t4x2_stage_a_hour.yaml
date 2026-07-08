@@ -1,7 +1,7 @@
 schema_version: trauma_predict.train_config.v1
-run_name: t4x2_smoke
-training_stage: joint_baseline
-seed: 20260707
+run_name: t4x2_stage_a_hour
+training_stage: stage_a_next_hour
+seed: 20260708
 model:
   base_model: allenai/longformer-base-4096
   task: main_hour_adapter_structured_heads
@@ -22,36 +22,35 @@ training:
   precision: fp16
   per_device_train_batch_size: 1
   per_device_eval_batch_size: 1
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 16
   learning_rate: 2.0e-5
-  warmup_steps: 0
+  warmup_steps: 500
   weight_decay: 0.01
   max_grad_norm: 1.0
   gradient_checkpointing: false
-  dataloader_num_workers: 0
+  dataloader_num_workers: 2
+  required_cuda_devices: 2
   ddp_find_unused_parameters: true
-  max_steps: 2
-  eval_steps: 1
-  save_steps: 1
-  logging_steps: 1
-  max_checkpoints: 1
+  max_steps: 5000
+  eval_steps: 250
+  save_steps: 500
+  logging_steps: 25
+  max_checkpoints: 3
   resume: false
-  max_train_samples: 8
-  max_eval_samples: 4
   active_losses:
     next_hour_values: true
     next_hour_vent: true
-    next24_domain: true
-    next24_binary: true
-    next24_multiclass: true
+    next24_domain: false
+    next24_binary: false
+    next24_multiclass: false
   loss_weights:
     next_hour_values: 1.0
     next_hour_vent: 0.25
-    next24_domain: 0.25
-    next24_binary: 0.5
-    next24_multiclass: 0.5
+    next24_domain: 0.0
+    next24_binary: 0.0
+    next24_multiclass: 0.0
 evaluation:
-  max_prediction_samples: 4
+  max_prediction_samples: 32
 outputs:
-  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_smoke
-  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_smoke/metrics.jsonl
+  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_stage_a_hour
+  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_stage_a_hour/metrics.jsonl
