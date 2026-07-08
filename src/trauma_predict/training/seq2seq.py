@@ -143,6 +143,7 @@ def run_seq2seq_training(
         "gradient_accumulation_steps": int(training_config.get("gradient_accumulation_steps", 1)),
         "learning_rate": float(training_config.get("learning_rate", 2e-5)),
         "weight_decay": float(training_config.get("weight_decay", 0.01)),
+        "max_grad_norm": float(training_config.get("max_grad_norm", 1.0)),
         "warmup_steps": int(training_config.get("warmup_steps", 0)),
         "max_steps": int(training_config.get("max_steps", 1000)),
         "eval_steps": int(training_config.get("eval_steps", 250)),
@@ -251,8 +252,16 @@ def validate_seq2seq_config(config: dict[str, Any]) -> None:
         raise ValueError("model.max_input_tokens must be >= 128")
     if int(model.get("max_target_tokens", 1)) < 32:
         raise ValueError("model.max_target_tokens must be >= 32")
-    if not isinstance(config.get("training"), dict):
+    training = config.get("training")
+    if not isinstance(training, dict):
         raise ValueError("train config training must be an object")
+    precision = str(training.get("precision", "fp32")).lower()
+    if precision == "fp16":
+        raise ValueError("fp16 is disabled for this T5 text-generation run because it produced NaN gradients on T4")
+    if precision not in {"fp32", "no", "none", "bf16"}:
+        raise ValueError("training.precision must be one of fp32/no/none/bf16")
+    if float(training.get("learning_rate", 0.0)) > 1e-5:
+        raise ValueError("training.learning_rate must be <= 1e-5 for the first stable T5 run")
 
 
 def maybe_cap_records(records: list[dict[str, Any]], cap: Any) -> list[dict[str, Any]]:

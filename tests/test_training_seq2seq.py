@@ -66,6 +66,21 @@ class TrainingSeq2SeqTest(unittest.TestCase):
 
         validate_seq2seq_config(config)
 
+    def test_seq2seq_config_rejects_fp16_for_t5(self) -> None:
+        config = {
+            "schema_version": "trauma_predict.train_config.v1",
+            "model": {
+                "base_model": "google/flan-t5-base",
+                "task": "next24_text_generation",
+                "max_input_tokens": 1024,
+                "max_target_tokens": 256,
+            },
+            "training": {"precision": "fp16"},
+        }
+
+        with self.assertRaisesRegex(ValueError, "fp16 is disabled"):
+            validate_seq2seq_config(config)
+
 
 if __name__ == "__main__":
     unittest.main()

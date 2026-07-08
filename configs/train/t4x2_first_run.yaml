@@ -10,13 +10,14 @@ model:
 data:
   config_path: configs/dataset/first_train.yaml
 training:
-  precision: fp16
+  precision: fp32
   per_device_train_batch_size: 1
   per_device_eval_batch_size: 1
   gradient_accumulation_steps: 16
-  learning_rate: 2.0e-5
-  warmup_steps: 200
+  learning_rate: 5.0e-6
+  warmup_steps: 500
   weight_decay: 0.01
+  max_grad_norm: 1.0
   gradient_checkpointing: true
   dataloader_num_workers: 2
   max_steps: 5000
@@ -24,7 +25,7 @@ training:
   save_steps: 500
   logging_steps: 25
   max_checkpoints: 3
-  resume: true
+  resume: false
 evaluation:
   max_prediction_samples: 32
 outputs:
