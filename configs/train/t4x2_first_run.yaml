@@ -26,7 +26,7 @@ training:
   warmup_steps: 500
   weight_decay: 0.01
   max_grad_norm: 1.0
-  gradient_checkpointing: true
+  gradient_checkpointing: false
   dataloader_num_workers: 2
   required_cuda_devices: 2
   ddp_find_unused_parameters: true
