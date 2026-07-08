@@ -147,7 +147,7 @@ def run_main_route_training(
         "dataloader_num_workers": int(training_config.get("dataloader_num_workers", 2)),
         "report_to": [],
         "remove_unused_columns": False,
-        "ddp_find_unused_parameters": False,
+        "ddp_find_unused_parameters": bool(training_config.get("ddp_find_unused_parameters", True)),
         "prediction_loss_only": True,
         "label_names": [
             "next_hour_values",

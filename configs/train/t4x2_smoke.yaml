@@ -28,6 +28,7 @@ training:
   max_grad_norm: 1.0
   gradient_checkpointing: true
   dataloader_num_workers: 0
+  ddp_find_unused_parameters: true
   max_steps: 2
   eval_steps: 1
   save_steps: 1
