@@ -36,7 +36,7 @@ cd Trauma-Predict
 git fetch origin --tags
 git checkout --detach main-route-v1-training-20260708
 pip install -r requirements-kaggle.txt
-pip check
+python -m pip check || true
 ```
 
 If the repository remains private, create a Kaggle Secret named `GITHUB_TOKEN`
@@ -62,7 +62,7 @@ cd Trauma-Predict
 git fetch origin --tags
 git checkout --detach main-route-v1-training-20260708
 pip install -r requirements-kaggle.txt
-pip check
+python -m pip check || true
 ```
 
 Environment setup in the Kaggle notebook:
@@ -77,7 +77,7 @@ find "$TRAUMA_PREDICT_DATA_ROOT" -maxdepth 2 -type f | sort | sed -n '1,40p'
 
 Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned tag is more reproducible than relying on notebook sync state. Update the tag name only when the committed training contract changes.
 
-The Kaggle requirements intentionally do not install `torch`. Use Kaggle's preinstalled CUDA PyTorch, then pin the Hugging Face stack from `requirements-kaggle.txt`. The notebook runtime guard fails if CUDA is unavailable, if `torch` was upgraded to an incompatible wheel, or if the required imports cannot load.
+The Kaggle requirements intentionally do not install `torch`. Use Kaggle's preinstalled CUDA PyTorch, then pin the Hugging Face stack from `requirements-kaggle.txt`. Kaggle base images often have unrelated global `pip check` conflicts from preinstalled packages, so the notebook treats `pip check` as diagnostic only. The scoped runtime guard is the blocking check: it verifies CUDA, the PyTorch wheel, and the exact Hugging Face package versions used by this repository.
 
 ## Private Dataset Upload Pattern
 
