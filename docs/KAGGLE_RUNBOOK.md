@@ -33,7 +33,10 @@ Notebook setup cell if the repository is public:
 ```bash
 git clone https://github.com/VANILAAAAAAAA/Trauma-Predict.git
 cd Trauma-Predict
+git fetch origin --tags
+git checkout --detach main-route-v1-training-20260708
 pip install -r requirements-kaggle.txt
+pip check
 ```
 
 If the repository remains private, create a Kaggle Secret named `GITHUB_TOKEN`
@@ -56,7 +59,10 @@ Then:
 
 ```bash
 cd Trauma-Predict
+git fetch origin --tags
+git checkout --detach main-route-v1-training-20260708
 pip install -r requirements-kaggle.txt
+pip check
 ```
 
 Environment setup in the Kaggle notebook:
@@ -69,7 +75,9 @@ test -f "$TRAUMA_PREDICT_DATA_ROOT/sample_manifest.csv"
 find "$TRAUMA_PREDICT_DATA_ROOT" -maxdepth 2 -type f | sort | sed -n '1,40p'
 ```
 
-Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned commit is more reproducible than relying on notebook sync state.
+Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned tag is more reproducible than relying on notebook sync state. Update the tag name only when the committed training contract changes.
+
+The Kaggle requirements intentionally do not install `torch`. Use Kaggle's preinstalled CUDA PyTorch, then pin the Hugging Face stack from `requirements-kaggle.txt`. The notebook runtime guard fails if CUDA is unavailable, if `torch` was upgraded to an incompatible wheel, or if the required imports cannot load.
 
 ## Private Dataset Upload Pattern
 
@@ -125,7 +133,26 @@ python notebooks/kaggle/train_kaggle.py \
   --dry-run
 ```
 
-Training entry after the dry run passes. Use `torchrun` for the first Kaggle
+Run the token-length scan before training. It verifies that no sample exceeds the configured encoder window and writes a JSON summary into the run folder:
+
+```bash
+python notebooks/kaggle/scan_token_lengths.py \
+  --dataset-config configs/dataset/first_train.yaml \
+  --train-config configs/train/t4x2_first_run.yaml \
+  --output-json "$TRAUMA_PREDICT_OUTPUT_ROOT/t4x2_first_run/token_length_summary.json"
+```
+
+Run the smoke config before the full run when the notebook session or dependency image has changed:
+
+```bash
+python -m torch.distributed.run \
+  --standalone \
+  --nproc_per_node=2 \
+  notebooks/kaggle/train_kaggle.py \
+  --config configs/train/t4x2_smoke.yaml
+```
+
+Training entry after dry run, token scan, and smoke pass. Use `torchrun` for the first Kaggle
 run; it avoids the `accelerate` CLI import path that can pull in incompatible
 vision packages on Kaggle images.
 

@@ -76,9 +76,16 @@ def run_main_route_training(
     prediction_path = output_dir / "validation_predictions.jsonl"
 
     set_seed(int(train_config.get("seed", 0)))
+    required_cuda_devices = int(training_config.get("required_cuda_devices", 0) or 0)
+    if required_cuda_devices and torch.cuda.device_count() < required_cuda_devices:
+        raise RuntimeError(
+            f"training requires {required_cuda_devices} CUDA devices, "
+            f"but torch sees {torch.cuda.device_count()}"
+        )
     base_model = str(model_config["base_model"])
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     tokenizer.add_special_tokens({"additional_special_tokens": [*HOUR_SPECIAL_TOKENS, STATE_TOKEN]})
+    tokenizer.padding_side = "right"
 
     normalizer = HourValueNormalizer.from_config(model_config.get("value_normalization"))
     model = MainRouteModel(
@@ -88,12 +95,19 @@ def run_main_route_training(
         dropout=float(model_config.get("dropout", 0.1)),
         loss_weights=dict(training_config.get("loss_weights") or {}),
     )
+    max_position_embeddings = int(getattr(model.encoder.config, "max_position_embeddings", 0) or 0)
+    max_input_tokens = int(model_config.get("max_input_tokens", 4096))
+    if max_position_embeddings and max_input_tokens > max_position_embeddings:
+        raise ValueError(
+            f"model.max_input_tokens={max_input_tokens} exceeds encoder max_position_embeddings="
+            f"{max_position_embeddings}"
+        )
     if bool(training_config.get("gradient_checkpointing", False)):
         model.enable_gradient_checkpointing()
 
     required_fields = list(dataset_config.get("required_sample_fields") or [])
-    train_records = load_main_route_records(resolve_shard_paths(dataset_config, "train"), required_fields)
-    eval_records = load_main_route_records(resolve_shard_paths(dataset_config, "val"), required_fields)
+    train_records = load_main_route_records(resolve_shard_paths(dataset_config, "train"), required_fields, split="train")
+    eval_records = load_main_route_records(resolve_shard_paths(dataset_config, "val"), required_fields, split="val")
     train_records = maybe_cap_records(train_records, training_config.get("max_train_samples"))
     eval_records = maybe_cap_records(eval_records, training_config.get("max_eval_samples"))
 
@@ -105,7 +119,7 @@ def run_main_route_training(
     bf16 = precision == "bf16"
     collator = MainRouteBatchCollator(
         tokenizer=tokenizer,
-        max_input_tokens=int(model_config.get("max_input_tokens", 4096)),
+        max_input_tokens=max_input_tokens,
         normalizer=normalizer,
         pad_to_multiple_of=8 if fp16 or bf16 else None,
     )

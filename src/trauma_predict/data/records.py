@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import gzip
+import io
 import json
 from glob import glob
 from pathlib import Path
 from typing import Any, Iterator
-
-from trauma_predict.data.main_route import load_main_route_records
 
 
 def resolve_shard_paths(dataset_config: dict[str, Any], split: str) -> list[Path]:
@@ -35,4 +34,12 @@ def read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
 def _open_text(path: Path):
     if path.suffix == ".gz":
         return gzip.open(path, "rt", encoding="utf-8")
+    if path.suffix == ".zst":
+        try:
+            import zstandard as zstd
+        except ImportError as exc:
+            raise ValueError(f"{path} requires zstandard to read .zst shards") from exc
+        raw = path.open("rb")
+        reader = zstd.ZstdDecompressor().stream_reader(raw)
+        return io.TextIOWrapper(reader, encoding="utf-8")
     return path.open("r", encoding="utf-8")

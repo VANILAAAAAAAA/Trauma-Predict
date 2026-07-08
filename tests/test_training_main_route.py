@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 
+from trauma_predict.data.main_route_contract import (
+    HOUR_SPECIAL_TOKENS,
+    expected_hour_placeholders,
+    validate_main_route_record,
+)
 from trauma_predict.data.main_route import (
     HourValueNormalizer,
     MainRouteBatchCollator,
@@ -33,11 +39,12 @@ class FakeTokenizer:
             "dq{vital=dense;lab=drawn;uop=measured}",
             "HOUR",
             "len=2:",
-            "<H-01>",
-            "<H0>",
             "<STATE>",
         ]
+        tokens.extend(HOUR_SPECIAL_TOKENS)
         self.vocab = {token: index for index, token in enumerate(tokens)}
+        self.unk_token_id = self.vocab["<unk>"]
+        self.padding_side = "right"
 
     def convert_tokens_to_ids(self, token: str) -> int:
         return self.vocab.get(token, self.vocab["<unk>"])
@@ -112,6 +119,43 @@ class TrainingMainRouteTest(unittest.TestCase):
         self.assertIn(1.0, labels["binary_fields"])
         self.assertIn(3, labels["multiclass_fields"])
 
+    def test_record_contract_rejects_extra_hour_token(self) -> None:
+        record = _main_route_record()
+        record["input_text"] = str(record["input_text"]).replace("<H-01> <H0>", "<H-02> <H-01> <H0>")
+
+        with self.assertRaisesRegex(ValueError, "HOUR text tokens do not match"):
+            validate_main_route_record(record, _required_fields())
+
+    def test_record_contract_rejects_hour_len_mismatch(self) -> None:
+        record = _main_route_record()
+        record["input_text"] = str(record["input_text"]).replace("HOUR len=2:", "HOUR len=24:")
+
+        with self.assertRaisesRegex(ValueError, "HOUR len does not match"):
+            validate_main_route_record(record, _required_fields())
+
+    def test_record_contract_accepts_dynamic_short_hour_window(self) -> None:
+        record = _main_route_record()
+
+        validate_main_route_record(record, _required_fields())
+
+    def test_record_contract_accepts_dynamic_min_and_full_hour_windows(self) -> None:
+        for length in (1, 24):
+            with self.subTest(length=length):
+                record = _record_with_hour_length(length)
+
+                validate_main_route_record(record, _required_fields())
+
+    def test_record_contract_rejects_next_hour_without_observed_vitals(self) -> None:
+        record = copy.deepcopy(_main_route_record())
+        next_hour = record["targets"]["next_hour"]
+        next_hour["mask"] = {field: 0 for field in next_hour["mask"]}
+        next_hour["hour_mask"] = [0] * 7
+        next_hour["values"] = {field: None for field in next_hour["values"]}
+        next_hour["hour_values"] = [None] * 7
+
+        with self.assertRaisesRegex(ValueError, "target.next_hour has no observed vital values"):
+            validate_main_route_record(record, _required_fields())
+
     @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is not installed")
     def test_collator_aligns_hour_placeholders_and_side_tensors(self) -> None:
         collator = MainRouteBatchCollator(
@@ -126,6 +170,17 @@ class TrainingMainRouteTest(unittest.TestCase):
         self.assertEqual(batch["hour_vent"].tolist(), [[[0.0], [1.0]]])
         self.assertEqual(batch["hour_position_mask"].tolist(), [[True, True]])
         self.assertGreaterEqual(batch["state_position"].item(), 0)
+
+    def test_collator_rejects_missing_hour_special_token(self) -> None:
+        tokenizer = FakeTokenizer()
+        tokenizer.vocab.pop("<H-23>")
+
+        with self.assertRaisesRegex(ValueError, "does not know HOUR tokens"):
+            MainRouteBatchCollator(
+                tokenizer=tokenizer,
+                max_input_tokens=128,
+                normalizer=HourValueNormalizer.from_config(None),
+            )
 
     @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is not installed")
     def test_hour_state_adapter_outputs_encoder_hidden_size(self) -> None:
@@ -218,6 +273,45 @@ def _main_route_record() -> dict[str, object]:
         },
         "target_text": "NEXT_HOUR\nNEXT_24H",
     }
+
+
+def _record_with_hour_length(length: int) -> dict[str, object]:
+    record = copy.deepcopy(_main_route_record())
+    placeholders = expected_hour_placeholders(length)
+    record["input_text"] = (
+        "<SAMPLE> schema=icu_state_major_textual_v1 STATIC: static{age=70} DAY: "
+        "D0 i=0 len=24 dq{vital=dense;lab=drawn;uop=measured} "
+        f"HOUR len={length}: {' '.join(placeholders)} <STATE> </SAMPLE>"
+    )
+    record["hour_placeholders"] = placeholders
+    value_row = [92.0, 118.0, 65.0, 80.0, 24.0, 37.4, 94.0]
+    mask_row = [1, 1, 1, 1, 1, 1, 1]
+    vent_row = [1]
+    record["hour_values"] = [value_row[:] for _ in range(length)]
+    record["hour_mask"] = [mask_row[:] for _ in range(length)]
+    record["hour_vent"] = [vent_row[:] for _ in range(length)]
+    return record
+
+
+def _required_fields() -> list[str]:
+    return [
+        "schema",
+        "route",
+        "sample_id",
+        "subject_id",
+        "hadm_id",
+        "stay_id",
+        "prediction_hour",
+        "split",
+        "input_text",
+        "hour_value_order",
+        "hour_placeholders",
+        "hour_values",
+        "hour_mask",
+        "hour_vent",
+        "targets",
+        "target_text",
+    ]
 
 
 if __name__ == "__main__":

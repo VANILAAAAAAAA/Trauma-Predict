@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
+import re
 from typing import Any, Iterable
 
 
@@ -13,6 +14,8 @@ HOUR_SPECIAL_TOKENS = tuple(f"<H-{index:02d}>" for index in range(23, 0, -1)) + 
 TARGET_DOMAINS = ("shock", "resp", "renal", "heme", "tx")
 FORBIDDEN_HOUR_TEXT = ("hr=", "sbp=", "dbp=", "map=", "rr=", "temp=", "spo2=", "vent_on=")
 FORBIDDEN_LEGACY_TEXT = ("fio2", "fio2_max", "high_support", "very_high_support")
+HOUR_BLOCK_PATTERN = re.compile(r"HOUR len=(?P<length>\d+):(?P<body>.*?)<STATE>", re.DOTALL)
+HOUR_TOKEN_PATTERN = re.compile(r"<H(?:-\d{2}|0)>")
 
 
 @dataclass(frozen=True)
@@ -201,6 +204,7 @@ def validate_next_hour_target(target: Any, label: str) -> None:
         raise ValueError(f"{label} target.next_hour hour_vent shape/value mismatch")
     if int(target.get("vent_on", 0) or 0) != int(row_vent[0]):
         raise ValueError(f"{label} target.next_hour vent_on and hour_vent disagree")
+    observed_count = 0
     for index, field in enumerate(HOUR_VALUE_ORDER):
         observed = int(mask[field])
         if observed not in {0, 1}:
@@ -213,6 +217,9 @@ def validate_next_hour_target(target: Any, label: str) -> None:
             raise ValueError(f"{label} target.next_hour hour_values disagrees for {field}")
         if observed == 1:
             _require_finite_number(values[field], f"{label} target.next_hour {field}")
+            observed_count += 1
+    if observed_count == 0:
+        raise ValueError(f"{label} target.next_hour has no observed vital values")
 
 
 def validate_next24h_target(target: Any, label: str) -> None:
@@ -256,10 +263,31 @@ def _validate_input_text(input_text: str, row: dict[str, Any], label: str) -> No
     placeholders = row.get("hour_placeholders")
     if not isinstance(placeholders, list):
         raise ValueError(f"{label} hour_placeholders must be a list")
-    for token in placeholders:
-        if input_text.count(str(token)) != 1:
-            raise ValueError(f"{label} input_text must contain placeholder {token} exactly once")
-    hour_block = input_text.split("HOUR len=", 1)[1].split(STATE_TOKEN, 1)[0].lower()
+    placeholders = [str(token) for token in placeholders]
+    match = HOUR_BLOCK_PATTERN.search(input_text)
+    if not match:
+        raise ValueError(f"{label} input_text must contain a HOUR len block before {STATE_TOKEN}")
+    declared_length = int(match.group("length"))
+    if declared_length != len(placeholders):
+        raise ValueError(
+            f"{label} HOUR len does not match hour_placeholders: "
+            f"len={declared_length} placeholders={len(placeholders)}"
+        )
+    if placeholders != expected_hour_placeholders(declared_length):
+        raise ValueError(
+            f"{label} hour_placeholders mismatch: "
+            f"expected {expected_hour_placeholders(declared_length)}, got {placeholders}"
+        )
+    hour_tokens = HOUR_TOKEN_PATTERN.findall(match.group("body"))
+    if hour_tokens != placeholders:
+        raise ValueError(f"{label} HOUR text tokens do not match hour_placeholders")
+    non_token_text = HOUR_TOKEN_PATTERN.sub("", match.group("body")).strip()
+    if non_token_text:
+        raise ValueError(f"{label} HOUR block must contain only HOUR placeholders")
+    all_hour_tokens = HOUR_TOKEN_PATTERN.findall(input_text)
+    if all_hour_tokens != placeholders:
+        raise ValueError(f"{label} input_text contains HOUR tokens outside the declared HOUR block")
+    hour_block = match.group("body").lower()
     for forbidden in FORBIDDEN_HOUR_TEXT:
         if forbidden in hour_block:
             raise ValueError(f"{label} input_text HOUR block expands numeric field: {forbidden}")

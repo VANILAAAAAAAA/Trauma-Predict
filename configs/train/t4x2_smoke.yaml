@@ -1,5 +1,5 @@
 schema_version: trauma_predict.train_config.v1
-run_name: t4x2_first_run
+run_name: t4x2_smoke
 seed: 20260707
 model:
   base_model: allenai/longformer-base-4096
@@ -21,20 +21,21 @@ training:
   precision: fp16
   per_device_train_batch_size: 1
   per_device_eval_batch_size: 1
-  gradient_accumulation_steps: 16
+  gradient_accumulation_steps: 1
   learning_rate: 2.0e-5
-  warmup_steps: 500
+  warmup_steps: 0
   weight_decay: 0.01
   max_grad_norm: 1.0
   gradient_checkpointing: true
-  dataloader_num_workers: 2
-  required_cuda_devices: 2
-  max_steps: 5000
-  eval_steps: 250
-  save_steps: 500
-  logging_steps: 25
-  max_checkpoints: 3
+  dataloader_num_workers: 0
+  max_steps: 2
+  eval_steps: 1
+  save_steps: 1
+  logging_steps: 1
+  max_checkpoints: 1
   resume: false
+  max_train_samples: 8
+  max_eval_samples: 4
   loss_weights:
     next_hour_values: 1.0
     next_hour_vent: 0.25
@@ -42,7 +43,7 @@ training:
     next24_binary: 0.5
     next24_multiclass: 0.5
 evaluation:
-  max_prediction_samples: 32
+  max_prediction_samples: 4
 outputs:
-  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_first_run
-  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_first_run/metrics.jsonl
+  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_smoke
+  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_smoke/metrics.jsonl

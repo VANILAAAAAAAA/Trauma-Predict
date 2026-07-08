@@ -77,13 +77,18 @@ def preflight_training_artifact(dataset_config: dict[str, Any]) -> ArtifactPrefl
             shard_rows = list(_read_jsonl(path))
             if not shard_rows:
                 raise ValueError(f"shard has no rows: {path}")
+            rel_path = str(path.resolve().relative_to(dataset_root.resolve()))
             for row in shard_rows:
                 _validate_record(row, required_fields, split, path)
+                row["_shard_path"] = rel_path
             shard_rows_by_split[split].extend(shard_rows)
 
     shard_rows = [row for split in SPLITS for row in shard_rows_by_split[split]]
     _validate_unique_sample_ids(shard_rows, "shards")
     _validate_unique_sample_ids(manifest_rows, "sample_manifest")
+    _validate_unique_clinical_keys(shard_rows, "shards")
+    _validate_unique_clinical_keys(manifest_rows, "sample_manifest")
+    assert_patient_level_split(shard_rows)
 
     manifest_ids = {str(row["sample_id"]) for row in manifest_rows}
     shard_ids = {str(row["sample_id"]) for row in shard_rows}
@@ -91,6 +96,7 @@ def preflight_training_artifact(dataset_config: dict[str, Any]) -> ArtifactPrefl
         missing = sorted(manifest_ids - shard_ids)[:5]
         extra = sorted(shard_ids - manifest_ids)[:5]
         raise ValueError(f"sample_manifest and shards disagree on sample_id set: missing={missing} extra={extra}")
+    _validate_manifest_shard_alignment(manifest_rows, shard_rows)
 
     expected_samples = int(manifest.counts["samples"])
     if expected_samples != len(manifest_rows) or expected_samples != len(shard_rows):
@@ -110,6 +116,7 @@ def preflight_training_artifact(dataset_config: dict[str, Any]) -> ArtifactPrefl
         expected = {split: int(declared_by_split.get(split, 0)) for split in SPLITS}
         if observed != expected:
             raise ValueError(f"counts.by_split mismatch: manifest={expected} observed={observed}")
+    _validate_declared_counts(manifest_payload, shard_rows)
 
     return ArtifactPreflightResult(
         dataset_id=manifest.dataset_id,
@@ -201,6 +208,70 @@ def _validate_unique_sample_ids(rows: list[dict[str, Any]], label: str) -> None:
     duplicates = sorted(sample_id for sample_id, count in counts.items() if count > 1)
     if duplicates:
         raise ValueError(f"{label} has duplicate sample_id values: {duplicates[:5]}")
+
+
+def _validate_unique_clinical_keys(rows: list[dict[str, Any]], label: str) -> None:
+    counts = Counter(_clinical_key(row) for row in rows)
+    duplicates = sorted(key for key, count in counts.items() if count > 1)
+    if duplicates:
+        raise ValueError(f"{label} has duplicate clinical primary keys: {duplicates[:5]}")
+
+
+def _clinical_key(row: dict[str, Any]) -> tuple[str, str, str, float]:
+    return (
+        str(row.get("subject_id") or ""),
+        str(row.get("hadm_id") or ""),
+        str(row.get("stay_id") or ""),
+        float(row.get("prediction_hour", -1)),
+    )
+
+
+def _validate_manifest_shard_alignment(
+    manifest_rows: list[dict[str, str]],
+    shard_rows: list[dict[str, Any]],
+) -> None:
+    manifest_by_id = {str(row["sample_id"]): row for row in manifest_rows}
+    shard_by_id = {str(row["sample_id"]): row for row in shard_rows}
+    mismatches = []
+    for sample_id in sorted(manifest_by_id):
+        manifest_row = manifest_by_id[sample_id]
+        shard_row = shard_by_id[sample_id]
+        manifest_key = _alignment_key(manifest_row, str(manifest_row.get("shard_path") or ""))
+        shard_key = _alignment_key(shard_row, str(shard_row.get("_shard_path") or ""))
+        if manifest_key != shard_key:
+            mismatches.append({
+                "sample_id": sample_id,
+                "sample_manifest": manifest_key,
+                "shard": shard_key,
+            })
+    if mismatches:
+        raise ValueError(f"sample_manifest and shards disagree on sample metadata: {mismatches[:5]}")
+
+
+def _alignment_key(row: dict[str, Any], shard_path: str) -> tuple[str, str, str, float, str, str]:
+    return (
+        str(row.get("subject_id") or ""),
+        str(row.get("hadm_id") or ""),
+        str(row.get("stay_id") or ""),
+        float(row.get("prediction_hour", -1)),
+        str(row.get("split") or ""),
+        shard_path,
+    )
+
+
+def _validate_declared_counts(manifest_payload: dict[str, Any], shard_rows: list[dict[str, Any]]) -> None:
+    counts = manifest_payload.get("counts")
+    if not isinstance(counts, dict):
+        raise ValueError("dataset_manifest counts must be an object")
+    observed = {
+        "subjects": len({str(row.get("subject_id") or "") for row in shard_rows}),
+        "hadm": len({str(row.get("hadm_id") or "") for row in shard_rows}),
+        "stays": len({str(row.get("stay_id") or "") for row in shard_rows}),
+        "samples": len(shard_rows),
+    }
+    expected = {key: int(counts.get(key, -1)) for key in observed}
+    if expected != observed:
+        raise ValueError(f"dataset_manifest counts mismatch: manifest={expected} observed={observed}")
 
 
 def _read_jsonl(path: Path) -> Iterator[dict[str, Any]]:

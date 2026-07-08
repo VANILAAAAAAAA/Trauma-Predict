@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import platform
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -56,6 +58,11 @@ def write_environment_snapshot(path: Path, preflight: ArtifactPreflightResult) -
         "python": platform.python_version(),
         "platform": platform.platform(),
         "preflight": preflight.to_dict(),
+        "git": _git_snapshot(Path.cwd()),
+        "packages": _package_snapshot(),
+        "torch_cuda": _torch_cuda_snapshot(),
+        "nvidia_smi": _command_lines(["nvidia-smi", "-L"]),
+        "pip_freeze": _command_lines([sys.executable, "-m", "pip", "freeze"]),
     }
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -86,3 +93,53 @@ def _unused_quarantine_path(path: Path) -> Path:
         if not candidate.exists():
             return candidate
         index += 1
+
+
+def _git_snapshot(cwd: Path) -> dict[str, Any]:
+    return {
+        "commit": _command_text(["git", "rev-parse", "HEAD"], cwd=cwd),
+        "branch": _command_text(["git", "branch", "--show-current"], cwd=cwd),
+        "status_short": _command_lines(["git", "status", "--short"], cwd=cwd),
+    }
+
+
+def _package_snapshot() -> dict[str, str | None]:
+    packages = ("torch", "transformers", "accelerate", "tokenizers", "huggingface_hub")
+    versions: dict[str, str | None] = {}
+    for package in packages:
+        try:
+            module = __import__(package)
+        except Exception:
+            versions[package] = None
+            continue
+        versions[package] = str(getattr(module, "__version__", "unknown"))
+    return versions
+
+
+def _torch_cuda_snapshot() -> dict[str, Any]:
+    try:
+        import torch
+    except Exception as exc:
+        return {"available": False, "error": str(exc)}
+    return {
+        "torch": str(getattr(torch, "__version__", "")),
+        "cuda_version": str(getattr(torch.version, "cuda", "")),
+        "cuda_available": bool(torch.cuda.is_available()),
+        "cuda_device_count": int(torch.cuda.device_count()),
+        "cuda_device_names": [
+            torch.cuda.get_device_name(index)
+            for index in range(torch.cuda.device_count())
+        ],
+    }
+
+
+def _command_text(command: list[str], cwd: Path | None = None) -> str | None:
+    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def _command_lines(command: list[str], cwd: Path | None = None) -> list[str]:
+    text = _command_text(command, cwd=cwd)
+    return [] if text is None else text.splitlines()

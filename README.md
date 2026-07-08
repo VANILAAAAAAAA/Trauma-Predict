@@ -15,7 +15,7 @@ Use that workspace for cohort construction, field adapter development, sample-bu
 - Sample unit: one ICU stay plus one prediction anchor.
 - Primary key: `(subject_id, hadm_id, stay_id, prediction_hour)`.
 - Split key: `subject_id`.
-- First training target: HOUR placeholder adapter with structured `NEXT_HOUR` and `NEXT_24H` heads.
+- First training target: HOUR placeholder adapter with dynamic `HOUR len=L` side tensors and structured `NEXT_HOUR` / `NEXT_24H` heads.
 - First compute target: Kaggle GPU T4 x2, with single-GPU fallback.
 
 ## Repository Layout
@@ -50,4 +50,4 @@ python tools/update_file_index.py --check
 
 ## Kaggle Direction
 
-Use `configs/accelerate/t4x2.yaml` and `notebooks/kaggle/train_kaggle.py` as the first training launch surface. Kaggle should run training from prebuilt sample shards; source MIMIC extraction and field-ready sample generation stay outside this repository.
+Use `notebooks/kaggle/train_full_first_run.ipynb` or `notebooks/kaggle/train_kaggle.py` as the first training launch surface. Kaggle should run from a pinned Git tag, pass artifact preflight, pass token-length scan, and run the smoke config before the full T4 x2 config. Source MIMIC extraction and field-ready sample generation stay outside this repository.

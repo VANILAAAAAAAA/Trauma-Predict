@@ -21,6 +21,7 @@ train = [
   "transformers>=4.44",
   "torch>=2.3",
   "tqdm>=4.66",
+  "zstandard>=0.23",
 ]
 
 [project.scripts]

@@ -83,14 +83,19 @@ class MainRouteBatchCollator:
         self.max_input_tokens = max_input_tokens
         self.normalizer = normalizer
         self.pad_to_multiple_of = pad_to_multiple_of
+        if getattr(tokenizer, "padding_side", "right") != "right":
+            raise ValueError("main-route collator requires tokenizer.padding_side='right'")
         self.state_token_id = tokenizer.convert_tokens_to_ids(STATE_TOKEN)
         self.hour_token_ids = {
             token: tokenizer.convert_tokens_to_ids(token)
             for token in HOUR_SPECIAL_TOKENS
         }
-        if self.state_token_id in (None, -1):
+        if self._is_unknown_token_id(self.state_token_id):
             raise ValueError(f"tokenizer does not know {STATE_TOKEN}")
-        unknown_hour_tokens = [token for token, token_id in self.hour_token_ids.items() if token_id in (None, -1)]
+        unknown_hour_tokens = [
+            token for token, token_id in self.hour_token_ids.items()
+            if self._is_unknown_token_id(token_id)
+        ]
         if unknown_hour_tokens:
             raise ValueError(f"tokenizer does not know HOUR tokens: {unknown_hour_tokens[:5]}")
 
@@ -200,14 +205,24 @@ class MainRouteBatchCollator:
             )
         return positions[0]
 
+    def _is_unknown_token_id(self, token_id: Any) -> bool:
+        if token_id in (None, -1):
+            return True
+        unk_token_id = getattr(self.tokenizer, "unk_token_id", None)
+        return unk_token_id is not None and int(token_id) == int(unk_token_id)
 
-def load_main_route_records(paths: list[Any], required_fields: list[str]) -> list[dict[str, Any]]:
+
+def load_main_route_records(
+    paths: list[Any],
+    required_fields: list[str],
+    split: str | None = None,
+) -> list[dict[str, Any]]:
     from trauma_predict.data.records import read_jsonl
 
     records: list[dict[str, Any]] = []
     for path in paths:
         for row in read_jsonl(path):
-            validate_main_route_record(row, required_fields, label=str(path))
+            validate_main_route_record(row, required_fields, split=split, label=str(path))
             records.append(row)
     if not records:
         raise ValueError("no main-route records loaded")

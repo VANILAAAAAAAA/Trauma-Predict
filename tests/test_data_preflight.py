@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import copy
 import gzip
 import json
 import tempfile
@@ -43,6 +44,65 @@ class DataPreflightTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "sample count mismatch"):
                 preflight_training_artifact(self._dataset_config(root))
 
+    def test_preflight_rejects_cross_split_subject_in_shards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shard_rows = [
+                self._record("s1", "101", "201", "301", 48, "train"),
+                self._record("s2", "101", "202", "302", 56, "val"),
+                self._record("s3", "103", "203", "303", 64, "test"),
+            ]
+            manifest_rows = copy.deepcopy(shard_rows)
+            manifest_rows[1]["subject_id"] = "102"
+            self._write_artifact(root, rows=shard_rows, manifest_rows=manifest_rows)
+
+            with self.assertRaisesRegex(ValueError, "multiple splits"):
+                preflight_training_artifact(self._dataset_config(root))
+
+    def test_preflight_rejects_manifest_shard_metadata_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows = [
+                self._record("s1", "101", "201", "301", 48, "train"),
+                self._record("s2", "102", "202", "302", 56, "val"),
+                self._record("s3", "103", "203", "303", 64, "test"),
+            ]
+            manifest_rows = copy.deepcopy(rows)
+            manifest_rows[0]["hadm_id"] = "999"
+            self._write_artifact(root, rows=rows, manifest_rows=manifest_rows)
+
+            with self.assertRaisesRegex(ValueError, "sample_manifest and shards disagree on sample metadata"):
+                preflight_training_artifact(self._dataset_config(root))
+
+    def test_preflight_rejects_shard_path_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows = [
+                self._record("s1", "101", "201", "301", 48, "train"),
+                self._record("s2", "102", "202", "302", 56, "val"),
+                self._record("s3", "103", "203", "303", 64, "test"),
+            ]
+            manifest_rows = copy.deepcopy(rows)
+            manifest_rows[0]["shard_path"] = "train/wrong-shard.jsonl.gz"
+            self._write_artifact(root, rows=rows, manifest_rows=manifest_rows)
+
+            with self.assertRaisesRegex(ValueError, "sample_manifest and shards disagree on sample metadata"):
+                preflight_training_artifact(self._dataset_config(root))
+
+    def test_preflight_rejects_duplicate_clinical_primary_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows = [
+                self._record("s1", "101", "201", "301", 48, "train"),
+                self._record("s2", "101", "201", "301", 48, "train"),
+                self._record("s3", "102", "202", "302", 56, "val"),
+                self._record("s4", "103", "203", "303", 64, "test"),
+            ]
+            self._write_artifact(root, rows=rows)
+
+            with self.assertRaisesRegex(ValueError, "duplicate clinical primary keys"):
+                preflight_training_artifact(self._dataset_config(root))
+
     def _dataset_config(self, root: Path) -> dict[str, object]:
         return {
             "dataset_manifest": str(root / "dataset_manifest.json"),
@@ -74,6 +134,7 @@ class DataPreflightTest(unittest.TestCase):
         self,
         root: Path,
         rows: list[dict[str, object]] | None = None,
+        manifest_rows: list[dict[str, object]] | None = None,
         manifest_samples: int | None = None,
     ) -> None:
         rows = rows or [
@@ -81,6 +142,7 @@ class DataPreflightTest(unittest.TestCase):
             self._record("s2", "102", "202", "302", 56, "val"),
             self._record("s3", "103", "203", "303", 64, "test"),
         ]
+        manifest_rows = manifest_rows or rows
         shard_paths: dict[str, list[str]] = {"train": [], "val": [], "test": []}
         for split in ("train", "val", "test"):
             split_rows = [row for row in rows if row["split"] == split]
@@ -105,8 +167,11 @@ class DataPreflightTest(unittest.TestCase):
             ]
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
-            for row in rows:
-                writer.writerow({field: row[field] for field in fieldnames})
+            for row in manifest_rows:
+                writer.writerow({
+                    field: (row.get(field) or f"{row['split']}/shard-00000.jsonl.gz")
+                    for field in fieldnames
+                })
 
         manifest = {
             "schema_version": "trauma_predict.dataset_manifest.v1",

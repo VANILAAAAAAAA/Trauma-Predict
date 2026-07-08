@@ -11,11 +11,13 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `configs/accelerate/t4x2.yaml` | config | Kaggle T4 x2 accelerator config. | No data. |
 | `configs/dataset/first_train.yaml` | config | First training dataset artifact paths and required sample fields. | Uses environment-variable paths only. |
 | `configs/train/t4x2_first_run.yaml` | config | First T4 x2 training run config. | Uses environment-variable paths only. |
+| `configs/train/t4x2_smoke.yaml` | config | Short Kaggle smoke-run config for proving model/data/runtime wiring before the full run. | Uses environment-variable paths only. |
 | `docs/DATA_POLICY.md` | docs | Allowed and forbidden repository content policy. | No data. |
 | `docs/FILE_INDEX.md` | docs | Tracked-file index. | No data. |
 | `docs/KAGGLE_RUNBOOK.md` | docs | Kaggle launch and output policy. | No data. |
 | `docs/REPO_STRUCTURE.md` | docs | Directory structure and design rules. | No data. |
 | `notebooks/kaggle/README.md` | kaggle | Explains Kaggle launcher folder boundary. | No data. |
+| `notebooks/kaggle/scan_token_lengths.py` | kaggle | Scans shard input token lengths against the configured encoder window before training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
 | `notebooks/kaggle/train_full_first_run.ipynb` | kaggle | End-to-end Kaggle notebook for reconstructing the full first training artifact and launching training. | No data. |
 | `notebooks/kaggle/verify_private_dataset.ipynb` | kaggle | Kaggle notebook that verifies private Dataset mounting or API download before preflight. | No data. |
