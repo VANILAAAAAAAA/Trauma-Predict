@@ -31,6 +31,7 @@ from trauma_predict.training.runtime import (
     write_environment_snapshot,
 )
 from trauma_predict.training.stages import (
+    TrainingStageContract,
     is_next24_active,
     is_next_hour_active,
     labels_for_active_losses,
@@ -71,7 +72,7 @@ def run_main_route_training(
     preflight: ArtifactPreflightResult,
 ) -> MainRouteRunResult:
     validate_main_route_config(train_config)
-    stage_contract = resolve_training_stage_contract(train_config)
+    stage_contract = resolve_training_stage_contract(train_config, require_implemented=True)
 
     import torch
     from transformers import AutoTokenizer, Trainer, TrainerCallback, TrainingArguments, set_seed
@@ -174,12 +175,7 @@ def run_main_route_training(
     args = TrainingArguments(**training_args_kwargs)
 
     def stage_metadata() -> dict[str, Any]:
-        return {
-            "training_stage": stage_contract.training_stage,
-            "active_losses": stage_contract.active_losses,
-            "loss_weights": stage_contract.loss_weights,
-            "active_loss_names": stage_contract.active_loss_names,
-        }
+        return stage_contract.to_metadata()
 
     class MainRouteTrainer(Trainer):
         latest_loss_parts: dict[str, float]
@@ -235,6 +231,7 @@ def run_main_route_training(
     )
 
     checkpoint = latest_checkpoint(output_dir) if bool(training_config.get("resume", True)) else None
+    validate_resume_checkpoint_stage(checkpoint, stage_contract)
     resume_checkpoint = checkpoint
     quarantined_rng_files = quarantine_rng_state_files(checkpoint)
     if torch.distributed.is_available() and torch.distributed.is_initialized():
@@ -304,7 +301,7 @@ def run_main_route_training(
 
 
 def validate_main_route_config(config: dict[str, Any]) -> None:
-    resolve_training_stage_contract(config)
+    resolve_training_stage_contract(config, require_implemented=True)
     if config.get("schema_version") != "trauma_predict.train_config.v1":
         raise ValueError("train config schema_version mismatch")
     model = config.get("model")
@@ -328,6 +325,40 @@ def validate_main_route_config(config: dict[str, Any]) -> None:
         raise ValueError("training.learning_rate must be positive")
     if int(training.get("max_steps", 0)) < 1:
         raise ValueError("training.max_steps must be positive")
+
+
+def validate_resume_checkpoint_stage(
+    checkpoint: str | None,
+    stage_contract: TrainingStageContract,
+) -> None:
+    if not checkpoint:
+        return
+    metadata_path = Path(checkpoint) / "training_stage_metadata.json"
+    if not metadata_path.exists():
+        raise ValueError(
+            f"resume checkpoint lacks training_stage_metadata.json: {metadata_path}"
+        )
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if payload.get("route") != MAIN_ROUTE:
+        raise ValueError(f"resume checkpoint route mismatch: {payload.get('route')}")
+    expected = stage_contract.to_metadata()
+    for key in ("training_stage", "active_losses", "active_loss_names"):
+        if payload.get(key) != expected[key]:
+            raise ValueError(
+                f"resume checkpoint {key} mismatch: expected {expected[key]}, got {payload.get(key)}"
+            )
+    observed_weights = {
+        key: float(value)
+        for key, value in dict(payload.get("loss_weights") or {}).items()
+    }
+    expected_weights = {
+        key: float(value)
+        for key, value in expected["loss_weights"].items()
+    }
+    if observed_weights != expected_weights:
+        raise ValueError(
+            f"resume checkpoint loss_weights mismatch: expected {expected_weights}, got {observed_weights}"
+        )
 
 
 def write_validation_predictions(

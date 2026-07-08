@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from pathlib import Path
 
 from trauma_predict.data.main_route_contract import (
     HOUR_SPECIAL_TOKENS,
+    MAIN_ROUTE,
     expected_hour_placeholders,
     validate_main_route_record,
 )
@@ -19,7 +21,7 @@ from trauma_predict.data.main_route import (
     MainRouteBatchCollator,
     encode_next24_labels,
 )
-from trauma_predict.training.main_route import validate_main_route_config
+from trauma_predict.training.main_route import validate_main_route_config, validate_resume_checkpoint_stage
 from trauma_predict.training.config import load_yaml_config
 from trauma_predict.training.runtime import quarantine_rng_state_files
 from trauma_predict.training.stages import resolve_training_stage_contract
@@ -153,6 +155,53 @@ class TrainingMainRouteTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "active_losses does not match stage_a_next_hour"):
             resolve_training_stage_contract(config)
 
+    def test_stage_b_contract_is_reserved_but_not_runnable(self) -> None:
+        config = {
+            "schema_version": "trauma_predict.train_config.v1",
+            "run_name": "stage_b_next24",
+            "training_stage": "stage_b_next24",
+            "model": {
+                "base_model": "allenai/longformer-base-4096",
+                "task": "main_hour_adapter_structured_heads",
+                "max_input_tokens": 4096,
+                "hour_adapter_hidden": 256,
+            },
+            "training": _stage_b_training_block(),
+        }
+
+        contract = resolve_training_stage_contract(config)
+        self.assertFalse(contract.implemented)
+        self.assertEqual(contract.stage_a_checkpoint, "/tmp/stage_a/checkpoint-500")
+        self.assertEqual(
+            contract.active_loss_names,
+            ["next24_domain", "next24_binary", "next24_multiclass"],
+        )
+        with self.assertRaisesRegex(NotImplementedError, "training runner is not implemented"):
+            validate_main_route_config(config)
+
+    def test_stage_c_contract_is_reserved_but_not_runnable(self) -> None:
+        config = {
+            "schema_version": "trauma_predict.train_config.v1",
+            "run_name": "stage_c_alternating",
+            "training_stage": "stage_c_alternating",
+            "model": {
+                "base_model": "allenai/longformer-base-4096",
+                "task": "main_hour_adapter_structured_heads",
+                "max_input_tokens": 4096,
+                "hour_adapter_hidden": 256,
+            },
+            "training": {
+                **_training_block(active_next24=True),
+                "alternating_summary_steps": 4,
+            },
+        }
+
+        contract = resolve_training_stage_contract(config)
+        self.assertFalse(contract.implemented)
+        self.assertEqual(contract.alternating_summary_steps, 4)
+        with self.assertRaisesRegex(NotImplementedError, "training runner is not implemented"):
+            validate_main_route_config(config)
+
     def test_tracked_training_configs_validate_stage_contracts(self) -> None:
         for path in sorted((REPO_ROOT / "configs" / "train").glob("*.yaml")):
             with self.subTest(path=path.name):
@@ -217,6 +266,67 @@ class TrainingMainRouteTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("active_losses does not match stage_a_next_hour", result.stderr)
             self.assertFalse((output_root / "bad_stage_a" / "run_config_snapshot.json").exists())
+
+    def test_kaggle_dry_run_rejects_reserved_stage_b_before_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_root = root / "out"
+            config_path = root / "stage_b.yaml"
+            config_path.write_text(
+                "\n".join([
+                    "schema_version: trauma_predict.train_config.v1",
+                    "run_name: stage_b_next24",
+                    "training_stage: stage_b_next24",
+                    "model:",
+                    "  base_model: allenai/longformer-base-4096",
+                    "  task: main_hour_adapter_structured_heads",
+                    "  max_input_tokens: 4096",
+                    "  hour_adapter_hidden: 256",
+                    "data:",
+                    "  config_path: configs/dataset/first_train.yaml",
+                    "training:",
+                    "  precision: fp16",
+                    "  learning_rate: 2.0e-5",
+                    "  max_steps: 1",
+                    "  stage_a_checkpoint: /tmp/stage_a/checkpoint-500",
+                    "  active_losses:",
+                    "    next_hour_values: false",
+                    "    next_hour_vent: false",
+                    "    next24_domain: true",
+                    "    next24_binary: true",
+                    "    next24_multiclass: true",
+                    "  loss_weights:",
+                    "    next_hour_values: 0.0",
+                    "    next_hour_vent: 0.0",
+                    "    next24_domain: 0.25",
+                    "    next24_binary: 0.5",
+                    "    next24_multiclass: 0.5",
+                    "outputs:",
+                    f"  output_dir: {output_root / 'stage_b_next24'}",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(REPO_ROOT / "src")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "notebooks" / "kaggle" / "train_kaggle.py"),
+                    "--config",
+                    str(config_path),
+                    "--dry-run",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("training runner is not implemented", result.stderr)
+            self.assertFalse((output_root / "stage_b_next24" / "run_config_snapshot.json").exists())
 
     def test_next24_label_encoding_preserves_structured_slots(self) -> None:
         labels = encode_next24_labels({
@@ -351,6 +461,56 @@ class TrainingMainRouteTest(unittest.TestCase):
             self.assertTrue(model_file.exists())
             self.assertEqual(len(quarantined), 1)
 
+    def test_resume_checkpoint_stage_metadata_must_match(self) -> None:
+        contract = resolve_training_stage_contract({
+            "schema_version": "trauma_predict.train_config.v1",
+            "run_name": "t4x2_stage_a_hour",
+            "training_stage": "stage_a_next_hour",
+            "training": _training_block(active_next24=False),
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint = Path(tmp) / "checkpoint-500"
+            checkpoint.mkdir()
+            (checkpoint / "training_stage_metadata.json").write_text(
+                json.dumps({
+                    "route": MAIN_ROUTE,
+                    **contract.to_metadata(),
+                    "training_stage": "joint_baseline",
+                }),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "training_stage mismatch"):
+                validate_resume_checkpoint_stage(str(checkpoint), contract)
+
+    def test_resume_checkpoint_stage_metadata_accepts_matching_contract(self) -> None:
+        contract = resolve_training_stage_contract({
+            "schema_version": "trauma_predict.train_config.v1",
+            "run_name": "t4x2_stage_a_hour",
+            "training_stage": "stage_a_next_hour",
+            "training": _training_block(active_next24=False),
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint = Path(tmp) / "checkpoint-500"
+            checkpoint.mkdir()
+            (checkpoint / "training_stage_metadata.json").write_text(
+                json.dumps({
+                    "route": MAIN_ROUTE,
+                    **contract.to_metadata(),
+                }),
+                encoding="utf-8",
+            )
+
+            validate_resume_checkpoint_stage(str(checkpoint), contract)
+
+    def test_verify_dataset_notebook_uses_v2_and_does_not_print_token_clone(self) -> None:
+        notebook_text = (REPO_ROOT / "notebooks" / "kaggle" / "verify_private_dataset.ipynb").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("trauma-predict-main-route-first-train-8h-v2", notebook_text)
+        self.assertNotIn("run([\\\"git\\\", \\\"clone\\\", clone_url", notebook_text)
+
 
 def _main_route_record() -> dict[str, object]:
     return {
@@ -470,6 +630,29 @@ def _training_block(active_next24: bool) -> dict[str, object]:
             "next24_domain": 0.25 if active_next24 else 0.0,
             "next24_binary": 0.5 if active_next24 else 0.0,
             "next24_multiclass": 0.5 if active_next24 else 0.0,
+        },
+    }
+
+
+def _stage_b_training_block() -> dict[str, object]:
+    return {
+        "precision": "fp16",
+        "learning_rate": 2e-5,
+        "max_steps": 1,
+        "stage_a_checkpoint": "/tmp/stage_a/checkpoint-500",
+        "active_losses": {
+            "next_hour_values": False,
+            "next_hour_vent": False,
+            "next24_domain": True,
+            "next24_binary": True,
+            "next24_multiclass": True,
+        },
+        "loss_weights": {
+            "next_hour_values": 0.0,
+            "next_hour_vent": 0.0,
+            "next24_domain": 0.25,
+            "next24_binary": 0.5,
+            "next24_multiclass": 0.5,
         },
     }
 

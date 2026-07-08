@@ -15,7 +15,7 @@ Use that workspace for cohort construction, field adapter development, sample-bu
 - Sample unit: one ICU stay plus one prediction anchor.
 - Primary key: `(subject_id, hadm_id, stay_id, prediction_hour)`.
 - Split key: `subject_id`.
-- Formal staged route: Stage A trains `NEXT_HOUR` only, Stage B trains `NEXT_24H` from the Stage A checkpoint, and Stage C is optional alternating joint training.
+- Formal staged route: Stage A trains `NEXT_HOUR` only, Stage B trains `NEXT_24H` from the Stage A checkpoint, and Stage C is optional alternating joint training. This branch keeps Stage B/C contracts reserved but blocks their training entry until checkpoint loading and alternating scheduling are implemented.
 - Current baseline route: a joint `NEXT_HOUR` + `NEXT_24H` run is allowed only when labeled `joint_baseline`, not Stage A.
 - First compute target: Kaggle GPU T4 x2, with single-GPU fallback.
 

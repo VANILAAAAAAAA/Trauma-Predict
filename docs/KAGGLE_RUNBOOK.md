@@ -36,7 +36,7 @@ Notebook setup cell if the repository is public:
 git clone https://github.com/VANILAAAAAAAA/Trauma-Predict.git
 cd Trauma-Predict
 git fetch origin --tags
-git checkout --detach stage-a-hour-training-20260708
+git checkout --detach stage-a-hour-training-20260708-r2
 pip install -r requirements-kaggle.txt
 python -m pip check || true
 ```
@@ -70,7 +70,7 @@ Then:
 ```bash
 cd Trauma-Predict
 git fetch origin --tags
-git checkout --detach stage-a-hour-training-20260708
+git checkout --detach stage-a-hour-training-20260708-r2
 pip install -r requirements-kaggle.txt
 python -m pip check || true
 ```
@@ -85,7 +85,7 @@ test -f "$TRAUMA_PREDICT_DATA_ROOT/sample_manifest.csv"
 find "$TRAUMA_PREDICT_DATA_ROOT" -maxdepth 2 -type f | sort | sed -n '1,40p'
 ```
 
-Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned tag is more reproducible than relying on notebook sync state. Use `stage-a-hour-training-20260708` for the Stage A run after that tag is pushed.
+Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned tag is more reproducible than relying on notebook sync state. Use `stage-a-hour-training-20260708-r2` for the Stage A run after that tag is pushed.
 
 The Kaggle requirements intentionally do not install `torch`. Use Kaggle's preinstalled CUDA PyTorch, then pin the Hugging Face stack from `requirements-kaggle.txt`. Kaggle base images often have unrelated global `pip check` conflicts from preinstalled packages, so the notebook treats `pip check` as diagnostic only. The scoped runtime guard is the blocking check: it verifies CUDA, the PyTorch wheel, and the exact Hugging Face package versions used by this repository.
 
@@ -156,7 +156,7 @@ kaggle datasets version \
 
 ## Launch
 
-Run `notebooks/kaggle/verify_private_dataset.ipynb` first. It handles both attached private Datasets under `/kaggle/input` and Kaggle API downloads into `/kaggle/working`, reconstructs `train/val/test`, and normalizes Kaggle-expanded `.jsonl` files back to the manifest-declared `.jsonl.gz` shard names.
+Run `notebooks/kaggle/verify_private_dataset.ipynb` first. It verifies the formal v2 Dataset `vanilaaaa/trauma-predict-main-route-first-train-8h-v2`, handles both attached private Datasets under `/kaggle/input` and Kaggle API downloads into `/kaggle/working`, reconstructs `train/val/test`, and normalizes Kaggle-expanded `.jsonl` files back to the manifest-declared `.jsonl.gz` shard names. It also asserts the expected split counts: train 31,980, val 4,378, test 3,895.
 
 For the formal Stage A route, use `notebooks/kaggle/train_stage_a_hour.ipynb`. The older `train_full_first_run.ipynb` is a `joint_baseline` launcher and is not Stage A.
 
@@ -192,7 +192,7 @@ python -m torch.distributed.run \
 
 Training entry after dry run, token scan, and smoke pass. Use `torchrun` for the first Kaggle
 run; it avoids the `accelerate` CLI import path that can pull in incompatible
-vision packages on Kaggle images.
+vision packages on Kaggle images. Full Stage A configs are resumable. If a checkpoint is present, the runner checks `training_stage_metadata.json` before resuming and rejects mismatched stages or loss weights.
 
 ```bash
 export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-main-route-first-train-8h-v2"
@@ -243,3 +243,7 @@ Write outputs under `/kaggle/working` or the configured output root:
 - `training_result.json`
 
 Do not commit these outputs to Git.
+
+## Stage Boundary
+
+This branch keeps Stage B and Stage C contracts in code so Stage A checkpoints have a defined continuation path. The training runner intentionally rejects Stage B until `training.stage_a_checkpoint` is actually loaded, and rejects Stage C until alternating scheduling is implemented. Do not bypass those guards by relabeling a joint run.

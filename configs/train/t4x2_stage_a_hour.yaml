@@ -36,7 +36,7 @@ training:
   save_steps: 500
   logging_steps: 25
   max_checkpoints: 3
-  resume: false
+  resume: true
   active_losses:
     next_hour_values: true
     next_hour_vent: true

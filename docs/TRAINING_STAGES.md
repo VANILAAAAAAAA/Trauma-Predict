@@ -12,6 +12,7 @@ active targets: NEXT_HOUR values + ventilation
 inactive targets: NEXT_24H
 loss: L_hour only
 checkpoint label: Stage A HOUR adapter pretraining
+implementation status: runnable in this branch
 ```
 
 Allowed active losses:
@@ -28,6 +29,8 @@ The Stage A collator does not emit `NEXT_24H` labels to the model. The model als
 
 Primary metrics are MAE/RMSE for next-hour numeric vitals and AUROC/F1 for next-hour ventilation.
 
+Stage A full-run configs use `resume: true`. Resume is accepted only when the discovered checkpoint contains `training_stage_metadata.json` matching the current `training_stage`, `active_losses`, and `loss_weights`.
+
 ## Stage B: NEXT_24H
 
 Stage B starts from a Stage A checkpoint and trains the main future-summary target:
@@ -38,9 +41,10 @@ checkpoint source: Stage A checkpoint
 active targets: NEXT_24H
 inactive targets: NEXT_HOUR
 loss: L_summary only
+implementation status: contract reserved; runner intentionally blocked until checkpoint loading is implemented
 ```
 
-The config validator requires `training.stage_a_checkpoint` before Stage B can run.
+The contract validator requires `training.stage_a_checkpoint`. The training runner must load that Stage A checkpoint before Stage B is enabled. Until that loader exists, `train_kaggle.py` rejects Stage B before writing a run snapshot.
 
 ## Stage C: Alternating
 
@@ -50,9 +54,10 @@ Stage C is optional and explicit:
 training_stage: stage_c_alternating
 active targets: NEXT_HOUR + NEXT_24H
 loss schedule: every k summary steps inserts one hour step
+implementation status: contract reserved; runner intentionally blocked until alternating scheduling is implemented
 ```
 
-The config validator requires `training.alternating_summary_steps >= 1`. The current Stage A branch does not launch Stage C.
+The contract validator requires `training.alternating_summary_steps >= 1`. The training runner must implement the alternating schedule before Stage C is enabled. Until that scheduler exists, `train_kaggle.py` rejects Stage C before writing a run snapshot.
 
 ## Joint Baseline
 
