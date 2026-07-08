@@ -2,19 +2,27 @@ schema_version: trauma_predict.train_config.v1
 run_name: t4x2_first_run
 seed: 20260707
 model:
-  base_model: google/flan-t5-base
-  task: next24_text_generation
-  max_input_tokens: 1024
-  max_target_tokens: 256
-  generation_max_new_tokens: 256
+  base_model: allenai/longformer-base-4096
+  task: main_hour_adapter_structured_heads
+  max_input_tokens: 4096
+  hour_adapter_hidden: 256
+  dropout: 0.1
+  value_normalization:
+    hr: {mean: 90.0, std: 30.0}
+    sbp: {mean: 120.0, std: 30.0}
+    dbp: {mean: 70.0, std: 20.0}
+    map: {mean: 80.0, std: 20.0}
+    rr: {mean: 20.0, std: 8.0}
+    temp: {mean: 37.0, std: 1.5}
+    spo2: {mean: 96.0, std: 4.0}
 data:
   config_path: configs/dataset/first_train.yaml
 training:
-  precision: fp32
+  precision: fp16
   per_device_train_batch_size: 1
   per_device_eval_batch_size: 1
   gradient_accumulation_steps: 16
-  learning_rate: 5.0e-6
+  learning_rate: 2.0e-5
   warmup_steps: 500
   weight_decay: 0.01
   max_grad_norm: 1.0
@@ -26,6 +34,12 @@ training:
   logging_steps: 25
   max_checkpoints: 3
   resume: false
+  loss_weights:
+    next_hour_values: 1.0
+    next_hour_vent: 0.25
+    next24_domain: 0.25
+    next24_binary: 0.5
+    next24_multiclass: 0.5
 evaluation:
   max_prediction_samples: 32
 outputs:

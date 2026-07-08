@@ -51,12 +51,21 @@ class DataPreflightTest(unittest.TestCase):
             "val_shards": str(root / "val" / "*.jsonl.gz"),
             "test_shards": str(root / "test" / "*.jsonl.gz"),
             "required_sample_fields": [
+                "schema",
+                "route",
                 "sample_id",
                 "subject_id",
                 "hadm_id",
                 "stay_id",
                 "prediction_hour",
+                "split",
                 "input_text",
+                "hour_value_order",
+                "hour_placeholders",
+                "hour_values",
+                "hour_mask",
+                "hour_vent",
+                "targets",
                 "target_text",
             ],
         }
@@ -134,7 +143,8 @@ class DataPreflightTest(unittest.TestCase):
         split: str,
     ) -> dict[str, object]:
         return {
-            "schema": "standard_textual_v1_input_record_v1",
+            "schema": "standard_textual_v1_main_record_v2",
+            "route": "main_hour_adapter_structured_heads",
             "dataset_id": "synthetic-first-train",
             "sample_id": sample_id,
             "subject_id": subject_id,
@@ -142,8 +152,68 @@ class DataPreflightTest(unittest.TestCase):
             "stay_id": stay_id,
             "prediction_hour": prediction_hour,
             "split": split,
-            "input_text": f"input {sample_id}",
-            "target_text": f"NEXT_24H target {sample_id}",
+            "input_text": (
+                "<SAMPLE>\n"
+                "schema=icu_state_major_textual_v1\n"
+                f"sample_id={sample_id}\n"
+                "\nSTATIC:\n"
+                "static{age=70;sex=F;early48{lactate=high}}\n"
+                "\nDAY:\n"
+                "D0 i=0 len=24 resp{spo2_min=low} dq{vital=dense;lab=drawn;uop=measured}\n"
+                "\nHOUR len=2:\n"
+                "<H-01> <H0>\n"
+                "\n<STATE>\n"
+                "</SAMPLE>"
+            ),
+            "hour_value_order": ["hr", "sbp", "dbp", "map", "rr", "temp", "spo2"],
+            "hour_placeholders": ["<H-01>", "<H0>"],
+            "hour_values": [
+                [90.0, 120.0, None, 78.0, 22.0, 37.2, 95.0],
+                [92.0, 118.0, 65.0, 80.0, 24.0, 37.4, 94.0],
+            ],
+            "hour_mask": [
+                [1, 1, 0, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1],
+            ],
+            "hour_vent": [[0], [1]],
+            "targets": {
+                "next_hour": {
+                    "label": "NEXT_HOUR",
+                    "relative_hour": "H+1",
+                    "value_order": ["hr", "sbp", "dbp", "map", "rr", "temp", "spo2"],
+                    "values": {
+                        "hr": 93.0,
+                        "sbp": 116.0,
+                        "dbp": 64.0,
+                        "map": 79.0,
+                        "rr": 25.0,
+                        "temp": 37.5,
+                        "spo2": 93.0,
+                    },
+                    "mask": {"hr": 1, "sbp": 1, "dbp": 1, "map": 1, "rr": 1, "temp": 1, "spo2": 1},
+                    "hour_values": [93.0, 116.0, 64.0, 79.0, 25.0, 37.5, 93.0],
+                    "hour_mask": [1, 1, 1, 1, 1, 1, 1],
+                    "vent_on": 1,
+                    "hour_vent": [1],
+                },
+                "next24h": {
+                    "label": "NEXT_24H",
+                    "len_hours": 24,
+                    "sections": {
+                        "shock": {"map_low_hours": "brief"},
+                        "resp": {"vent_hours": "partial_window", "spo2_min": "low"},
+                        "tx": {"antibiotics": "present"},
+                    },
+                },
+            },
+            "target_text": (
+                "<FORECAST_REPORT>\n"
+                "NEXT_HOUR:\n"
+                "H+1|HR=93|HR_obs=1|SBP=116|SBP_obs=1|DBP=64|DBP_obs=1|MAP=79|MAP_obs=1|RR=25|RR_obs=1|TEMP=37.5|TEMP_obs=1|SpO2=93|SpO2_obs=1|VENT=1\n"
+                "\nNEXT_24H:\n"
+                "NEXT_24H len=24 shock{map_low_hours=brief} resp{vent_hours=partial_window;spo2_min=low} tx{antibiotics=present}\n"
+                "</FORECAST_REPORT>"
+            ),
             "shard_path": f"{split}/shard-00000.jsonl.gz",
         }
 

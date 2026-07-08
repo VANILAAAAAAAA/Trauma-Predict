@@ -15,7 +15,7 @@ Use that workspace for cohort construction, field adapter development, sample-bu
 - Sample unit: one ICU stay plus one prediction anchor.
 - Primary key: `(subject_id, hadm_id, stay_id, prediction_hour)`.
 - Split key: `subject_id`.
-- First training target: self-supervised next-hour state prediction plus textual next-24h target surfaces where available.
+- First training target: HOUR placeholder adapter with structured `NEXT_HOUR` and `NEXT_24H` heads.
 - First compute target: Kaggle GPU T4 x2, with single-GPU fallback.
 
 ## Repository Layout
@@ -44,7 +44,7 @@ Local or Kaggle training should receive data through paths outside Git, mounted 
 ## Basic Checks
 
 ```bash
-python -m unittest discover -s tests
+PYTHONPATH=src python -m unittest discover -s tests
 python tools/update_file_index.py --check
 ```
 

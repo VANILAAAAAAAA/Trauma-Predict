@@ -7,10 +7,19 @@ test_shards: ${TRAUMA_PREDICT_DATA_ROOT}/test/*.jsonl.gz
 sample_unit: icu_stay_anchor
 split_key: subject_id
 required_sample_fields:
+  - schema
+  - route
   - sample_id
   - subject_id
   - hadm_id
   - stay_id
   - prediction_hour
+  - split
   - input_text
+  - hour_value_order
+  - hour_placeholders
+  - hour_values
+  - hour_mask
+  - hour_vent
+  - targets
   - target_text

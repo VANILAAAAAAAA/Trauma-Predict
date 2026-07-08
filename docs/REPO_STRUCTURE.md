@@ -13,6 +13,7 @@ schemas/           Machine-readable data artifact contracts.
 src/trauma_predict/
   data/            Manifest and split utilities.
   eval/            Metrics and evaluation helpers.
+  modeling/        HOUR adapter encoder and structured prediction heads.
   training/        Training config and checkpoint helpers.
 tests/             No-data tests for repo hygiene and schema contracts.
 tools/             Maintenance tools.

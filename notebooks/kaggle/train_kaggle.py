@@ -15,7 +15,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from trauma_predict.data.preflight import preflight_training_artifact
 from trauma_predict.training.config import load_yaml_config
-from trauma_predict.training.seq2seq import run_seq2seq_training
+from trauma_predict.training.main_route import run_main_route_training
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,7 +67,7 @@ def main() -> None:
                 **preflight.to_dict(),
             }, sort_keys=True) + "\n")
 
-    result = run_seq2seq_training(config, dataset_config, output_dir, preflight)
+    result = run_main_route_training(config, dataset_config, output_dir, preflight)
     if is_main:
         write_json(output_dir / "training_result.json", result.to_dict())
 

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
+from trauma_predict.data.main_route_contract import validate_main_route_record
 from trauma_predict.data.manifest import DatasetManifest
 from trauma_predict.data.splits import assert_patient_level_split
 
@@ -180,13 +181,7 @@ def _validate_manifest_rows(rows: list[dict[str, str]]) -> None:
 
 
 def _validate_record(row: dict[str, Any], required_fields: Iterable[str], split: str, path: Path) -> None:
-    _validate_common_fields(row, required_fields, f"{path}")
-    if str(row.get("split")) != split:
-        raise ValueError(f"{path} contains split={row.get('split')} inside {split} shard")
-    if not str(row.get("input_text") or "").strip():
-        raise ValueError(f"{path} row {row.get('sample_id')} has empty input_text")
-    if not str(row.get("target_text") or "").strip():
-        raise ValueError(f"{path} row {row.get('sample_id')} has empty target_text")
+    validate_main_route_record(row, required_fields, split=split, label=f"{path} row {row.get('sample_id')}")
 
 
 def _validate_common_fields(row: dict[str, Any], required_fields: Iterable[str], label: str) -> None:

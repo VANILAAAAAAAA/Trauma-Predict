@@ -6,6 +6,8 @@ from glob import glob
 from pathlib import Path
 from typing import Any, Iterator
 
+from trauma_predict.data.main_route import load_main_route_records
+
 
 def resolve_shard_paths(dataset_config: dict[str, Any], split: str) -> list[Path]:
     pattern = str(dataset_config.get(f"{split}_shards") or "")
@@ -28,27 +30,6 @@ def read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
             if not isinstance(payload, dict):
                 raise ValueError(f"{path}:{line_number} JSONL row must be an object")
             yield payload
-
-
-def load_text_records(paths: list[Path], required_fields: list[str]) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for path in paths:
-        for row in read_jsonl(path):
-            for field in required_fields:
-                if row.get(field) in ("", None):
-                    raise ValueError(f"{path} row missing required field {field}")
-            records.append({
-                "sample_id": str(row["sample_id"]),
-                "subject_id": str(row["subject_id"]),
-                "hadm_id": str(row["hadm_id"]),
-                "stay_id": str(row["stay_id"]),
-                "prediction_hour": float(row["prediction_hour"]),
-                "input_text": str(row["input_text"]),
-                "target_text": str(row["target_text"]),
-            })
-    if not records:
-        raise ValueError("no text records loaded")
-    return records
 
 
 def _open_text(path: Path):
