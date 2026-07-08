@@ -94,12 +94,12 @@ cp -r /tmp/trauma_predict_first_train_8h /tmp/kaggle_trauma_predict_first_train_
 cat > /tmp/kaggle_trauma_predict_first_train_8h/dataset-metadata.json <<'JSON'
 {
   "title": "trauma-predict-first-train-8h",
-  "id": "VANILAAAAAAAA/trauma-predict-first-train-8h",
+  "id": "vanilaaaa/trauma-predict-first-train-8h",
   "licenses": [{"name": "other"}]
 }
 JSON
 
-kaggle datasets create -p /tmp/kaggle_trauma_predict_first_train_8h
+kaggle datasets create -p /tmp/kaggle_trauma_predict_first_train_8h --dir-mode zip
 ```
 
 For later refreshes:
@@ -112,10 +112,12 @@ kaggle datasets version \
 
 ## Launch
 
-Run the data preflight first. This validates the mounted private Dataset, checks patient-level split integrity, verifies declared shards, and reads the JSONL records before any training loop is attached.
+Run `notebooks/kaggle/verify_private_dataset.ipynb` first. It handles both attached private Datasets under `/kaggle/input` and Kaggle API downloads into `/kaggle/working`, reconstructs `train/val/test`, and normalizes Kaggle-expanded `.jsonl` files back to the manifest-declared `.jsonl.gz` shard names.
+
+The direct preflight command expects the reconstructed artifact root, not the raw Kaggle upload folder:
 
 ```bash
-export TRAUMA_PREDICT_DATA_ROOT="/kaggle/input/<your-private-dataset-name>"
+export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-first-train-8h"
 export TRAUMA_PREDICT_OUTPUT_ROOT="/kaggle/working/trauma-predict-runs"
 
 python notebooks/kaggle/train_kaggle.py \
