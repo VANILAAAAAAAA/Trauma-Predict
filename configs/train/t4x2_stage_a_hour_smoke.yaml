@@ -3,7 +3,7 @@ run_name: t4x2_stage_a_hour_smoke
 training_stage: stage_a_next_hour
 seed: 20260708
 model:
-  base_model: allenai/longformer-base-4096
+  base_model: answerdotai/ModernBERT-base
   task: main_hour_adapter_structured_heads
   max_input_tokens: 4096
   hour_adapter_hidden: 256

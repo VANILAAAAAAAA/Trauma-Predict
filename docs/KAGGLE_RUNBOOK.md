@@ -36,7 +36,7 @@ Notebook setup cell if the repository is public:
 git clone https://github.com/VANILAAAAAAAA/Trauma-Predict.git
 cd Trauma-Predict
 git fetch origin --tags
-git checkout --detach stage-a-hour-field-aware-20260709
+git checkout --detach stage-a-hour-modernbert-20260709
 pip install -r requirements-kaggle.txt
 python -m pip check || true
 ```
@@ -70,7 +70,7 @@ Then:
 ```bash
 cd Trauma-Predict
 git fetch origin --tags
-git checkout --detach stage-a-hour-field-aware-20260709
+git checkout --detach stage-a-hour-modernbert-20260709
 pip install -r requirements-kaggle.txt
 python -m pip check || true
 ```
@@ -85,7 +85,7 @@ test -f "$TRAUMA_PREDICT_DATA_ROOT/sample_manifest.csv"
 find "$TRAUMA_PREDICT_DATA_ROOT" -maxdepth 2 -type f | sort | sed -n '1,40p'
 ```
 
-Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned tag is more reproducible than relying on notebook sync state. Use `stage-a-hour-field-aware-20260709` for the Stage A run after that tag is pushed.
+Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned tag is more reproducible than relying on notebook sync state. Use `stage-a-hour-modernbert-20260709` for the preferred-encoder Stage A run after that tag is pushed.
 
 The Kaggle requirements intentionally do not install `torch`. Use Kaggle's preinstalled CUDA PyTorch, then pin the Hugging Face stack from `requirements-kaggle.txt`. Kaggle base images often have unrelated global `pip check` conflicts from preinstalled packages, so the notebook treats `pip check` as diagnostic only. The scoped runtime guard is the blocking check: it verifies CUDA, the PyTorch wheel, and the exact Hugging Face package versions used by this repository.
 
@@ -97,9 +97,9 @@ import sys
 sys.path.insert(0, "/kaggle/working/Trauma-Predict/src")
 import torch, transformers, accelerate, tokenizers, huggingface_hub
 expected = {
-    "transformers": "4.44.2",
+    "transformers": "4.48.3",
     "accelerate": "0.34.2",
-    "tokenizers": "0.19.1",
+    "tokenizers": "0.21.4",
     "huggingface_hub": "0.36.2",
 }
 actual = {
@@ -159,6 +159,8 @@ kaggle datasets version \
 Run `notebooks/kaggle/verify_private_dataset.ipynb` first. It verifies the formal v2 Dataset `vanilaaaa/trauma-predict-main-route-first-train-8h-v2`, handles both attached private Datasets under `/kaggle/input` and Kaggle API downloads into `/kaggle/working`, reconstructs `train/val/test`, and normalizes Kaggle-expanded `.jsonl` files back to the manifest-declared `.jsonl.gz` shard names. It also asserts the expected split counts: train 31,980, val 4,378, test 3,895.
 
 For the formal Stage A route, use `notebooks/kaggle/train_stage_a_hour.ipynb`. The older `train_full_first_run.ipynb` is a `joint_baseline` launcher and is not Stage A.
+
+The Stage A notebook is intentionally thin for Kaggle automated hosting. It checks out the pinned Git ref and calls `notebooks/kaggle/run_stage_a_hour.py`, which performs dependency installation, runtime guard, private Dataset reconstruction, dry-run preflight, token scan, smoke training, full training, and output archiving.
 
 The direct preflight command expects the reconstructed artifact root, not the raw Kaggle upload folder:
 

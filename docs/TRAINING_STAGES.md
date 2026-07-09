@@ -22,7 +22,7 @@ implementation status: runnable in this branch
 The HOUR adapter is field-aware. For each hour, each vital is encoded as:
 
 ```text
-field embedding + per-field scalar value projection + mask embedding
+field embedding + per-field scalar value projection + per-field mask embedding
 ```
 
 Ventilation is encoded as:
@@ -31,7 +31,7 @@ Ventilation is encoded as:
 vent field embedding + vent state embedding
 ```
 
-The seven vital field embeddings plus the ventilation input embedding are concatenated and projected into the Longformer hidden size before injection at the matching `<H*>` placeholder.
+The seven vital field embeddings plus the ventilation input embedding are concatenated and projected into the encoder hidden size before injection at the matching `<H*>` placeholder. The Stage A preferred encoder config uses `answerdotai/ModernBERT-base`; the older Longformer config remains only in historical joint-baseline launchers.
 
 Allowed active losses:
 

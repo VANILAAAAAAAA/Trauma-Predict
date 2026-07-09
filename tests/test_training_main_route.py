@@ -214,6 +214,26 @@ class TrainingMainRouteTest(unittest.TestCase):
             with self.subTest(path=path.name):
                 validate_main_route_config(load_yaml_config(path))
 
+    def test_stage_a_configs_use_preferred_encoder_and_values_only_loss(self) -> None:
+        expected_active_losses = {
+            "next_hour_values": True,
+            "next_hour_vent": False,
+            "next24_domain": False,
+            "next24_binary": False,
+            "next24_multiclass": False,
+        }
+        for name in [
+            "t4x2_stage_a_hour.yaml",
+            "p100_stage_a_hour.yaml",
+            "t4x2_stage_a_hour_smoke.yaml",
+        ]:
+            with self.subTest(config=name):
+                config = load_yaml_config(REPO_ROOT / "configs" / "train" / name)
+                self.assertEqual(config["training_stage"], "stage_a_next_hour")
+                self.assertEqual(config["model"]["base_model"], "answerdotai/ModernBERT-base")
+                self.assertEqual(config["training"]["active_losses"], expected_active_losses)
+                self.assertEqual(config["training"]["loss_weights"]["next_hour_vent"], 0.0)
+
     def test_kaggle_dry_run_rejects_invalid_stage_a_before_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -486,6 +506,7 @@ class TrainingMainRouteTest(unittest.TestCase):
 
         self.assertEqual(output.shape, (2, 24, 32))
         self.assertEqual(len(adapter.vital_value_projections), 7)
+        self.assertEqual(len(adapter.vital_mask_embeddings), 7)
         self.assertEqual(adapter.field_embedding.num_embeddings, 8)
         self.assertEqual(adapter.field_hidden_size, 8)
 
@@ -555,12 +576,18 @@ class TrainingMainRouteTest(unittest.TestCase):
         self.assertIn("trauma-predict-main-route-first-train-8h-v2", notebook_text)
         self.assertNotIn("run([\\\"git\\\", \\\"clone\\\", clone_url", notebook_text)
 
-    def test_stage_a_notebook_uses_field_aware_tag(self) -> None:
+    def test_stage_a_notebook_uses_modernbert_launcher_and_tag(self) -> None:
         notebook_text = (REPO_ROOT / "notebooks" / "kaggle" / "train_stage_a_hour.ipynb").read_text(
             encoding="utf-8"
         )
+        launcher_text = (REPO_ROOT / "notebooks" / "kaggle" / "run_stage_a_hour.py").read_text(
+            encoding="utf-8"
+        )
 
-        self.assertIn("stage-a-hour-field-aware-20260709", notebook_text)
+        self.assertIn("stage-a-hour-modernbert-20260709", notebook_text)
+        self.assertIn("run_stage_a_hour.py", notebook_text)
+        self.assertIn("answerdotai/ModernBERT-base", launcher_text)
+        self.assertIn('"transformers": "4.48.3"', launcher_text)
         self.assertNotIn("stage-a-hour-training-20260708-r2", notebook_text)
 
 

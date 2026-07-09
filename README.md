@@ -17,7 +17,7 @@ Use that workspace for cohort construction, field adapter development, sample-bu
 - Split key: `subject_id`.
 - Formal staged route: Stage A trains `NEXT_HOUR` vital values only with `hour_vent` retained as an input covariate, Stage B trains `NEXT_24H` from the Stage A checkpoint, and Stage C is optional alternating joint training. This branch keeps Stage B/C contracts reserved but blocks their training entry until checkpoint loading and alternating scheduling are implemented.
 - Current baseline route: a joint `NEXT_HOUR` + `NEXT_24H` run is allowed only when labeled `joint_baseline`, not Stage A.
-- First compute target: Kaggle GPU T4 x2, with single-GPU fallback.
+- First compute target: Kaggle GPU T4 x2 with `answerdotai/ModernBERT-base` for Stage A, with single-GPU fallback.
 
 ## Repository Layout
 
@@ -51,4 +51,4 @@ python tools/update_file_index.py --check
 
 ## Kaggle Direction
 
-Use `notebooks/kaggle/train_stage_a_hour.ipynb` for the Stage A HOUR values-only run. `notebooks/kaggle/train_full_first_run.ipynb` is a joint-baseline launcher and must not be used or reported as Stage A. Kaggle should run from a pinned Git tag, pass artifact preflight, pass token-length scan, and run the matching smoke config before the full T4 x2 config. Source MIMIC extraction and field-ready sample generation stay outside this repository.
+Use `notebooks/kaggle/train_stage_a_hour.ipynb` for the Stage A HOUR values-only run. It is a thin Kaggle bootstrap; the versioned Python launcher performs clone verification, runtime guard, artifact reconstruction, preflight, token-length scan, smoke training, full training, and output archiving. `notebooks/kaggle/train_full_first_run.ipynb` is a joint-baseline launcher and must not be used or reported as Stage A. Source MIMIC extraction and field-ready sample generation stay outside this repository.

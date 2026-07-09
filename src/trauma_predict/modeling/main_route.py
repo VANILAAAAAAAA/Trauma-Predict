@@ -36,7 +36,10 @@ class HourStateAdapter(_nn_module()):
             nn.Linear(1, field_hidden_size)
             for _ in HOUR_VALUE_ORDER
         ])
-        self.vital_mask_embedding = nn.Embedding(2, field_hidden_size)
+        self.vital_mask_embeddings = nn.ModuleList([
+            nn.Embedding(2, field_hidden_size)
+            for _ in HOUR_VALUE_ORDER
+        ])
         self.vent_state_embedding = nn.Embedding(2, field_hidden_size)
         self.field_norm = nn.LayerNorm(field_hidden_size)
         self.hour_network = nn.Sequential(
@@ -60,7 +63,7 @@ class HourStateAdapter(_nn_module()):
         for index, value_projection in enumerate(self.vital_value_projections):
             value = values[..., index:index + 1] * masks[..., index:index + 1]
             value_feature = value_projection(value)
-            mask_feature = self.vital_mask_embedding(masks[..., index].long())
+            mask_feature = self.vital_mask_embeddings[index](masks[..., index].long())
             field_feature = field_embeddings[index].view(1, 1, -1)
             field_features.append(self.field_norm(value_feature + mask_feature + field_feature))
 
@@ -277,6 +280,7 @@ class MainRouteModel(_nn_module()):
             "hour_adapter": {
                 "type": "field_aware",
                 "field_hidden_size": self.hour_adapter.field_hidden_size,
+                "vital_mask_embedding": "per_field",
             },
             "hour_value_order": list(HOUR_VALUE_ORDER),
             "target_domains": list(TARGET_DOMAINS),

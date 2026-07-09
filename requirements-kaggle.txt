@@ -6,7 +6,7 @@ numpy==2.2.6
 pyyaml==6.0.3
 safetensors==0.6.2
 sentencepiece==0.2.1
-tokenizers==0.19.1
+tokenizers==0.21.4
 tqdm==4.67.1
-transformers==4.44.2
+transformers==4.48.3
 zstandard==0.23.0

@@ -21,6 +21,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `docs/REPO_STRUCTURE.md` | docs | Directory structure and design rules. | No data. |
 | `docs/TRAINING_STAGES.md` | docs | Stage A/B/C and joint-baseline training contract. | No data. |
 | `notebooks/kaggle/README.md` | kaggle | Explains Kaggle launcher folder boundary. | No data. |
+| `notebooks/kaggle/run_stage_a_hour.py` | kaggle | Automated Stage A Kaggle launcher for preferred-encoder HOUR-only training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/scan_token_lengths.py` | kaggle | Scans shard input token lengths against the configured encoder window before training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
 | `notebooks/kaggle/train_full_first_run.ipynb` | kaggle | End-to-end Kaggle notebook for the joint-baseline run; not Stage A. | No data. |
