@@ -102,6 +102,8 @@ def run_main_route_training(
     tokenizer.padding_side = "right"
 
     normalizer = HourValueNormalizer.from_config(model_config.get("value_normalization"))
+    next_hour_value_mode = str(model_config.get("next_hour_value_mode") or "absolute")
+    next_hour_delta_loss_weight = float(training_config.get("next_hour_delta_loss_weight", 0.0) or 0.0)
     model = MainRouteModel(
         base_model=base_model,
         tokenizer_length=len(tokenizer),
@@ -110,7 +112,20 @@ def run_main_route_training(
         dropout=float(model_config.get("dropout", 0.1)),
         loss_weights=stage_contract.loss_weights,
         active_losses=stage_contract.active_losses,
+        next_hour_value_mode=next_hour_value_mode,
+        next_hour_delta_loss_weight=next_hour_delta_loss_weight,
     )
+    warm_start_report: dict[str, Any] | None = None
+    warm_start_checkpoint = training_config.get("warm_start_checkpoint")
+    if warm_start_checkpoint:
+        warm_start_report = load_warm_start_checkpoint(
+            model=model,
+            checkpoint=Path(str(warm_start_checkpoint)),
+            reset_prefixes=[
+                str(item)
+                for item in training_config.get("warm_start_reset_heads", [])
+            ],
+        )
     max_position_embeddings = int(getattr(model.encoder.config, "max_position_embeddings", 0) or 0)
     max_input_tokens = int(model_config.get("max_input_tokens", 4096))
     if max_position_embeddings and max_input_tokens > max_position_embeddings:
@@ -245,6 +260,11 @@ def run_main_route_training(
         torch.distributed.barrier()
     if trainer.is_world_process_zero():
         write_environment_snapshot(output_dir / "environment_snapshot.json", preflight)
+        if warm_start_report is not None:
+            (output_dir / "warm_start_report.json").write_text(
+                json.dumps(sanitize_json(warm_start_report), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         append_jsonl(metrics_path, {
             "created_at": utc_now(),
             "event": "training_start",
@@ -255,6 +275,7 @@ def run_main_route_training(
             "eval_samples": len(eval_records),
             "preflight": preflight.to_dict(),
             "resume_checkpoint": resume_checkpoint,
+            "warm_start_report": warm_start_report,
             "quarantined_rng_state_files": quarantined_rng_files,
             "torch": torch.__version__,
         })
@@ -338,6 +359,90 @@ def validate_main_route_config(config: dict[str, Any]) -> None:
         raise ValueError("training.learning_rate must be positive")
     if int(training.get("max_steps", 0)) < 1:
         raise ValueError("training.max_steps must be positive")
+    value_mode = str(model.get("next_hour_value_mode") or "absolute")
+    if value_mode not in {"absolute", "h0_residual"}:
+        raise ValueError("model.next_hour_value_mode must be absolute or h0_residual")
+    if float(training.get("next_hour_delta_loss_weight", 0.0) or 0.0) < 0.0:
+        raise ValueError("training.next_hour_delta_loss_weight must be >= 0")
+
+
+def load_warm_start_checkpoint(
+    *,
+    model: Any,
+    checkpoint: Path,
+    reset_prefixes: list[str] | None = None,
+) -> dict[str, Any]:
+    import torch
+
+    weight_path = _resolve_warm_start_weight_path(checkpoint)
+    reset_prefix_tuple = tuple(prefix.rstrip(".") for prefix in (reset_prefixes or []) if prefix)
+    if weight_path.suffix == ".safetensors":
+        from safetensors.torch import load_file
+
+        source_state = load_file(str(weight_path), device="cpu")
+    else:
+        source_state = torch.load(weight_path, map_location="cpu")
+    if not isinstance(source_state, dict):
+        raise ValueError(f"warm-start checkpoint did not contain a state dict: {weight_path}")
+    if "state_dict" in source_state and isinstance(source_state["state_dict"], dict):
+        source_state = source_state["state_dict"]
+
+    target_state = model.state_dict()
+    compatible_state = {}
+    skipped_reset_keys: list[str] = []
+    skipped_shape_keys: list[str] = []
+    skipped_non_tensor_keys: list[str] = []
+    for key, value in source_state.items():
+        if reset_prefix_tuple and any(key == prefix or key.startswith(f"{prefix}.") for prefix in reset_prefix_tuple):
+            skipped_reset_keys.append(str(key))
+            continue
+        if not hasattr(value, "shape"):
+            skipped_non_tensor_keys.append(str(key))
+            continue
+        if key in target_state and tuple(target_state[key].shape) != tuple(value.shape):
+            skipped_shape_keys.append(str(key))
+            continue
+        compatible_state[str(key)] = value
+
+    incompatible = model.load_state_dict(compatible_state, strict=False)
+    metadata = _read_warm_start_metadata(checkpoint)
+    return {
+        "checkpoint": str(checkpoint),
+        "weight_path": str(weight_path),
+        "source_key_count": len(source_state),
+        "loaded_key_count": len(compatible_state) - len(incompatible.unexpected_keys),
+        "missing_key_count": len(incompatible.missing_keys),
+        "unexpected_key_count": len(incompatible.unexpected_keys),
+        "reset_prefixes": list(reset_prefix_tuple),
+        "skipped_reset_keys": sorted(skipped_reset_keys),
+        "skipped_shape_keys": sorted(skipped_shape_keys),
+        "skipped_non_tensor_keys": sorted(skipped_non_tensor_keys),
+        "missing_keys": sorted(str(item) for item in incompatible.missing_keys),
+        "unexpected_keys": sorted(str(item) for item in incompatible.unexpected_keys),
+        "source_metadata": metadata,
+    }
+
+
+def _resolve_warm_start_weight_path(checkpoint: Path) -> Path:
+    if checkpoint.is_file():
+        return checkpoint
+    if not checkpoint.exists():
+        raise FileNotFoundError(f"warm-start checkpoint does not exist: {checkpoint}")
+    for name in ("model.safetensors", "pytorch_model.bin", "main_route_model.pt"):
+        candidate = checkpoint / name
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"warm-start checkpoint has no supported weight file: {checkpoint}")
+
+
+def _read_warm_start_metadata(checkpoint: Path) -> dict[str, Any] | None:
+    metadata_path = checkpoint / "training_stage_metadata.json" if checkpoint.is_dir() else checkpoint.parent / "training_stage_metadata.json"
+    if not metadata_path.exists():
+        return None
+    try:
+        return json.loads(metadata_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"metadata_error": f"invalid JSON: {metadata_path}"}
 
 
 def validate_resume_checkpoint_stage(
@@ -355,7 +460,10 @@ def validate_resume_checkpoint_stage(
     if payload.get("route") != MAIN_ROUTE:
         raise ValueError(f"resume checkpoint route mismatch: {payload.get('route')}")
     expected = stage_contract.to_metadata()
-    for key in ("training_stage", "active_losses", "active_loss_names"):
+    keys = ["training_stage", "active_losses", "active_loss_names"]
+    if expected.get("training_stage") == "stage_a1_residual":
+        keys.extend(["next_hour_value_mode", "next_hour_delta_loss_weight"])
+    for key in keys:
         if payload.get(key) != expected[key]:
             raise ValueError(
                 f"resume checkpoint {key} mismatch: expected {expected[key]}, got {payload.get(key)}"

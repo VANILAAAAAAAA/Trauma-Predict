@@ -16,12 +16,14 @@ NEXT_HOUR_LOSSES = ("next_hour_values", "next_hour_vent")
 NEXT24_LOSSES = ("next24_domain", "next24_binary", "next24_multiclass")
 
 STAGE_A_NEXT_HOUR = "stage_a_next_hour"
+STAGE_A1_RESIDUAL = "stage_a1_residual"
 STAGE_B_NEXT24 = "stage_b_next24"
 STAGE_C_ALTERNATING = "stage_c_alternating"
 JOINT_BASELINE = "joint_baseline"
 
 ALLOWED_TRAINING_STAGES = {
     STAGE_A_NEXT_HOUR,
+    STAGE_A1_RESIDUAL,
     STAGE_B_NEXT24,
     STAGE_C_ALTERNATING,
     JOINT_BASELINE,
@@ -29,11 +31,19 @@ ALLOWED_TRAINING_STAGES = {
 
 IMPLEMENTED_TRAINING_STAGES = {
     STAGE_A_NEXT_HOUR,
+    STAGE_A1_RESIDUAL,
     JOINT_BASELINE,
 }
 
 STAGE_DEFAULT_ACTIVE_LOSSES: dict[str, dict[str, bool]] = {
     STAGE_A_NEXT_HOUR: {
+        "next_hour_values": True,
+        "next_hour_vent": False,
+        "next24_domain": False,
+        "next24_binary": False,
+        "next24_multiclass": False,
+    },
+    STAGE_A1_RESIDUAL: {
         "next_hour_values": True,
         "next_hour_vent": False,
         "next24_domain": False,
@@ -70,6 +80,9 @@ class TrainingStageContract:
     active_losses: dict[str, bool]
     loss_weights: dict[str, float]
     implemented: bool
+    next_hour_value_mode: str
+    next_hour_delta_loss_weight: float
+    warm_start_checkpoint: str | None = None
     stage_a_checkpoint: str | None = None
     alternating_summary_steps: int | None = None
 
@@ -84,6 +97,9 @@ class TrainingStageContract:
             "active_losses": self.active_losses,
             "loss_weights": self.loss_weights,
             "active_loss_names": self.active_loss_names,
+            "next_hour_value_mode": self.next_hour_value_mode,
+            "next_hour_delta_loss_weight": self.next_hour_delta_loss_weight,
+            "warm_start_checkpoint": self.warm_start_checkpoint,
             "stage_a_checkpoint": self.stage_a_checkpoint,
             "alternating_summary_steps": self.alternating_summary_steps,
         }
@@ -102,6 +118,9 @@ def resolve_training_stage_contract(
     training = config.get("training")
     if not isinstance(training, dict):
         raise ValueError("train config training must be an object")
+    model = config.get("model")
+    if not isinstance(model, dict):
+        model = {}
 
     active_losses = _resolve_active_losses(training_stage, training.get("active_losses"))
     loss_weights = _resolve_loss_weights(training.get("loss_weights"))
@@ -117,6 +136,9 @@ def resolve_training_stage_contract(
         active_losses=active_losses,
         loss_weights=loss_weights,
         implemented=implemented,
+        next_hour_value_mode=str(model.get("next_hour_value_mode") or "absolute"),
+        next_hour_delta_loss_weight=_next_hour_delta_loss_weight(training),
+        warm_start_checkpoint=_warm_start_checkpoint(training),
         stage_a_checkpoint=_stage_a_checkpoint(training_stage, training),
         alternating_summary_steps=_alternating_summary_steps(training_stage, training),
     )
@@ -200,6 +222,27 @@ def _validate_stage_loss_contract(
         if "joint" in run_name or "full" in run_name:
             raise ValueError("Stage A run name must not contain joint/full labels")
 
+    if training_stage == STAGE_A1_RESIDUAL:
+        if any(active_losses[key] for key in NEXT24_LOSSES):
+            raise ValueError("Stage A.1 must not activate NEXT_24H losses")
+        if not active_losses["next_hour_values"] or active_losses["next_hour_vent"]:
+            raise ValueError("Stage A.1 must activate NEXT_HOUR values only")
+        model = config.get("model")
+        if not isinstance(model, dict):
+            raise ValueError("Stage A.1 train config model must be an object")
+        if str(model.get("next_hour_value_mode") or "") != "h0_residual":
+            raise ValueError("Stage A.1 requires model.next_hour_value_mode=h0_residual")
+        if _next_hour_delta_loss_weight(training) <= 0.0:
+            raise ValueError("Stage A.1 requires training.next_hour_delta_loss_weight > 0")
+        warm_start_checkpoint = training.get("warm_start_checkpoint")
+        if not isinstance(warm_start_checkpoint, str) or not warm_start_checkpoint:
+            raise ValueError("Stage A.1 must declare training.warm_start_checkpoint")
+        if "${" in warm_start_checkpoint:
+            raise ValueError(f"Stage A.1 warm_start_checkpoint is not expanded: {warm_start_checkpoint}")
+        run_name = str(config.get("run_name") or "")
+        if "joint" in run_name or "full" in run_name:
+            raise ValueError("Stage A.1 run name must not contain joint/full labels")
+
     if training_stage == STAGE_B_NEXT24:
         checkpoint = training.get("stage_a_checkpoint")
         if not isinstance(checkpoint, str) or not checkpoint:
@@ -214,6 +257,20 @@ def _stage_a_checkpoint(training_stage: str, training: dict[str, Any]) -> str | 
     if training_stage != STAGE_B_NEXT24:
         return None
     checkpoint = training.get("stage_a_checkpoint")
+    if not isinstance(checkpoint, str) or not checkpoint:
+        return None
+    return checkpoint
+
+
+def _next_hour_delta_loss_weight(training: dict[str, Any]) -> float:
+    try:
+        return float(training.get("next_hour_delta_loss_weight", 0.0) or 0.0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("training.next_hour_delta_loss_weight must be a number") from exc
+
+
+def _warm_start_checkpoint(training: dict[str, Any]) -> str | None:
+    checkpoint = training.get("warm_start_checkpoint")
     if not isinstance(checkpoint, str) or not checkpoint:
         return None
     return checkpoint

@@ -162,6 +162,27 @@ class TrainingMainRouteTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "active_losses does not match stage_a_next_hour"):
             resolve_training_stage_contract(config)
 
+    def test_stage_a1_contract_requires_residual_values_only_warm_start(self) -> None:
+        contract = resolve_training_stage_contract({
+            "schema_version": "trauma_predict.train_config.v1",
+            "run_name": "t4x2_stage_a1_residual",
+            "training_stage": "stage_a1_residual",
+            "model": {
+                "base_model": "answerdotai/ModernBERT-base",
+                "task": "main_hour_adapter_structured_heads",
+                "max_input_tokens": 4096,
+                "hour_adapter_hidden": 256,
+                "hour_field_hidden": 64,
+                "next_hour_value_mode": "h0_residual",
+            },
+            "training": _stage_a1_training_block(),
+        })
+
+        self.assertEqual(contract.active_loss_names, ["next_hour_values"])
+        self.assertEqual(contract.next_hour_value_mode, "h0_residual")
+        self.assertEqual(contract.next_hour_delta_loss_weight, 1.0)
+        self.assertEqual(contract.warm_start_checkpoint, "/tmp/stage_a/checkpoint-4000")
+
     def test_stage_b_contract_is_reserved_but_not_runnable(self) -> None:
         config = {
             "schema_version": "trauma_predict.train_config.v1",
@@ -210,9 +231,17 @@ class TrainingMainRouteTest(unittest.TestCase):
             validate_main_route_config(config)
 
     def test_tracked_training_configs_validate_stage_contracts(self) -> None:
-        for path in sorted((REPO_ROOT / "configs" / "train").glob("*.yaml")):
-            with self.subTest(path=path.name):
-                validate_main_route_config(load_yaml_config(path))
+        old_checkpoint = os.environ.get("STAGE_A_CHECKPOINT_DIR")
+        os.environ["STAGE_A_CHECKPOINT_DIR"] = "/tmp/stage_a/checkpoint-4000"
+        try:
+            for path in sorted((REPO_ROOT / "configs" / "train").glob("*.yaml")):
+                with self.subTest(path=path.name):
+                    validate_main_route_config(load_yaml_config(path))
+        finally:
+            if old_checkpoint is None:
+                os.environ.pop("STAGE_A_CHECKPOINT_DIR", None)
+            else:
+                os.environ["STAGE_A_CHECKPOINT_DIR"] = old_checkpoint
 
     def test_stage_a_configs_use_preferred_encoder_and_values_only_loss(self) -> None:
         expected_active_losses = {
@@ -598,6 +627,19 @@ class TrainingMainRouteTest(unittest.TestCase):
         self.assertNotIn("for line in lines[-20:]", launcher_text)
         self.assertNotIn("stage-a-hour-training-20260708-r2", notebook_text)
 
+    def test_stage_a1_notebook_uses_residual_launcher(self) -> None:
+        notebook_text = (REPO_ROOT / "notebooks" / "kaggle" / "train_stage_a1_residual.ipynb").read_text(
+            encoding="utf-8"
+        )
+        launcher_text = (REPO_ROOT / "notebooks" / "kaggle" / "run_stage_a1_residual.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("run_stage_a1_residual.py", notebook_text)
+        self.assertIn("stage_a1_residual", launcher_text)
+        self.assertIn("STAGE_A1_SMOKE_RUN_OK", launcher_text)
+        self.assertIn("STAGE_A_CHECKPOINT_DIR", launcher_text)
+
 
 def _main_route_record() -> dict[str, object]:
     return {
@@ -718,6 +760,30 @@ def _training_block(active_next24: bool, active_vent: bool | None = None) -> dic
             "next24_domain": 0.25 if active_next24 else 0.0,
             "next24_binary": 0.5 if active_next24 else 0.0,
             "next24_multiclass": 0.5 if active_next24 else 0.0,
+        },
+    }
+
+
+def _stage_a1_training_block() -> dict[str, object]:
+    return {
+        "precision": "fp16",
+        "learning_rate": 1e-5,
+        "max_steps": 2000,
+        "warm_start_checkpoint": "/tmp/stage_a/checkpoint-4000",
+        "next_hour_delta_loss_weight": 1.0,
+        "active_losses": {
+            "next_hour_values": True,
+            "next_hour_vent": False,
+            "next24_domain": False,
+            "next24_binary": False,
+            "next24_multiclass": False,
+        },
+        "loss_weights": {
+            "next_hour_values": 1.0,
+            "next_hour_vent": 0.0,
+            "next24_domain": 0.0,
+            "next24_binary": 0.0,
+            "next24_multiclass": 0.0,
         },
     }
 

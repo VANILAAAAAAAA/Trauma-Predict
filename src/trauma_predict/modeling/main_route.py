@@ -84,6 +84,8 @@ class MainRouteModel(_nn_module()):
         dropout: float = 0.1,
         loss_weights: dict[str, float] | None = None,
         active_losses: dict[str, bool] | None = None,
+        next_hour_value_mode: str = "absolute",
+        next_hour_delta_loss_weight: float = 0.0,
     ) -> None:
         super().__init__()
         import torch
@@ -95,6 +97,12 @@ class MainRouteModel(_nn_module()):
         self.encoder.resize_token_embeddings(tokenizer_length)
         hidden_size = int(getattr(self.encoder.config, "hidden_size"))
         self.hidden_size = hidden_size
+        self.next_hour_value_mode = str(next_hour_value_mode)
+        if self.next_hour_value_mode not in {"absolute", "h0_residual"}:
+            raise ValueError("next_hour_value_mode must be absolute or h0_residual")
+        self.next_hour_delta_loss_weight = float(next_hour_delta_loss_weight)
+        if self.next_hour_delta_loss_weight < 0.0:
+            raise ValueError("next_hour_delta_loss_weight must be >= 0")
         self.hour_adapter = HourStateAdapter(
             hidden_size=hidden_size,
             adapter_hidden_size=adapter_hidden_size,
@@ -196,7 +204,19 @@ class MainRouteModel(_nn_module()):
         state_vector = hidden[torch.arange(hidden.shape[0], device=hidden.device), state_position]
         state_vector = self.dropout(state_vector)
 
-        next_hour_value_logits = self.next_hour_values_head(state_vector)
+        next_hour_value_head_output = self.next_hour_values_head(state_vector)
+        next_hour_delta_logits = None
+        next_hour_h0_values = None
+        next_hour_h0_mask = None
+        if self.next_hour_value_mode == "h0_residual":
+            last_hour_index = hour_position_mask.long().sum(dim=1).clamp_min(1) - 1
+            batch_index = torch.arange(hour_values.shape[0], device=hour_values.device)
+            next_hour_h0_values = hour_values[batch_index, last_hour_index]
+            next_hour_h0_mask = hour_mask[batch_index, last_hour_index]
+            next_hour_delta_logits = next_hour_value_head_output
+            next_hour_value_logits = next_hour_h0_values + next_hour_delta_logits
+        else:
+            next_hour_value_logits = next_hour_value_head_output
         next_hour_vent_logits = self.next_hour_vent_head(state_vector)
         next24_domain_logits = self.next24_domain_head(state_vector)
         next24_binary_logits = torch.cat(
@@ -220,6 +240,23 @@ class MainRouteModel(_nn_module()):
             ) / observed_count
             loss = loss + self.loss_weights["next_hour_values"] * hour_value_loss
             loss_parts["next_hour_values"] = hour_value_loss.detach()
+            if (
+                self.next_hour_value_mode == "h0_residual"
+                and self.next_hour_delta_loss_weight > 0.0
+                and next_hour_delta_logits is not None
+                and next_hour_h0_values is not None
+                and next_hour_h0_mask is not None
+            ):
+                delta_observed = observed * next_hour_h0_mask.float()
+                delta_observed_count = delta_observed.sum().clamp_min(1.0)
+                true_delta = next_hour_values.float() - next_hour_h0_values.float()
+                delta_loss = F.smooth_l1_loss(
+                    next_hour_delta_logits * delta_observed,
+                    true_delta * delta_observed,
+                    reduction="sum",
+                ) / delta_observed_count
+                loss = loss + self.loss_weights["next_hour_values"] * self.next_hour_delta_loss_weight * delta_loss
+                loss_parts["next_hour_delta"] = delta_loss.detach()
         if self._loss_enabled("next_hour_vent") and next_hour_vent is not None:
             hour_vent_loss = F.binary_cross_entropy_with_logits(
                 next_hour_vent_logits,
@@ -253,6 +290,7 @@ class MainRouteModel(_nn_module()):
             "loss": loss,
             "logits": next_hour_value_logits,
             "next_hour_value_logits": next_hour_value_logits,
+            "next_hour_delta_logits": next_hour_delta_logits,
             "next_hour_vent_logits": next_hour_vent_logits,
             "next24_domain_logits": next24_domain_logits,
             "next24_binary_logits": next24_binary_logits,
@@ -282,6 +320,8 @@ class MainRouteModel(_nn_module()):
                 "field_hidden_size": self.hour_adapter.field_hidden_size,
                 "vital_mask_embedding": "per_field",
             },
+            "next_hour_value_mode": self.next_hour_value_mode,
+            "next_hour_delta_loss_weight": self.next_hour_delta_loss_weight,
             "hour_value_order": list(HOUR_VALUE_ORDER),
             "target_domains": list(TARGET_DOMAINS),
             "binary_next24_fields": [spec.key for spec in BINARY_NEXT24_FIELD_SPECS],

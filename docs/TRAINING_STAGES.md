@@ -51,6 +51,41 @@ Stage A full-run configs use `resume: true`. Resume is accepted only when the di
 
 Kaggle Stage A configs disable tqdm and log training loss every 250 steps. Full command output is kept in run-local `logs/` files so Kaggle notebook stdout stays readable.
 
+## Stage A.1: H0 Residual NEXT_HOUR Values
+
+Stage A.1 is a targeted follow-up to Stage A. It warm-starts from a Stage A
+checkpoint, keeps `hour_vent` as an input covariate only, and trains numeric
+H+1 vital prediction through an H0 residual head:
+
+```text
+training_stage: stage_a1_residual
+input: hour_values + hour_mask + hour_vent
+active targets: NEXT_HOUR values
+inactive NEXT_HOUR target: ventilation
+inactive targets: NEXT_24H
+value mode: h0_residual
+loss: H+1 value consistency + delta consistency
+checkpoint source: Stage A checkpoint
+implementation status: runnable in this branch
+```
+
+The residual contract is:
+
+```text
+h0_norm = normalized H0 vital value
+target_delta_norm = target_next_hour_norm - h0_norm
+predicted_next_hour_norm = h0_norm + predicted_delta_norm
+```
+
+The model reports `next_hour_value_logits` as the final normalized H+1 value so
+existing validation prediction export remains compatible. In residual mode,
+`next_hour_delta_logits` is the direct output of `next_hour_values_head`.
+
+Stage A.1 uses `training.warm_start_checkpoint`, not Trainer resume, when
+loading the old Stage A checkpoint. The config resets prediction heads by
+default and keeps compatible encoder/HOUR-adapter weights. `resume: false` is
+intentional for the first formal Stage A.1 run.
+
 ## Stage B: NEXT_24H
 
 Stage B starts from a Stage A checkpoint and trains the main future-summary target:
@@ -98,7 +133,7 @@ Before launching any Kaggle or server training run, record these fields:
 | Field | Required meaning |
 | --- | --- |
 | `run label` | Human-readable run name. |
-| `training stage` | One of `stage_a_next_hour`, `stage_b_next24`, `stage_c_alternating`, `joint_baseline`. |
+| `training stage` | One of `stage_a_next_hour`, `stage_a1_residual`, `stage_b_next24`, `stage_c_alternating`, `joint_baseline`. |
 | `input surfaces` | STATIC/DAY/HOUR surfaces passed as input. |
 | `active heads` | Heads whose labels are emitted and losses are active. |
 | `inactive heads` | Heads present in the module but excluded from loss. |
@@ -117,4 +152,15 @@ full config: configs/train/t4x2_stage_a_hour.yaml
 single-GPU fallback config: configs/train/p100_stage_a_hour.yaml
 smoke config: configs/train/t4x2_stage_a_hour_smoke.yaml
 dataset: vanilaaaa/trauma-predict-main-route-first-train-8h-v2
+```
+
+## Kaggle Stage A.1 Entry
+
+Use `notebooks/kaggle/train_stage_a1_residual.ipynb` with:
+
+```text
+full config: configs/train/t4x2_stage_a1_residual.yaml
+smoke config: configs/train/t4x2_stage_a1_residual_smoke.yaml
+dataset: vanilaaaa/trauma-predict-main-route-first-train-8h-v2
+checkpoint dataset: Stage A checkpoint containing checkpoint-4000/model.safetensors
 ```

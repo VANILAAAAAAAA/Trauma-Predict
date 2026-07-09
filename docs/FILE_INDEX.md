@@ -13,18 +13,23 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `configs/train/p100_stage_a_hour.yaml` | config | Stage A single-GPU/P100 HOUR values-only training config. | Uses environment-variable paths only. |
 | `configs/train/t4x2_first_run.yaml` | config | Joint-baseline T4 x2 training config; not Stage A. | Uses environment-variable paths only. |
 | `configs/train/t4x2_smoke.yaml` | config | Joint-baseline smoke config; not Stage A. | Uses environment-variable paths only. |
+| `configs/train/t4x2_stage_a1_residual.yaml` | config | Stage A.1 T4 x2 H0-residual values-only warm-start training config. | Uses environment-variable paths only. |
+| `configs/train/t4x2_stage_a1_residual_smoke.yaml` | config | Stage A.1 smoke config for warm-start and residual-loss runtime validation. | Uses environment-variable paths only. |
 | `configs/train/t4x2_stage_a_hour.yaml` | config | Stage A T4 x2 HOUR values-only training config with ventilation and `NEXT_24H` losses inactive. | Uses environment-variable paths only. |
 | `configs/train/t4x2_stage_a_hour_smoke.yaml` | config | Stage A smoke config that proves HOUR values-only model/data/runtime wiring. | Uses environment-variable paths only. |
 | `docs/DATA_POLICY.md` | docs | Allowed and forbidden repository content policy. | No data. |
 | `docs/FILE_INDEX.md` | docs | Tracked-file index. | No data. |
 | `docs/KAGGLE_RUNBOOK.md` | docs | Kaggle launch and output policy. | No data. |
 | `docs/REPO_STRUCTURE.md` | docs | Directory structure and design rules. | No data. |
+| `docs/STAGE_A1_RESIDUAL_RUNBOOK.md` | docs | Stage A.1 residual warm-start commands for local checks and Kaggle launch. | No data. |
 | `docs/TRAINING_STAGES.md` | docs | Stage A/B/C and joint-baseline training contract. | No data. |
 | `notebooks/kaggle/README.md` | kaggle | Explains Kaggle launcher folder boundary. | No data. |
+| `notebooks/kaggle/run_stage_a1_residual.py` | kaggle | Automated Kaggle launcher for Stage A.1 residual warm-start training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/run_stage_a_hour.py` | kaggle | Automated Stage A Kaggle launcher for preferred-encoder HOUR-only training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/scan_token_lengths.py` | kaggle | Scans shard input token lengths against the configured encoder window before training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
 | `notebooks/kaggle/train_full_first_run.ipynb` | kaggle | End-to-end Kaggle notebook for the joint-baseline run; not Stage A. | No data. |
+| `notebooks/kaggle/train_stage_a1_residual.ipynb` | kaggle | Thin Kaggle notebook that clones the repo and launches Stage A.1 residual warm-start training. | No data. |
 | `notebooks/kaggle/train_stage_a_hour.ipynb` | kaggle | End-to-end Kaggle notebook for Stage A HOUR-only training. | No data. |
 | `notebooks/kaggle/verify_private_dataset.ipynb` | kaggle | Kaggle notebook that verifies private Dataset mounting or API download before preflight. | No data. |
 | `pyproject.toml` | packaging | Python package, optional dependencies, and test config. | No data. |
