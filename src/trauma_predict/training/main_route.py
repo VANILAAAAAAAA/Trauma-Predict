@@ -264,18 +264,22 @@ def run_main_route_training(
     if trainer.is_world_process_zero():
         tokenizer.save_pretrained(str(final_model_dir))
         model.save_main_route(final_model_dir)
+        prediction_records = select_prediction_records(
+            eval_records,
+            eval_config.get("max_prediction_samples", 32),
+        )
         append_jsonl(metrics_path, {
             "created_at": utc_now(),
             "event": "final_eval",
             "metrics": sanitize_json(eval_metrics),
+            "prediction_samples": len(prediction_records),
         })
-        max_prediction_samples = int(eval_config.get("max_prediction_samples", 32))
         write_validation_predictions(
             prediction_path,
             model,
             collator,
             normalizer,
-            eval_records[:max_prediction_samples],
+            prediction_records,
             stage_contract.active_losses,
         )
         final_model_stage_metadata.write_text(
@@ -418,10 +422,47 @@ def write_validation_predictions(
                 "hadm_id": record["hadm_id"],
                 "stay_id": record["stay_id"],
                 "prediction_hour": record["prediction_hour"],
+                "input": {
+                    "hour": _hour_input_context(record),
+                },
                 "prediction": prediction_payload,
                 "target": target_payload,
             }
             handle.write(json.dumps(prediction, sort_keys=True) + "\n")
+
+
+def select_prediction_records(
+    records: list[dict[str, Any]],
+    max_prediction_samples: Any,
+) -> list[dict[str, Any]]:
+    if max_prediction_samples is None:
+        return records
+    if isinstance(max_prediction_samples, str) and max_prediction_samples.lower() in {"all", "full"}:
+        return records
+    limit = int(max_prediction_samples)
+    if limit < 1:
+        raise ValueError("evaluation.max_prediction_samples must be positive, null, all, or full")
+    return records[:limit]
+
+
+def _hour_input_context(record: dict[str, Any]) -> dict[str, Any]:
+    hour_values = record["hour_values"]
+    hour_mask = record["hour_mask"]
+    hour_vent = record["hour_vent"]
+    hour_placeholders = record["hour_placeholders"]
+    return {
+        "value_order": record["hour_value_order"],
+        "hour_placeholders": hour_placeholders,
+        "hour_values": hour_values,
+        "hour_mask": hour_mask,
+        "hour_vent": hour_vent,
+        "h0": {
+            "placeholder": hour_placeholders[-1],
+            "hour_values": hour_values[-1],
+            "hour_mask": hour_mask[-1],
+            "hour_vent": hour_vent[-1],
+        },
+    }
 
 
 def _next_hour_target_for_active_losses(

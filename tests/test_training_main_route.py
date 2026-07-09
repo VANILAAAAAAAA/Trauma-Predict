@@ -21,7 +21,13 @@ from trauma_predict.data.main_route import (
     MainRouteBatchCollator,
     encode_next24_labels,
 )
-from trauma_predict.training.main_route import validate_main_route_config, validate_resume_checkpoint_stage
+from trauma_predict.training.main_route import (
+    _hour_input_context,
+    _next_hour_target_for_active_losses,
+    select_prediction_records,
+    validate_main_route_config,
+    validate_resume_checkpoint_stage,
+)
 from trauma_predict.training.config import load_yaml_config
 from trauma_predict.training.runtime import quarantine_rng_state_files
 from trauma_predict.training.stages import resolve_training_stage_contract
@@ -420,6 +426,40 @@ class TrainingMainRouteTest(unittest.TestCase):
         self.assertNotIn("next24_binary_labels", batch)
         self.assertNotIn("next24_multiclass_labels", batch)
 
+    def test_stage_a_prediction_helpers_keep_h0_and_omit_vent_target(self) -> None:
+        record = _main_route_record()
+
+        hour_context = _hour_input_context(record)
+        self.assertEqual(hour_context["h0"]["placeholder"], "<H0>")
+        self.assertEqual(hour_context["h0"]["hour_values"], record["hour_values"][-1])
+        self.assertEqual(hour_context["h0"]["hour_mask"], record["hour_mask"][-1])
+        self.assertEqual(hour_context["h0"]["hour_vent"], record["hour_vent"][-1])
+
+        target = _next_hour_target_for_active_losses(
+            record["targets"]["next_hour"],
+            {
+                "next_hour_values": True,
+                "next_hour_vent": False,
+                "next24_domain": False,
+                "next24_binary": False,
+                "next24_multiclass": False,
+            },
+        )
+        self.assertIn("hour_values", target)
+        self.assertIn("hour_mask", target)
+        self.assertNotIn("vent_on", target)
+        self.assertNotIn("hour_vent", target)
+
+    def test_prediction_record_selection_supports_full_eval(self) -> None:
+        records = [{"sample_id": f"s{index}"} for index in range(4)]
+
+        self.assertEqual(select_prediction_records(records, None), records)
+        self.assertEqual(select_prediction_records(records, "all"), records)
+        self.assertEqual(select_prediction_records(records, "full"), records)
+        self.assertEqual(select_prediction_records(records, 2), records[:2])
+        with self.assertRaisesRegex(ValueError, "max_prediction_samples"):
+            select_prediction_records(records, 0)
+
     def test_collator_rejects_missing_hour_special_token(self) -> None:
         tokenizer = FakeTokenizer()
         tokenizer.vocab.pop("<H-23>")
@@ -514,6 +554,14 @@ class TrainingMainRouteTest(unittest.TestCase):
 
         self.assertIn("trauma-predict-main-route-first-train-8h-v2", notebook_text)
         self.assertNotIn("run([\\\"git\\\", \\\"clone\\\", clone_url", notebook_text)
+
+    def test_stage_a_notebook_uses_field_aware_tag(self) -> None:
+        notebook_text = (REPO_ROOT / "notebooks" / "kaggle" / "train_stage_a_hour.ipynb").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("stage-a-hour-field-aware-20260709", notebook_text)
+        self.assertNotIn("stage-a-hour-training-20260708-r2", notebook_text)
 
 
 def _main_route_record() -> dict[str, object]:

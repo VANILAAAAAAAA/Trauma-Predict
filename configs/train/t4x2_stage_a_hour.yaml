@@ -51,7 +51,7 @@ training:
     next24_binary: 0.0
     next24_multiclass: 0.0
 evaluation:
-  max_prediction_samples: 32
+  max_prediction_samples: null
 outputs:
   output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_stage_a_hour
   metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_stage_a_hour/metrics.jsonl

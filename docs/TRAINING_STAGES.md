@@ -45,7 +45,7 @@ Allowed active losses:
 
 The Stage A collator emits only `next_hour_values` and `next_hour_mask`. It does not emit `next_hour_vent` or any `NEXT_24H` labels. The model also gates loss computation with `active_losses`, so inactive losses cannot enter Stage A through a non-zero weight or an accidentally retained label tensor.
 
-Primary metrics are normalized MAE/RMSE, normalized signed bias, raw MAE/RMSE/bias, and Pearson r for next-hour numeric vitals, always compared with the H0 carry-forward persistence baseline. Ventilation persistence can be reported as a diagnostic baseline only.
+Primary metrics are normalized MAE/RMSE, normalized signed bias, raw MAE/RMSE/bias, and Pearson r for next-hour numeric vitals, always compared with the H0 carry-forward persistence baseline. Ventilation persistence can be reported as a diagnostic baseline only. Full Stage A configs export all validation predictions and include input-side `input.hour.h0` so the evaluator can compute H0 carry-forward from the same records.
 
 Stage A full-run configs use `resume: true`. Resume is accepted only when the discovered checkpoint contains `training_stage_metadata.json` matching the current `training_stage`, `active_losses`, and `loss_weights`.
 
