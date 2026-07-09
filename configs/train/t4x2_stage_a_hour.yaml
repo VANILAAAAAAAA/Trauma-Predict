@@ -32,7 +32,7 @@ training:
   dataloader_num_workers: 2
   required_cuda_devices: 2
   ddp_find_unused_parameters: true
-  max_steps: 5000
+  max_steps: 4000
   eval_steps: 250
   save_steps: 500
   logging_steps: 250

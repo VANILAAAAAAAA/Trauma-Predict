@@ -36,7 +36,7 @@ Notebook setup cell if the repository is public:
 git clone https://github.com/VANILAAAAAAAA/Trauma-Predict.git
 cd Trauma-Predict
 git fetch origin --tags
-git checkout --detach stage-a-hour-modernbert-quietlog-20260709
+git checkout --detach stage-a-hour-modernbert-4000-20260709
 pip install -r requirements-kaggle.txt
 python -m pip check || true
 ```
@@ -70,7 +70,7 @@ Then:
 ```bash
 cd Trauma-Predict
 git fetch origin --tags
-git checkout --detach stage-a-hour-modernbert-quietlog-20260709
+git checkout --detach stage-a-hour-modernbert-4000-20260709
 pip install -r requirements-kaggle.txt
 python -m pip check || true
 ```
@@ -85,7 +85,7 @@ test -f "$TRAUMA_PREDICT_DATA_ROOT/sample_manifest.csv"
 find "$TRAUMA_PREDICT_DATA_ROOT" -maxdepth 2 -type f | sort | sed -n '1,40p'
 ```
 
-Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned tag is more reproducible than relying on notebook sync state. Use `stage-a-hour-modernbert-quietlog-20260709` for the preferred-encoder Stage A run after that tag is pushed.
+Linking a Kaggle Notebook to GitHub is optional. For this project, cloning a pinned tag is more reproducible than relying on notebook sync state. Use `stage-a-hour-modernbert-4000-20260709` for the preferred-encoder Stage A run after that tag is pushed.
 
 The Kaggle requirements intentionally do not install `torch`. Use Kaggle's preinstalled CUDA PyTorch, then pin the Hugging Face stack from `requirements-kaggle.txt`. Kaggle base images often have unrelated global `pip check` conflicts from preinstalled packages, so the notebook treats `pip check` as diagnostic only. The scoped runtime guard is the blocking check: it verifies CUDA, the PyTorch wheel, and the exact Hugging Face package versions used by this repository.
 

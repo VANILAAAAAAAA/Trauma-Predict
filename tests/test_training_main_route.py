@@ -236,6 +236,7 @@ class TrainingMainRouteTest(unittest.TestCase):
                 self.assertIs(config["training"]["disable_tqdm"], True)
                 if "smoke" not in name:
                     self.assertEqual(config["training"]["logging_steps"], 250)
+                    self.assertEqual(config["training"]["max_steps"], 4000)
 
     def test_kaggle_dry_run_rejects_invalid_stage_a_before_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -587,7 +588,7 @@ class TrainingMainRouteTest(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("stage-a-hour-modernbert-quietlog-20260709", notebook_text)
+        self.assertIn("stage-a-hour-modernbert-4000-20260709", notebook_text)
         self.assertIn("run_stage_a_hour.py", notebook_text)
         self.assertIn("answerdotai/ModernBERT-base", launcher_text)
         self.assertIn('"transformers": "4.48.3"', launcher_text)
