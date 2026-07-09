@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -98,6 +100,8 @@ def run_to_log(
     env: dict[str, str] | None = None,
     check: bool = True,
     status_label: str | None = None,
+    stream_patterns: tuple[str, ...] = (),
+    heartbeat_seconds: int = 0,
 ) -> subprocess.CompletedProcess[str]:
     command = [str(part) for part in command]
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,9 +117,35 @@ def run_to_log(
             bufsize=1,
         )
         assert proc.stdout is not None
-        for line in proc.stdout:
-            log.write(line)
+
+        def read_stdout() -> None:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                log.write(line)
+                log.flush()
+                if stream_patterns and any(pattern in line for pattern in stream_patterns):
+                    print(line, end="", flush=True)
+
+        reader = threading.Thread(target=read_stdout, daemon=True)
+        reader.start()
+        start = time.monotonic()
+        last_heartbeat = start
+        while proc.poll() is None:
+            if heartbeat_seconds <= 0:
+                time.sleep(1)
+                continue
+            time.sleep(min(30, heartbeat_seconds))
+            now = time.monotonic()
+            if now - last_heartbeat >= heartbeat_seconds and proc.poll() is None:
+                log_bytes = log_path.stat().st_size if log_path.exists() else 0
+                elapsed = int(now - start)
+                print(
+                    f"{status_label or 'COMMAND'}_HEARTBEAT elapsed_s={elapsed} log_bytes={log_bytes}",
+                    flush=True,
+                )
+                last_heartbeat = now
         returncode = proc.wait()
+        reader.join(timeout=30)
 
     if returncode != 0:
         if check:
@@ -592,6 +622,15 @@ def run_full_training(checkpoint: Path, log_dir: Path) -> None:
         log_dir / "torchrun_train.log",
         env=repo_env(checkpoint),
         status_label="STAGE_A1_FULL_RUN",
+        stream_patterns=(
+            "{'loss':",
+            "{'eval_loss':",
+            "training_status=",
+            "run_config_snapshot=",
+            "metrics_jsonl=",
+            "training_result=",
+        ),
+        heartbeat_seconds=int(os.environ.get("TRAUMA_PREDICT_HEARTBEAT_SECONDS", "300")),
     )
 
 
