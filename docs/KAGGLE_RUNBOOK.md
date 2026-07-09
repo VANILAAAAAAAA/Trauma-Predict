@@ -1,6 +1,6 @@
 # Kaggle Runbook
 
-First formal target: Stage A `NEXT_HOUR` training on GPU T4 x2 with fp16. P100 is the fallback path. TPU is not in the first training path because it adds XLA-specific debugging and checkpoint friction.
+First formal target: Stage A `NEXT_HOUR` vital-value training on GPU T4 x2 with fp16. `hour_vent` remains an input covariate but is not a Stage A target or loss. P100 is the fallback path. TPU is not in the first training path because it adds XLA-specific debugging and checkpoint friction.
 
 ## Expected Inputs
 
@@ -192,7 +192,7 @@ python -m torch.distributed.run \
 
 Training entry after dry run, token scan, and smoke pass. Use `torchrun` for the first Kaggle
 run; it avoids the `accelerate` CLI import path that can pull in incompatible
-vision packages on Kaggle images. Full Stage A configs are resumable. If a checkpoint is present, the runner checks `training_stage_metadata.json` before resuming and rejects mismatched stages or loss weights.
+vision packages on Kaggle images. Full Stage A configs are resumable. If a checkpoint is present, the runner checks `training_stage_metadata.json` before resuming and rejects mismatched stages or loss weights. A valid Stage A metadata file has `active_loss_names=["next_hour_values"]`.
 
 ```bash
 export TRAUMA_PREDICT_DATA_ROOT="/kaggle/working/trauma-predict-main-route-first-train-8h-v2"

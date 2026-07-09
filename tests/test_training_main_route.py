@@ -131,7 +131,7 @@ class TrainingMainRouteTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "training_stage"):
             validate_main_route_config(config)
 
-    def test_stage_a_contract_allows_next_hour_losses_only(self) -> None:
+    def test_stage_a_contract_allows_next_hour_values_only(self) -> None:
         contract = resolve_training_stage_contract({
             "schema_version": "trauma_predict.train_config.v1",
             "run_name": "t4x2_stage_a_hour",
@@ -139,7 +139,8 @@ class TrainingMainRouteTest(unittest.TestCase):
             "training": _training_block(active_next24=False),
         })
 
-        self.assertEqual(contract.active_loss_names, ["next_hour_values", "next_hour_vent"])
+        self.assertEqual(contract.active_loss_names, ["next_hour_values"])
+        self.assertEqual(contract.loss_weights["next_hour_vent"], 0.0)
         self.assertEqual(contract.loss_weights["next24_domain"], 0.0)
         self.assertEqual(contract.loss_weights["next24_binary"], 0.0)
         self.assertEqual(contract.loss_weights["next24_multiclass"], 0.0)
@@ -191,7 +192,7 @@ class TrainingMainRouteTest(unittest.TestCase):
                 "hour_adapter_hidden": 256,
             },
             "training": {
-                **_training_block(active_next24=True),
+                **_training_block(active_next24=True, active_vent=False),
                 "alternating_summary_steps": 4,
             },
         }
@@ -396,14 +397,14 @@ class TrainingMainRouteTest(unittest.TestCase):
         self.assertGreaterEqual(batch["state_position"].item(), 0)
 
     @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is not installed")
-    def test_stage_a_collator_emits_only_next_hour_labels(self) -> None:
+    def test_stage_a_collator_emits_only_next_hour_value_labels(self) -> None:
         collator = MainRouteBatchCollator(
             tokenizer=FakeTokenizer(),
             max_input_tokens=128,
             normalizer=HourValueNormalizer.from_config(None),
             active_losses={
                 "next_hour_values": True,
-                "next_hour_vent": True,
+                "next_hour_vent": False,
                 "next24_domain": False,
                 "next24_binary": False,
                 "next24_multiclass": False,
@@ -414,7 +415,7 @@ class TrainingMainRouteTest(unittest.TestCase):
 
         self.assertIn("next_hour_values", batch)
         self.assertIn("next_hour_mask", batch)
-        self.assertIn("next_hour_vent", batch)
+        self.assertNotIn("next_hour_vent", batch)
         self.assertNotIn("next24_domain_labels", batch)
         self.assertNotIn("next24_binary_labels", batch)
         self.assertNotIn("next24_multiclass_labels", batch)
@@ -436,7 +437,7 @@ class TrainingMainRouteTest(unittest.TestCase):
 
         from trauma_predict.modeling.main_route import HourStateAdapter
 
-        adapter = HourStateAdapter(hidden_size=32, adapter_hidden_size=16, dropout=0.0)
+        adapter = HourStateAdapter(hidden_size=32, adapter_hidden_size=16, dropout=0.0, field_hidden_size=8)
         values = torch.zeros((2, 24, 7))
         mask = torch.ones((2, 24, 7))
         vent = torch.zeros((2, 24, 1))
@@ -444,6 +445,9 @@ class TrainingMainRouteTest(unittest.TestCase):
         output = adapter(values, mask, vent)
 
         self.assertEqual(output.shape, (2, 24, 32))
+        self.assertEqual(len(adapter.vital_value_projections), 7)
+        self.assertEqual(adapter.field_embedding.num_embeddings, 8)
+        self.assertEqual(adapter.field_hidden_size, 8)
 
     def test_quarantine_rng_state_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -612,21 +616,22 @@ def _required_fields() -> list[str]:
     ]
 
 
-def _training_block(active_next24: bool) -> dict[str, object]:
+def _training_block(active_next24: bool, active_vent: bool | None = None) -> dict[str, object]:
+    resolved_active_vent = active_next24 if active_vent is None else active_vent
     return {
         "precision": "fp16",
         "learning_rate": 2e-5,
         "max_steps": 1,
         "active_losses": {
             "next_hour_values": True,
-            "next_hour_vent": True,
+            "next_hour_vent": resolved_active_vent,
             "next24_domain": active_next24,
             "next24_binary": active_next24,
             "next24_multiclass": active_next24,
         },
         "loss_weights": {
             "next_hour_values": 1.0,
-            "next_hour_vent": 0.25,
+            "next_hour_vent": 0.25 if resolved_active_vent else 0.0,
             "next24_domain": 0.25 if active_next24 else 0.0,
             "next24_binary": 0.5 if active_next24 else 0.0,
             "next24_multiclass": 0.5 if active_next24 else 0.0,

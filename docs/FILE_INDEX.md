@@ -10,11 +10,11 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `configs/accelerate/single_gpu.yaml` | config | Single-GPU fallback accelerator config. | No data. |
 | `configs/accelerate/t4x2.yaml` | config | Kaggle T4 x2 accelerator config. | No data. |
 | `configs/dataset/first_train.yaml` | config | First training dataset artifact paths and required sample fields. | Uses environment-variable paths only. |
-| `configs/train/p100_stage_a_hour.yaml` | config | Stage A single-GPU/P100 HOUR-only training config. | Uses environment-variable paths only. |
+| `configs/train/p100_stage_a_hour.yaml` | config | Stage A single-GPU/P100 HOUR values-only training config. | Uses environment-variable paths only. |
 | `configs/train/t4x2_first_run.yaml` | config | Joint-baseline T4 x2 training config; not Stage A. | Uses environment-variable paths only. |
 | `configs/train/t4x2_smoke.yaml` | config | Joint-baseline smoke config; not Stage A. | Uses environment-variable paths only. |
-| `configs/train/t4x2_stage_a_hour.yaml` | config | Stage A T4 x2 HOUR-only training config with `NEXT_24H` losses inactive. | Uses environment-variable paths only. |
-| `configs/train/t4x2_stage_a_hour_smoke.yaml` | config | Stage A smoke config that proves HOUR-only model/data/runtime wiring. | Uses environment-variable paths only. |
+| `configs/train/t4x2_stage_a_hour.yaml` | config | Stage A T4 x2 HOUR values-only training config with ventilation and `NEXT_24H` losses inactive. | Uses environment-variable paths only. |
+| `configs/train/t4x2_stage_a_hour_smoke.yaml` | config | Stage A smoke config that proves HOUR values-only model/data/runtime wiring. | Uses environment-variable paths only. |
 | `docs/DATA_POLICY.md` | docs | Allowed and forbidden repository content policy. | No data. |
 | `docs/FILE_INDEX.md` | docs | Tracked-file index. | No data. |
 | `docs/KAGGLE_RUNBOOK.md` | docs | Kaggle launch and output policy. | No data. |

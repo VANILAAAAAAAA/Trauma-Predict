@@ -2,32 +2,50 @@
 
 This repository follows the frozen textual V1 staged training contract from `/home/vanila/code/EHR-Predict/llmwiki/input_textual_design_framework_v1.md`.
 
-## Stage A: NEXT_HOUR
+## Stage A: NEXT_HOUR Values
 
-Stage A trains only the auxiliary next-hour task:
+Stage A trains only the auxiliary next-hour vital-value task:
 
 ```text
 training_stage: stage_a_next_hour
-active targets: NEXT_HOUR values + ventilation
+input: hour_values + hour_mask + hour_vent
+active targets: NEXT_HOUR values
+inactive NEXT_HOUR target: ventilation
 inactive targets: NEXT_24H
-loss: L_hour only
+loss: L_next_hour_values only
 checkpoint label: Stage A HOUR adapter pretraining
 implementation status: runnable in this branch
 ```
+
+`hour_vent` remains an input covariate inside the HOUR side tensor. It is not a Stage A target, label, loss term, or decision criterion.
+
+The HOUR adapter is field-aware. For each hour, each vital is encoded as:
+
+```text
+field embedding + per-field scalar value projection + mask embedding
+```
+
+Ventilation is encoded as:
+
+```text
+vent field embedding + vent state embedding
+```
+
+The seven vital field embeddings plus the ventilation input embedding are concatenated and projected into the Longformer hidden size before injection at the matching `<H*>` placeholder.
 
 Allowed active losses:
 
 | Loss key | Active | Required weight |
 | --- | --- | --- |
 | `next_hour_values` | yes | positive |
-| `next_hour_vent` | yes | positive |
+| `next_hour_vent` | no | `0.0` |
 | `next24_domain` | no | `0.0` |
 | `next24_binary` | no | `0.0` |
 | `next24_multiclass` | no | `0.0` |
 
-The Stage A collator does not emit `NEXT_24H` labels to the model. The model also gates loss computation with `active_losses`, so `NEXT_24H` loss cannot enter Stage A through a non-zero weight or an accidentally retained label tensor.
+The Stage A collator emits only `next_hour_values` and `next_hour_mask`. It does not emit `next_hour_vent` or any `NEXT_24H` labels. The model also gates loss computation with `active_losses`, so inactive losses cannot enter Stage A through a non-zero weight or an accidentally retained label tensor.
 
-Primary metrics are MAE/RMSE for next-hour numeric vitals and AUROC/F1 for next-hour ventilation.
+Primary metrics are normalized MAE/RMSE, normalized signed bias, raw MAE/RMSE/bias, and Pearson r for next-hour numeric vitals, always compared with the H0 carry-forward persistence baseline. Ventilation persistence can be reported as a diagnostic baseline only.
 
 Stage A full-run configs use `resume: true`. Resume is accepted only when the discovered checkpoint contains `training_stage_metadata.json` matching the current `training_stage`, `active_losses`, and `loss_weights`.
 
@@ -52,7 +70,7 @@ Stage C is optional and explicit:
 
 ```text
 training_stage: stage_c_alternating
-active targets: NEXT_HOUR + NEXT_24H
+active targets: NEXT_HOUR values + NEXT_24H
 loss schedule: every k summary steps inserts one hour step
 implementation status: contract reserved; runner intentionally blocked until alternating scheduling is implemented
 ```

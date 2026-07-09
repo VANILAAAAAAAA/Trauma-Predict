@@ -106,6 +106,7 @@ def run_main_route_training(
         base_model=base_model,
         tokenizer_length=len(tokenizer),
         adapter_hidden_size=int(model_config.get("hour_adapter_hidden", 256)),
+        hour_field_hidden_size=int(model_config.get("hour_field_hidden", 64)),
         dropout=float(model_config.get("dropout", 0.1)),
         loss_weights=stage_contract.loss_weights,
         active_losses=stage_contract.active_losses,
@@ -315,6 +316,8 @@ def validate_main_route_config(config: dict[str, Any]) -> None:
         raise ValueError("model.max_input_tokens must be >= 512")
     if int(model.get("hour_adapter_hidden", 1)) < 32:
         raise ValueError("model.hour_adapter_hidden must be >= 32")
+    if int(model.get("hour_field_hidden", 64)) < 8:
+        raise ValueError("model.hour_field_hidden must be >= 8")
     training = config.get("training")
     if not isinstance(training, dict):
         raise ValueError("train config training must be an object")
@@ -384,15 +387,19 @@ def write_validation_predictions(
             target_payload: dict[str, Any] = {}
             if is_next_hour_active(active_losses):
                 next_hour_values = output["next_hour_value_logits"][0].detach().cpu().tolist()
-                next_hour_vent_probability = float(torch.sigmoid(output["next_hour_vent_logits"][0]).detach().cpu().item())
                 prediction_payload["next_hour"] = {
                     "label": "NEXT_HOUR",
                     "relative_hour": "H+1",
                     "value_order": list(HOUR_VALUE_ORDER),
                     "values": normalizer.denormalize_row(next_hour_values),
-                    "vent_probability": next_hour_vent_probability,
                 }
-                target_payload["next_hour"] = record["targets"]["next_hour"]
+                if active_losses.get("next_hour_vent", False):
+                    next_hour_vent_probability = float(torch.sigmoid(output["next_hour_vent_logits"][0]).detach().cpu().item())
+                    prediction_payload["next_hour"]["vent_probability"] = next_hour_vent_probability
+                target_payload["next_hour"] = _next_hour_target_for_active_losses(
+                    record["targets"]["next_hour"],
+                    active_losses,
+                )
             if is_next24_active(active_losses):
                 domain_scores = torch.sigmoid(output["next24_domain_logits"][0]).detach().cpu().tolist()
                 binary_scores = torch.sigmoid(output["next24_binary_logits"][0]).detach().cpu().tolist()
@@ -415,3 +422,22 @@ def write_validation_predictions(
                 "target": target_payload,
             }
             handle.write(json.dumps(prediction, sort_keys=True) + "\n")
+
+
+def _next_hour_target_for_active_losses(
+    target: dict[str, Any],
+    active_losses: dict[str, bool],
+) -> dict[str, Any]:
+    payload = {
+        "label": target["label"],
+        "relative_hour": target["relative_hour"],
+        "value_order": target["value_order"],
+        "values": target["values"],
+        "mask": target["mask"],
+        "hour_values": target["hour_values"],
+        "hour_mask": target["hour_mask"],
+    }
+    if active_losses.get("next_hour_vent", False):
+        payload["vent_on"] = target["vent_on"]
+        payload["hour_vent"] = target["hour_vent"]
+    return payload

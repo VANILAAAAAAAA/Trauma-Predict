@@ -20,13 +20,28 @@ def _nn_module():  # type: ignore[no-untyped-def]
 
 
 class HourStateAdapter(_nn_module()):
-    def __init__(self, hidden_size: int, adapter_hidden_size: int, dropout: float) -> None:
+    def __init__(
+        self,
+        hidden_size: int,
+        adapter_hidden_size: int,
+        dropout: float,
+        field_hidden_size: int = 64,
+    ) -> None:
         super().__init__()
         import torch.nn as nn
 
-        self.network = nn.Sequential(
-            nn.LayerNorm(15),
-            nn.Linear(15, adapter_hidden_size),
+        self.field_hidden_size = field_hidden_size
+        self.field_embedding = nn.Embedding(len(HOUR_VALUE_ORDER) + 1, field_hidden_size)
+        self.vital_value_projections = nn.ModuleList([
+            nn.Linear(1, field_hidden_size)
+            for _ in HOUR_VALUE_ORDER
+        ])
+        self.vital_mask_embedding = nn.Embedding(2, field_hidden_size)
+        self.vent_state_embedding = nn.Embedding(2, field_hidden_size)
+        self.field_norm = nn.LayerNorm(field_hidden_size)
+        self.hour_network = nn.Sequential(
+            nn.LayerNorm(field_hidden_size * (len(HOUR_VALUE_ORDER) + 1)),
+            nn.Linear(field_hidden_size * (len(HOUR_VALUE_ORDER) + 1), adapter_hidden_size),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(adapter_hidden_size, hidden_size),
@@ -37,8 +52,23 @@ class HourStateAdapter(_nn_module()):
         import torch
 
         values = torch.nan_to_num(hour_values, nan=0.0, posinf=0.0, neginf=0.0)
-        x = torch.cat([values, hour_mask.float(), hour_vent.float()], dim=-1)
-        return self.network(x)
+        masks = hour_mask.float().clamp(0.0, 1.0)
+        field_ids = torch.arange(len(HOUR_VALUE_ORDER) + 1, device=values.device)
+        field_embeddings = self.field_embedding(field_ids)
+
+        field_features = []
+        for index, value_projection in enumerate(self.vital_value_projections):
+            value = values[..., index:index + 1] * masks[..., index:index + 1]
+            value_feature = value_projection(value)
+            mask_feature = self.vital_mask_embedding(masks[..., index].long())
+            field_feature = field_embeddings[index].view(1, 1, -1)
+            field_features.append(self.field_norm(value_feature + mask_feature + field_feature))
+
+        vent_state = hour_vent.float().clamp(0.0, 1.0).squeeze(-1).long()
+        vent_feature = self.vent_state_embedding(vent_state) + field_embeddings[-1].view(1, 1, -1)
+        field_features.append(self.field_norm(vent_feature))
+
+        return self.hour_network(torch.cat(field_features, dim=-1))
 
 
 class MainRouteModel(_nn_module()):
@@ -47,6 +77,7 @@ class MainRouteModel(_nn_module()):
         base_model: str,
         tokenizer_length: int,
         adapter_hidden_size: int = 256,
+        hour_field_hidden_size: int = 64,
         dropout: float = 0.1,
         loss_weights: dict[str, float] | None = None,
         active_losses: dict[str, bool] | None = None,
@@ -61,7 +92,12 @@ class MainRouteModel(_nn_module()):
         self.encoder.resize_token_embeddings(tokenizer_length)
         hidden_size = int(getattr(self.encoder.config, "hidden_size"))
         self.hidden_size = hidden_size
-        self.hour_adapter = HourStateAdapter(hidden_size, adapter_hidden_size, dropout)
+        self.hour_adapter = HourStateAdapter(
+            hidden_size=hidden_size,
+            adapter_hidden_size=adapter_hidden_size,
+            dropout=dropout,
+            field_hidden_size=hour_field_hidden_size,
+        )
         self.hour_time_embedding = nn.Embedding(len(HOUR_SPECIAL_TOKENS), hidden_size)
         self.hour_segment_embedding = nn.Parameter(torch.zeros(hidden_size))
         self.dropout = nn.Dropout(dropout)
@@ -238,6 +274,10 @@ class MainRouteModel(_nn_module()):
         payload = {
             "base_model": self.base_model,
             "hidden_size": self.hidden_size,
+            "hour_adapter": {
+                "type": "field_aware",
+                "field_hidden_size": self.hour_adapter.field_hidden_size,
+            },
             "hour_value_order": list(HOUR_VALUE_ORDER),
             "target_domains": list(TARGET_DOMAINS),
             "binary_next24_fields": [spec.key for spec in BINARY_NEXT24_FIELD_SPECS],

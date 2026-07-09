@@ -35,7 +35,7 @@ IMPLEMENTED_TRAINING_STAGES = {
 STAGE_DEFAULT_ACTIVE_LOSSES: dict[str, dict[str, bool]] = {
     STAGE_A_NEXT_HOUR: {
         "next_hour_values": True,
-        "next_hour_vent": True,
+        "next_hour_vent": False,
         "next24_domain": False,
         "next24_binary": False,
         "next24_multiclass": False,
@@ -49,7 +49,7 @@ STAGE_DEFAULT_ACTIVE_LOSSES: dict[str, dict[str, bool]] = {
     },
     STAGE_C_ALTERNATING: {
         "next_hour_values": True,
-        "next_hour_vent": True,
+        "next_hour_vent": False,
         "next24_domain": True,
         "next24_binary": True,
         "next24_multiclass": True,
@@ -192,8 +192,10 @@ def _validate_stage_loss_contract(
     if training_stage == STAGE_A_NEXT_HOUR:
         if any(active_losses[key] for key in NEXT24_LOSSES):
             raise ValueError("Stage A must not activate NEXT_24H losses")
-        if not all(active_losses[key] for key in NEXT_HOUR_LOSSES):
-            raise ValueError("Stage A must activate both NEXT_HOUR losses")
+        if not active_losses["next_hour_values"]:
+            raise ValueError("Stage A must activate NEXT_HOUR values")
+        if active_losses["next_hour_vent"]:
+            raise ValueError("Stage A must keep NEXT_HOUR ventilation inactive")
         run_name = str(config.get("run_name") or "")
         if "joint" in run_name or "full" in run_name:
             raise ValueError("Stage A run name must not contain joint/full labels")
