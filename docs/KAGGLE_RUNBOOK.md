@@ -170,7 +170,7 @@ The automated Stage A launcher keeps Kaggle notebook stdout short. Detailed comm
 
 The notebook page prints only milestones, compact summaries, training/eval metric lines, and a short failure tail. Set `TRAUMA_PREDICT_PRINT_TRAIN_LOSS=0` to suppress intermediate training-loss lines as well.
 
-For Stage A.1 residual warm-start, use `notebooks/kaggle/train_stage_a1_residual.ipynb`. Attach both the main-route data Dataset and a Stage A checkpoint Dataset. The launcher uses `configs/train/t4x2_stage_a1_residual.yaml`, automatically discovers a checkpoint containing `model.safetensors`, and requires these pass signals before the full run is suitable for background hosting:
+For Stage A.1 residual warm-start, use `notebooks/kaggle/train_stage_a1_residual.ipynb`. The launcher uses `configs/train/t4x2_stage_a1_residual.yaml`, automatically uses mounted Datasets when present, and otherwise downloads the fixed main-route data Dataset plus Stage A checkpoint Dataset. It requires these pass signals before the full run is suitable for background hosting:
 
 ```text
 STAGE_A1_CONFIG_OK

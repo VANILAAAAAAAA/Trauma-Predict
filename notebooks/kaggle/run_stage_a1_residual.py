@@ -15,6 +15,8 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATASET_REF = "vanilaaaa/trauma-predict-main-route-first-train-8h-v2"
 DATASET_SLUG = "trauma-predict-main-route-first-train-8h-v2"
+CHECKPOINT_DATASET_REF = "vanilaaaa/trauma-predict-stage-a-hour-ckpt-4000-20260709"
+CHECKPOINT_DATASET_SLUG = "trauma-predict-stage-a-hour-ckpt-4000-20260709"
 PREFERRED_BASE_MODEL = "answerdotai/ModernBERT-base"
 EXPECTED_TRAINING_STAGE = "stage_a1_residual"
 EXPECTED_SPLITS = {"train": 31980, "val": 4378, "test": 3895}
@@ -32,6 +34,14 @@ DATA_ROOT = Path(os.environ.get("TRAUMA_PREDICT_DATA_ROOT", KAGGLE_WORKING / DAT
 DOWNLOAD_ROOT = Path(os.environ.get(
     "TRAUMA_PREDICT_DOWNLOAD_ROOT",
     KAGGLE_WORKING / "kaggle_dataset_download",
+))
+CHECKPOINT_DOWNLOAD_ROOT = Path(os.environ.get(
+    "TRAUMA_PREDICT_CHECKPOINT_DOWNLOAD_ROOT",
+    KAGGLE_WORKING / "kaggle_checkpoint_download",
+))
+CHECKPOINT_WORK_ROOT = Path(os.environ.get(
+    "TRAUMA_PREDICT_CHECKPOINT_WORK_ROOT",
+    KAGGLE_WORKING / "stage_a_checkpoint",
 ))
 OUTPUT_ROOT = Path(os.environ.get(
     "TRAUMA_PREDICT_OUTPUT_ROOT",
@@ -66,7 +76,7 @@ def main() -> None:
     install_requirements(log_dir)
     runtime_guard()
     prepare_data_root(log_dir)
-    checkpoint = discover_stage_a_checkpoint()
+    checkpoint = prepare_stage_a_checkpoint(log_dir)
     print("stage_a_checkpoint_dir", checkpoint)
     run_preflight(TRAIN_CONFIG, RUN_NAME, checkpoint, log_dir)
     scan_token_lengths(TRAIN_CONFIG, RUN_NAME, checkpoint, log_dir)
@@ -375,6 +385,84 @@ def discover_stage_a_checkpoint() -> Path:
             "No Stage A checkpoint was found. Attach a checkpoint Kaggle Dataset or set STAGE_A_CHECKPOINT_DIR."
         )
     return candidates[0]
+
+
+def prepare_stage_a_checkpoint(log_dir: Path) -> Path:
+    explicit = os.environ.get("STAGE_A_CHECKPOINT_DIR")
+    if explicit:
+        path = Path(explicit)
+        if not path.exists():
+            raise FileNotFoundError(path)
+        if not _has_weight_file(path):
+            raise FileNotFoundError(f"STAGE_A_CHECKPOINT_DIR has no supported weight file: {path}")
+        return path
+
+    attached = attached_checkpoint_root()
+    if attached is not None:
+        return attached
+
+    downloaded = download_checkpoint_root(log_dir)
+    return downloaded
+
+
+def attached_checkpoint_root() -> Path | None:
+    input_root = Path("/kaggle/input")
+    if not input_root.exists():
+        return None
+    candidates = [input_root / CHECKPOINT_DATASET_SLUG]
+    candidates.extend(sorted(input_root.glob(f"{CHECKPOINT_DATASET_SLUG}*")))
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        checkpoint = _checkpoint_from_root(candidate, CHECKPOINT_WORK_ROOT)
+        if checkpoint is not None:
+            return checkpoint
+    return None
+
+
+def download_checkpoint_root(log_dir: Path) -> Path:
+    if CHECKPOINT_DOWNLOAD_ROOT.exists():
+        shutil.rmtree(CHECKPOINT_DOWNLOAD_ROOT)
+    CHECKPOINT_DOWNLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    run_to_log(
+        ["kaggle", "datasets", "download", "-d", CHECKPOINT_DATASET_REF, "-p", CHECKPOINT_DOWNLOAD_ROOT, "--unzip"],
+        log_dir / "kaggle_checkpoint_download.log",
+        status_label="KAGGLE_CHECKPOINT_DOWNLOAD",
+    )
+    checkpoint = _checkpoint_from_root(CHECKPOINT_DOWNLOAD_ROOT, CHECKPOINT_WORK_ROOT)
+    if checkpoint is None:
+        raise FileNotFoundError(f"downloaded checkpoint Dataset has no supported checkpoint: {CHECKPOINT_DOWNLOAD_ROOT}")
+    return checkpoint
+
+
+def _checkpoint_from_root(root: Path, extract_root: Path) -> Path | None:
+    direct_candidates = sorted({
+        weight.parent
+        for pattern in ("model.safetensors", "main_route_model.pt", "pytorch_model.bin")
+        for weight in root.rglob(pattern)
+    })
+    if direct_candidates:
+        return sorted(direct_candidates, key=lambda path: (_checkpoint_score(path), str(path)), reverse=True)[0]
+
+    zip_candidates = sorted(root.rglob("checkpoint-*.zip"))
+    if not zip_candidates:
+        return None
+    if extract_root.exists():
+        shutil.rmtree(extract_root)
+    extract_root.mkdir(parents=True, exist_ok=True)
+    for zip_path in zip_candidates:
+        target = extract_root / zip_path.stem
+        target.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(target)
+    direct_candidates = sorted({
+        weight.parent
+        for pattern in ("model.safetensors", "main_route_model.pt", "pytorch_model.bin")
+        for weight in extract_root.rglob(pattern)
+    })
+    if direct_candidates:
+        return sorted(direct_candidates, key=lambda path: (_checkpoint_score(path), str(path)), reverse=True)[0]
+    return None
 
 
 def _has_weight_file(path: Path) -> bool:

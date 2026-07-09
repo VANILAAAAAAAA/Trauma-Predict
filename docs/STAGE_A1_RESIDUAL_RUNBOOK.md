@@ -92,14 +92,18 @@ Use:
 notebooks/kaggle/train_stage_a1_residual.ipynb
 ```
 
-Attach both Kaggle Datasets:
+The hosted notebook can run without manual Add Data because `run_stage_a1_residual.py`
+downloads both fixed Kaggle Datasets when mounted copies are absent:
 
 ```text
 vanilaaaa/trauma-predict-main-route-first-train-8h-v2
 vanilaaaa/trauma-predict-stage-a-hour-ckpt-4000-20260709
 ```
 
-If automatic checkpoint discovery fails, set this in the notebook before the launcher cell:
+Adding both Datasets in the Kaggle UI is still allowed and can save download
+time, but it is no longer required for the automated launcher.
+
+If automatic checkpoint discovery and download both fail, set this in the notebook before the launcher cell:
 
 ```python
 import os
