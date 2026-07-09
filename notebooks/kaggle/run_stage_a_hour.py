@@ -24,6 +24,7 @@ EXPECTED_DEPENDENCIES = {
     "tokenizers": "0.21.4",
     "huggingface_hub": "0.36.2",
 }
+FAILURE_TAIL_LINES = int(os.environ.get("TRAUMA_PREDICT_FAILURE_TAIL_LINES", "60"))
 
 KAGGLE_WORKING = Path(os.environ.get("KAGGLE_WORKING_DIR", "/kaggle/working"))
 DATA_ROOT = Path(os.environ.get("TRAUMA_PREDICT_DATA_ROOT", KAGGLE_WORKING / DATASET_SLUG))
@@ -40,6 +41,10 @@ T4X2_TRAIN_CONFIG = "configs/train/t4x2_stage_a_hour.yaml"
 P100_TRAIN_CONFIG = "configs/train/p100_stage_a_hour.yaml"
 SMOKE_CONFIG = "configs/train/t4x2_stage_a_hour_smoke.yaml"
 
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "warning")
+os.environ.setdefault("ACCELERATE_LOG_LEVEL", "error")
+
 
 def main() -> None:
     print("repo_root", REPO_ROOT)
@@ -49,42 +54,77 @@ def main() -> None:
     if gpu_count < 1:
         raise RuntimeError("No Kaggle GPU is visible. Enable a GPU accelerator first.")
     train_config, run_name, nproc = select_training_route(gpu_count)
+    log_dir = OUTPUT_ROOT / run_name / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
     print("gpu_count", gpu_count)
     print("selected_train_config", train_config)
     print("selected_run_name", run_name)
     print("nproc_per_node", nproc)
+    print("log_dir", log_dir)
 
-    install_requirements()
+    install_requirements(log_dir)
     runtime_guard()
-    prepare_data_root()
-    run_stage_a_preflight(train_config, run_name)
-    scan_token_lengths(train_config, run_name)
+    prepare_data_root(log_dir)
+    run_stage_a_preflight(train_config, run_name, log_dir)
+    scan_token_lengths(train_config, run_name, log_dir)
     if os.environ.get("TRAUMA_PREDICT_DRY_RUN_ONLY") == "1":
         print("STAGE_A_DRY_RUN_ONLY_FINISHED")
         return
     if os.environ.get("TRAUMA_PREDICT_SKIP_SMOKE") != "1":
-        run_smoke(gpu_count)
-    run_full_training(train_config, run_name, nproc)
-    summarize_and_archive(run_name)
+        run_smoke(gpu_count, log_dir)
+    run_full_training(train_config, run_name, nproc, log_dir)
+    summarize_and_archive(run_name, log_dir)
     print("STAGE_A_AUTOMATED_RUN_FINISHED")
 
 
-def run(
+def run_to_log(
     command: list[Any],
+    log_path: Path,
     *,
     cwd: Path | None = REPO_ROOT,
     env: dict[str, str] | None = None,
     check: bool = True,
+    status_label: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [str(part) for part in command]
-    print("$", " ".join(command), flush=True)
-    return subprocess.run(
-        command,
-        cwd=str(cwd) if cwd else None,
-        env=env,
-        text=True,
-        check=check,
-    )
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    print("$", " ".join(command), ">", log_path, flush=True)
+    with log_path.open("w", encoding="utf-8") as log:
+        proc = subprocess.Popen(
+            command,
+            cwd=str(cwd) if cwd else None,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            log.write(line)
+        returncode = proc.wait()
+
+    if returncode != 0:
+        if check:
+            print_failure_tail(log_path)
+            raise subprocess.CalledProcessError(returncode, command)
+        print(f"{status_label or 'COMMAND'}_NONZERO returncode={returncode} log={log_path}")
+    elif status_label:
+        print(f"{status_label}_OK log={log_path}")
+    return subprocess.CompletedProcess(command, returncode)
+
+
+def print_failure_tail(log_path: Path) -> None:
+    print(f"FAILURE_LOG_TAIL log={log_path}")
+    for line in read_tail(log_path, FAILURE_TAIL_LINES):
+        print(line)
+
+
+def read_tail(path: Path, line_count: int) -> list[str]:
+    if not path.exists():
+        return []
+    lines = path.read_text(errors="replace").splitlines()
+    return lines[-line_count:]
 
 
 def repo_env() -> dict[str, str]:
@@ -93,6 +133,9 @@ def repo_env() -> dict[str, str]:
     env["TRAUMA_PREDICT_OUTPUT_ROOT"] = str(OUTPUT_ROOT)
     env["PYTHONPATH"] = str(REPO_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
     env["TOKENIZERS_PARALLELISM"] = "false"
+    env["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    env["TRANSFORMERS_VERBOSITY"] = "warning"
+    env["ACCELERATE_LOG_LEVEL"] = "error"
     return env
 
 
@@ -120,7 +163,7 @@ def select_training_route(gpu_count: int) -> tuple[str, str, int]:
     return P100_TRAIN_CONFIG, "p100_stage_a_hour", 1
 
 
-def install_requirements() -> None:
+def install_requirements(log_dir: Path) -> None:
     if not is_kaggle() and os.environ.get("TRAUMA_PREDICT_ALLOW_LOCAL_INSTALL") != "1":
         print("SKIP_PIP_INSTALL_OUTSIDE_KAGGLE")
         return
@@ -129,11 +172,25 @@ def install_requirements() -> None:
         return
 
     if os.environ.get("TRAUMA_PREDICT_SKIP_VISION_UNINSTALL") != "1":
-        run([sys.executable, "-m", "pip", "uninstall", "-y", "torchvision", "timm"], check=False)
-    run([sys.executable, "-m", "pip", "install", "-q", "-r", REPO_ROOT / "requirements-kaggle.txt"])
-    pip_check = run([sys.executable, "-m", "pip", "check"], check=False)
+        run_to_log(
+            [sys.executable, "-m", "pip", "uninstall", "-y", "torchvision", "timm"],
+            log_dir / "pip_uninstall_vision.log",
+            check=False,
+            status_label="PIP_UNINSTALL_VISION",
+        )
+    run_to_log(
+        [sys.executable, "-m", "pip", "install", "-q", "-r", REPO_ROOT / "requirements-kaggle.txt"],
+        log_dir / "pip_install.log",
+        status_label="PIP_INSTALL",
+    )
+    pip_check = run_to_log(
+        [sys.executable, "-m", "pip", "check"],
+        log_dir / "pip_check.log",
+        check=False,
+        status_label="PIP_CHECK",
+    )
     if pip_check.returncode != 0:
-        print("PIP_CHECK_NON_BLOCKING: Kaggle base image may have unrelated global conflicts.")
+        print(f"PIP_CHECK_NON_BLOCKING log={log_dir / 'pip_check.log'}")
 
 
 def runtime_guard() -> None:
@@ -150,11 +207,16 @@ def runtime_guard() -> None:
         "tokenizers": tokenizers.__version__,
         "huggingface_hub": huggingface_hub.__version__,
     }
-    print("torch", torch.__version__)
-    print("torch_cuda", torch.version.cuda)
-    print("cuda_available", torch.cuda.is_available())
-    print("cuda_count", torch.cuda.device_count())
-    print("versions", actual)
+    print(
+        "runtime",
+        json.dumps({
+            "torch": torch.__version__,
+            "torch_cuda": torch.version.cuda,
+            "cuda_available": torch.cuda.is_available(),
+            "cuda_count": torch.cuda.device_count(),
+            "versions": actual,
+        }, sort_keys=True),
+    )
     if actual != EXPECTED_DEPENDENCIES:
         raise RuntimeError(
             f"Hugging Face stack mismatch: expected {EXPECTED_DEPENDENCIES}, got {actual}"
@@ -176,14 +238,14 @@ def runtime_guard() -> None:
     print("main_route_runtime_guard OK")
 
 
-def prepare_data_root() -> None:
+def prepare_data_root(log_dir: Path) -> None:
     if os.environ.get("TRAUMA_PREDICT_USE_EXISTING_DATA_ROOT") == "1":
         if not is_prepared_artifact(DATA_ROOT):
             raise FileNotFoundError(f"Existing data root is not prepared: {DATA_ROOT}")
         print("using_existing_data_root", DATA_ROOT)
         return
 
-    source_root = explicit_source_root() or attached_dataset_root() or download_dataset_root()
+    source_root = explicit_source_root() or attached_dataset_root() or download_dataset_root(log_dir)
     print("dataset_source", source_root)
 
     if DATA_ROOT.exists():
@@ -195,10 +257,10 @@ def prepare_data_root() -> None:
         print(split, len(shards))
 
     manifest = json.loads((DATA_ROOT / "dataset_manifest.json").read_text(encoding="utf-8"))
-    print(json.dumps({
+    print("dataset_manifest", json.dumps({
         "dataset_id": manifest.get("dataset_id"),
         "counts": manifest.get("counts"),
-    }, indent=2, sort_keys=True))
+    }, sort_keys=True))
 
 
 def explicit_source_root() -> Path | None:
@@ -228,12 +290,16 @@ def attached_dataset_root() -> Path | None:
     return None
 
 
-def download_dataset_root() -> Path:
+def download_dataset_root(log_dir: Path) -> Path:
     configure_kaggle_credentials_from_secrets()
     if DOWNLOAD_ROOT.exists():
         shutil.rmtree(DOWNLOAD_ROOT)
     DOWNLOAD_ROOT.mkdir(parents=True, exist_ok=True)
-    run(["kaggle", "datasets", "download", "-d", DATASET_REF, "-p", DOWNLOAD_ROOT, "--unzip"])
+    run_to_log(
+        ["kaggle", "datasets", "download", "-d", DATASET_REF, "-p", DOWNLOAD_ROOT, "--unzip"],
+        log_dir / "kaggle_dataset_download.log",
+        status_label="KAGGLE_DATASET_DOWNLOAD",
+    )
     return DOWNLOAD_ROOT
 
 
@@ -303,14 +369,19 @@ def extract_zip_members(zip_path: Path, split_dir: Path) -> None:
                 shutil.copyfileobj(src, dst)
 
 
-def run_stage_a_preflight(train_config: str, run_name: str) -> None:
-    run([
-        sys.executable,
-        "notebooks/kaggle/train_kaggle.py",
-        "--config",
-        train_config,
-        "--dry-run",
-    ], env=repo_env())
+def run_stage_a_preflight(train_config: str, run_name: str, log_dir: Path) -> None:
+    run_to_log(
+        [
+            sys.executable,
+            "notebooks/kaggle/train_kaggle.py",
+            "--config",
+            train_config,
+            "--dry-run",
+        ],
+        log_dir / "stage_a_preflight.log",
+        env=repo_env(),
+        status_label="STAGE_A_PREFLIGHT",
+    )
 
     snapshot = json.loads(
         (OUTPUT_ROOT / run_name / "run_config_snapshot.json").read_text(encoding="utf-8")
@@ -342,7 +413,12 @@ def run_stage_a_preflight(train_config: str, run_name: str) -> None:
     summary = json.loads(
         (OUTPUT_ROOT / run_name / "data_preflight_summary.json").read_text(encoding="utf-8")
     )
-    print(json.dumps(summary, indent=2, sort_keys=True))
+    print("preflight_summary", json.dumps({
+        "manifest_samples": summary["manifest_samples"],
+        "sample_manifest_rows": summary["sample_manifest_rows"],
+        "shard_rows": summary["shard_rows"],
+        "split_counts": summary["split_counts"],
+    }, sort_keys=True))
     expected = {
         "manifest_samples": EXPECTED_SAMPLES,
         "sample_manifest_rows": EXPECTED_SAMPLES,
@@ -355,40 +431,67 @@ def run_stage_a_preflight(train_config: str, run_name: str) -> None:
     print("STAGE_A_ARTIFACT_PREFLIGHT_OK")
 
 
-def scan_token_lengths(train_config: str, run_name: str) -> None:
-    run([
-        sys.executable,
-        "notebooks/kaggle/scan_token_lengths.py",
-        "--dataset-config",
-        "configs/dataset/first_train.yaml",
-        "--train-config",
-        train_config,
-        "--output-json",
-        OUTPUT_ROOT / run_name / "token_length_summary.json",
-    ], env=repo_env())
+def scan_token_lengths(train_config: str, run_name: str, log_dir: Path) -> None:
+    output_json = OUTPUT_ROOT / run_name / "token_length_summary.json"
+    run_to_log(
+        [
+            sys.executable,
+            "notebooks/kaggle/scan_token_lengths.py",
+            "--dataset-config",
+            "configs/dataset/first_train.yaml",
+            "--train-config",
+            train_config,
+            "--output-json",
+            output_json,
+        ],
+        log_dir / "token_length_scan.log",
+        env=repo_env(),
+        status_label="TOKEN_LENGTH_SCAN",
+    )
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+    compact = {
+        split: {
+            "count": values["count"],
+            "p95": values["p95"],
+            "p99": values["p99"],
+            "max": values["max"],
+        }
+        for split, values in payload["by_split"].items()
+    }
+    print("token_length_summary", json.dumps({
+        "base_model": payload["base_model"],
+        "max_input_tokens": payload["max_input_tokens"],
+        "failure_count": payload["failure_count"],
+        "by_split": compact,
+    }, sort_keys=True))
     print("TOKEN_LENGTH_SCAN_OK")
 
 
-def run_smoke(gpu_count: int) -> None:
+def run_smoke(gpu_count: int, log_dir: Path) -> None:
     smoke_nproc = min(gpu_count, 2)
-    run([
-        sys.executable,
-        "-m",
-        "torch.distributed.run",
-        "--standalone",
-        "--nproc_per_node",
-        str(smoke_nproc),
-        "notebooks/kaggle/train_kaggle.py",
-        "--config",
-        SMOKE_CONFIG,
-    ], env=repo_env())
+    run_to_log(
+        [
+            sys.executable,
+            "-m",
+            "torch.distributed.run",
+            "--standalone",
+            "--nproc_per_node",
+            str(smoke_nproc),
+            "notebooks/kaggle/train_kaggle.py",
+            "--config",
+            SMOKE_CONFIG,
+        ],
+        log_dir / "stage_a_smoke.log",
+        env=repo_env(),
+        status_label="STAGE_A_SMOKE_RUN",
+    )
     print("STAGE_A_SMOKE_RUN_OK")
 
 
-def run_full_training(train_config: str, run_name: str, nproc: int) -> None:
+def run_full_training(train_config: str, run_name: str, nproc: int, log_dir: Path) -> None:
     run_dir = OUTPUT_ROOT / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
-    train_log = run_dir / "torchrun_train.log"
+    train_log = log_dir / "torchrun_train.log"
     command = [
         sys.executable,
         "-m",
@@ -400,8 +503,8 @@ def run_full_training(train_config: str, run_name: str, nproc: int) -> None:
         "--config",
         train_config,
     ]
-    print("$", " ".join(command), flush=True)
-    print("full_train_log", train_log, flush=True)
+    print("$", " ".join(command), ">", train_log, flush=True)
+    print_train_loss = os.environ.get("TRAUMA_PREDICT_PRINT_TRAIN_LOSS", "1") != "0"
     with train_log.open("w", encoding="utf-8") as log:
         proc = subprocess.Popen(
             command,
@@ -416,40 +519,39 @@ def run_full_training(train_config: str, run_name: str, nproc: int) -> None:
         for line in proc.stdout:
             log.write(line)
             log.flush()
-            if "{'loss':" in line or "{'eval_loss':" in line or "training_status=" in line:
+            if "{'eval_loss':" in line or "training_status=" in line:
+                print(line, end="")
+            elif print_train_loss and "{'loss':" in line:
                 print(line, end="")
         returncode = proc.wait()
 
     if returncode != 0:
-        print("\nTRAIN_FAILED_LOG_TAIL")
-        for line in train_log.read_text(errors="replace").splitlines()[-160:]:
-            print(line)
+        print_failure_tail(train_log)
         raise subprocess.CalledProcessError(returncode, command)
     print("STAGE_A_TRAINING_FINISHED")
 
 
-def summarize_and_archive(run_name: str) -> None:
+def summarize_and_archive(run_name: str, log_dir: Path) -> None:
     run_dir = OUTPUT_ROOT / run_name
     print("run_dir", run_dir)
-    for path in sorted(run_dir.glob("*")):
-        print(path)
-
     metrics_path = run_dir / "metrics.jsonl"
     if metrics_path.exists():
         lines = metrics_path.read_text(errors="replace").splitlines()
         print("metrics_rows", len(lines))
-        for line in lines[-20:]:
-            print(line)
 
     metadata_files = sorted(run_dir.glob("checkpoint-*/training_stage_metadata.json"))
-    print("checkpoint_metadata_files", [str(path) for path in metadata_files])
-    for path in metadata_files[-3:]:
-        print(path)
-        print(path.read_text(encoding="utf-8"))
+    print("checkpoint_metadata_count", len(metadata_files))
+    if metadata_files:
+        print("latest_checkpoint_metadata", metadata_files[-1])
 
     result_path = run_dir / "training_result.json"
     if result_path.exists():
-        print(json.dumps(json.loads(result_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        print("training_result", json.dumps({
+            "checkpoint": result.get("checkpoint"),
+            "final_model": result.get("final_model"),
+            "prediction_path": result.get("prediction_path"),
+        }, sort_keys=True))
 
     archive = Path(os.environ.get(
         "TRAUMA_PREDICT_OUTPUT_ARCHIVE",
@@ -458,7 +560,11 @@ def summarize_and_archive(run_name: str) -> None:
     if run_dir.exists():
         if archive.exists():
             archive.unlink()
-        run(["tar", "-czf", archive, "-C", KAGGLE_WORKING, f"trauma-predict-runs/{run_name}"])
+        run_to_log(
+            ["tar", "-czf", archive, "-C", KAGGLE_WORKING, f"trauma-predict-runs/{run_name}"],
+            log_dir / "archive_outputs.log",
+            status_label="ARCHIVE_OUTPUTS",
+        )
         print("archive", archive)
 
 

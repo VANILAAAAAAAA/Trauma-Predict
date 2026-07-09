@@ -173,6 +173,12 @@ def run_main_route_training(
         training_args_kwargs["eval_strategy"] = "steps"
     else:
         training_args_kwargs["evaluation_strategy"] = "steps"
+    if "disable_tqdm" in argument_names:
+        training_args_kwargs["disable_tqdm"] = bool(training_config.get("disable_tqdm", True))
+    if "log_level" in argument_names:
+        training_args_kwargs["log_level"] = str(training_config.get("log_level", "warning"))
+    if "log_level_replica" in argument_names:
+        training_args_kwargs["log_level_replica"] = str(training_config.get("log_level_replica", "error"))
     args = TrainingArguments(**training_args_kwargs)
 
     def stage_metadata() -> dict[str, Any]:

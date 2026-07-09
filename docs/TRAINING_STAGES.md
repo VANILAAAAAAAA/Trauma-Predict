@@ -49,6 +49,8 @@ Primary metrics are normalized MAE/RMSE, normalized signed bias, raw MAE/RMSE/bi
 
 Stage A full-run configs use `resume: true`. Resume is accepted only when the discovered checkpoint contains `training_stage_metadata.json` matching the current `training_stage`, `active_losses`, and `loss_weights`.
 
+Kaggle Stage A configs disable tqdm and log training loss every 250 steps. Full command output is kept in run-local `logs/` files so Kaggle notebook stdout stays readable.
+
 ## Stage B: NEXT_24H
 
 Stage B starts from a Stage A checkpoint and trains the main future-summary target:

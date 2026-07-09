@@ -51,4 +51,4 @@ python tools/update_file_index.py --check
 
 ## Kaggle Direction
 
-Use `notebooks/kaggle/train_stage_a_hour.ipynb` for the Stage A HOUR values-only run. It is a thin Kaggle bootstrap; the versioned Python launcher performs clone verification, runtime guard, artifact reconstruction, preflight, token-length scan, smoke training, full training, and output archiving. `notebooks/kaggle/train_full_first_run.ipynb` is a joint-baseline launcher and must not be used or reported as Stage A. Source MIMIC extraction and field-ready sample generation stay outside this repository.
+Use `notebooks/kaggle/train_stage_a_hour.ipynb` for the Stage A HOUR values-only run. It is a thin Kaggle bootstrap; the versioned Python launcher performs clone verification, runtime guard, artifact reconstruction, preflight, token-length scan, smoke training, full training, and output archiving. Detailed command output is written to run-local `logs/` files instead of flooding notebook stdout. `notebooks/kaggle/train_full_first_run.ipynb` is a joint-baseline launcher and must not be used or reported as Stage A. Source MIMIC extraction and field-ready sample generation stay outside this repository.

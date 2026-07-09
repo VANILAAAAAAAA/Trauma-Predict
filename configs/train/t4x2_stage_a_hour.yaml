@@ -35,7 +35,8 @@ training:
   max_steps: 5000
   eval_steps: 250
   save_steps: 500
-  logging_steps: 25
+  logging_steps: 250
+  disable_tqdm: true
   max_checkpoints: 3
   resume: true
   active_losses:

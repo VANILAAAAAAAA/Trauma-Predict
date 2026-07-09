@@ -35,6 +35,7 @@ training:
   eval_steps: 1
   save_steps: 1
   logging_steps: 1
+  disable_tqdm: true
   max_checkpoints: 1
   resume: false
   max_train_samples: 8
