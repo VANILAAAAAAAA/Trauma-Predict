@@ -15,9 +15,11 @@ from trauma_predict.data.main_route import (
 )
 from trauma_predict.data.main_route_contract import (
     HOUR_SPECIAL_TOKENS,
+    HOUR_TOKENIZATION_HOUR,
     HOUR_VALUE_ORDER,
     MAIN_ROUTE,
     STATE_TOKEN,
+    resolve_hour_tokenization,
 )
 from trauma_predict.data.preflight import ArtifactPreflightResult
 from trauma_predict.data.records import resolve_shard_paths
@@ -110,6 +112,7 @@ def run_main_route_training(
         dropout=float(model_config.get("dropout", 0.1)),
         loss_weights=stage_contract.loss_weights,
         active_losses=stage_contract.active_losses,
+        hour_tokenization=resolve_hour_tokenization(model_config.get("hour_tokenization")),
     )
     max_position_embeddings = int(getattr(model.encoder.config, "max_position_embeddings", 0) or 0)
     max_input_tokens = int(model_config.get("max_input_tokens", 4096))
@@ -139,6 +142,7 @@ def run_main_route_training(
         normalizer=normalizer,
         pad_to_multiple_of=8 if fp16 or bf16 else None,
         active_losses=stage_contract.active_losses,
+        hour_tokenization=resolve_hour_tokenization(model_config.get("hour_tokenization")),
     )
 
     training_args_kwargs: dict[str, Any] = {
@@ -182,7 +186,13 @@ def run_main_route_training(
     args = TrainingArguments(**training_args_kwargs)
 
     def stage_metadata() -> dict[str, Any]:
-        return stage_contract.to_metadata()
+        return {
+            **stage_contract.to_metadata(),
+            "model_contract": {
+                "hour_tokenization": model.hour_tokenization,
+                "hour_value_order": list(HOUR_VALUE_ORDER),
+            },
+        }
 
     class MainRouteTrainer(Trainer):
         latest_loss_parts: dict[str, float]
@@ -238,7 +248,11 @@ def run_main_route_training(
     )
 
     checkpoint = latest_checkpoint(output_dir) if bool(training_config.get("resume", True)) else None
-    validate_resume_checkpoint_stage(checkpoint, stage_contract)
+    validate_resume_checkpoint_stage(
+        checkpoint,
+        stage_contract,
+        hour_tokenization=model.hour_tokenization,
+    )
     resume_checkpoint = checkpoint
     quarantined_rng_files = quarantine_rng_state_files(checkpoint)
     if torch.distributed.is_available() and torch.distributed.is_initialized():
@@ -328,6 +342,7 @@ def validate_main_route_config(config: dict[str, Any]) -> None:
         raise ValueError("model.hour_adapter_hidden must be >= 32")
     if int(model.get("hour_field_hidden", 64)) < 8:
         raise ValueError("model.hour_field_hidden must be >= 8")
+    resolve_hour_tokenization(model.get("hour_tokenization", HOUR_TOKENIZATION_HOUR))
     training = config.get("training")
     if not isinstance(training, dict):
         raise ValueError("train config training must be an object")
@@ -343,6 +358,8 @@ def validate_main_route_config(config: dict[str, Any]) -> None:
 def validate_resume_checkpoint_stage(
     checkpoint: str | None,
     stage_contract: TrainingStageContract,
+    *,
+    hour_tokenization: str = HOUR_TOKENIZATION_HOUR,
 ) -> None:
     if not checkpoint:
         return
@@ -371,6 +388,17 @@ def validate_resume_checkpoint_stage(
     if observed_weights != expected_weights:
         raise ValueError(
             f"resume checkpoint loss_weights mismatch: expected {expected_weights}, got {observed_weights}"
+        )
+    expected_tokenization = resolve_hour_tokenization(hour_tokenization)
+    model_contract = payload.get("model_contract")
+    if model_contract is None and expected_tokenization == HOUR_TOKENIZATION_HOUR:
+        return
+    if not isinstance(model_contract, dict):
+        raise ValueError("resume checkpoint lacks model_contract for non-default HOUR tokenization")
+    if model_contract.get("hour_tokenization") != expected_tokenization:
+        raise ValueError(
+            "resume checkpoint hour_tokenization mismatch: "
+            f"expected {expected_tokenization}, got {model_contract.get('hour_tokenization')}"
         )
 
 

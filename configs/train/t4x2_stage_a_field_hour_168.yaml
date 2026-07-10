@@ -1,0 +1,59 @@
+schema_version: trauma_predict.train_config.v1
+run_name: t4x2_stage_a_field_hour_168
+training_stage: stage_a_next_hour
+seed: 20260708
+model:
+  base_model: answerdotai/ModernBERT-base
+  task: main_hour_adapter_structured_heads
+  max_input_tokens: 4096
+  hour_adapter_hidden: 256
+  hour_field_hidden: 64
+  hour_tokenization: field_hour
+  dropout: 0.1
+  value_normalization:
+    hr: {mean: 90.0, std: 30.0}
+    sbp: {mean: 120.0, std: 30.0}
+    dbp: {mean: 70.0, std: 20.0}
+    map: {mean: 80.0, std: 20.0}
+    rr: {mean: 20.0, std: 8.0}
+    temp: {mean: 37.0, std: 1.5}
+    spo2: {mean: 96.0, std: 4.0}
+data:
+  config_path: configs/dataset/first_train.yaml
+training:
+  precision: fp16
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 3.0e-5
+  warmup_steps: 500
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  gradient_checkpointing: false
+  dataloader_num_workers: 2
+  required_cuda_devices: 2
+  ddp_find_unused_parameters: true
+  max_steps: 4000
+  eval_steps: 250
+  save_steps: 500
+  logging_steps: 250
+  disable_tqdm: true
+  max_checkpoints: 3
+  resume: true
+  active_losses:
+    next_hour_values: true
+    next_hour_vent: false
+    next24_domain: false
+    next24_binary: false
+    next24_multiclass: false
+  loss_weights:
+    next_hour_values: 1.0
+    next_hour_vent: 0.0
+    next24_domain: 0.0
+    next24_binary: 0.0
+    next24_multiclass: 0.0
+evaluation:
+  max_prediction_samples: null
+outputs:
+  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_stage_a_field_hour_168
+  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_stage_a_field_hour_168/metrics.jsonl

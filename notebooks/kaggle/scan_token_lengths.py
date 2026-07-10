@@ -12,7 +12,12 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from trauma_predict.data.main_route_contract import HOUR_SPECIAL_TOKENS, STATE_TOKEN
+from trauma_predict.data.main_route_contract import (
+    HOUR_SPECIAL_TOKENS,
+    STATE_TOKEN,
+    effective_input_token_count,
+    resolve_hour_tokenization,
+)
 from trauma_predict.data.records import read_jsonl, resolve_shard_paths
 from trauma_predict.training.config import load_yaml_config
 
@@ -32,6 +37,7 @@ def main() -> int:
     train_config = load_yaml_config(args.train_config)
     model_config = train_config["model"]
     max_input_tokens = int(model_config["max_input_tokens"])
+    hour_tokenization = resolve_hour_tokenization(model_config.get("hour_tokenization"))
 
     from transformers import AutoTokenizer
 
@@ -45,12 +51,21 @@ def main() -> int:
         worst: list[dict[str, Any]] = []
         for path in resolve_shard_paths(dataset_config, split):
             for row in read_jsonl(path):
-                token_count = len(tokenizer(str(row["input_text"]), add_special_tokens=True, truncation=False)["input_ids"])
+                serialized_token_count = len(
+                    tokenizer(str(row["input_text"]), add_special_tokens=True, truncation=False)["input_ids"]
+                )
+                token_count = effective_input_token_count(
+                    serialized_token_count,
+                    len(row["hour_placeholders"]),
+                    hour_tokenization,
+                )
                 lengths.append(token_count)
                 item = {
                     "sample_id": row.get("sample_id"),
                     "split": split,
                     "tokens": token_count,
+                    "serialized_tokens": serialized_token_count,
+                    "hour_tokens": len(row["hour_placeholders"]),
                     "shard": str(path),
                 }
                 worst.append(item)
@@ -61,6 +76,7 @@ def main() -> int:
 
     payload = {
         "base_model": model_config["base_model"],
+        "hour_tokenization": hour_tokenization,
         "max_input_tokens": max_input_tokens,
         "by_split": by_split,
         "failures": failures[:50],

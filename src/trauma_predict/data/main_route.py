@@ -6,13 +6,16 @@ from typing import Any
 from trauma_predict.data.main_route_contract import (
     BINARY_NEXT24_FIELD_SPECS,
     DEFAULT_HOUR_NORMALIZATION,
+    HOUR_TOKENIZATION_HOUR,
     HOUR_SPECIAL_TOKENS,
     HOUR_VALUE_ORDER,
     MULTICLASS_NEXT24_FIELD_SPECS,
     NEXT24_FIELD_SPECS,
     STATE_TOKEN,
     TARGET_DOMAINS,
+    effective_input_token_count,
     hour_token_to_time_index,
+    resolve_hour_tokenization,
     validate_main_route_record,
 )
 
@@ -79,11 +82,13 @@ class MainRouteBatchCollator:
         normalizer: HourValueNormalizer,
         pad_to_multiple_of: int | None = None,
         active_losses: dict[str, bool] | None = None,
+        hour_tokenization: str = HOUR_TOKENIZATION_HOUR,
     ) -> None:
         self.tokenizer = tokenizer
         self.max_input_tokens = max_input_tokens
         self.normalizer = normalizer
         self.pad_to_multiple_of = pad_to_multiple_of
+        self.hour_tokenization = resolve_hour_tokenization(hour_tokenization)
         self.active_losses = {
             "next_hour_values": True,
             "next_hour_vent": True,
@@ -133,15 +138,22 @@ class MainRouteBatchCollator:
                 truncation=False,
             )
             input_ids = list(encoded["input_ids"])
-            if len(input_ids) > self.max_input_tokens:
+            placeholders = [str(token) for token in record["hour_placeholders"]]
+            effective_tokens = effective_input_token_count(
+                len(input_ids),
+                len(placeholders),
+                self.hour_tokenization,
+            )
+            if effective_tokens > self.max_input_tokens:
                 raise ValueError(
-                    f"sample {record.get('sample_id')} has {len(input_ids)} input tokens, "
+                    f"sample {record.get('sample_id')} has {effective_tokens} effective input tokens "
+                    f"under hour_tokenization={self.hour_tokenization} "
+                    f"({len(input_ids)} serialized tokens), "
                     f"exceeding max_input_tokens={self.max_input_tokens}; refusing to truncate "
                     "because HOUR placeholders or <STATE> would become untrustworthy"
                 )
             encoded_items.append(encoded)
 
-            placeholders = [str(token) for token in record["hour_placeholders"]]
             positions = [self._single_token_position(input_ids, self.hour_token_ids[token], token, record) for token in placeholders]
             hour_positions.append(positions)
             hour_position_masks.append([1] * len(positions))

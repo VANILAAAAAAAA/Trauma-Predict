@@ -7,12 +7,16 @@ import os
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from trauma_predict.data.main_route_contract import (
+    HOUR_TOKENIZATION_FIELD_HOUR,
     HOUR_SPECIAL_TOKENS,
     MAIN_ROUTE,
+    effective_input_token_count,
     expected_hour_placeholders,
     validate_main_route_record,
 )
@@ -29,6 +33,7 @@ from trauma_predict.training.main_route import (
     validate_resume_checkpoint_stage,
 )
 from trauma_predict.training.config import load_yaml_config
+from trauma_predict.training.hour_token_ablation import validate_field_hour_ablation_config
 from trauma_predict.training.runtime import quarantine_rng_state_files
 from trauma_predict.training.stages import resolve_training_stage_contract
 
@@ -121,6 +126,38 @@ class TrainingMainRouteTest(unittest.TestCase):
             },
             "training": _training_block(active_next24=True),
         })
+
+    def test_main_route_config_rejects_unknown_hour_tokenization(self) -> None:
+        config = load_yaml_config(REPO_ROOT / "configs/train/t4x2_stage_a_field_hour_168.yaml")
+        config["model"]["hour_tokenization"] = "unknown"
+
+        with self.assertRaisesRegex(ValueError, "hour_tokenization"):
+            validate_main_route_config(config)
+
+    def test_field_hour_effective_token_count_expands_each_hour_to_seven(self) -> None:
+        self.assertEqual(effective_input_token_count(100, 24, "hour"), 100)
+        self.assertEqual(
+            effective_input_token_count(100, 24, HOUR_TOKENIZATION_FIELD_HOUR),
+            244,
+        )
+
+    def test_field_hour_ablation_config_diff_is_limited_to_tokenization_and_run_paths(self) -> None:
+        control = load_yaml_config(REPO_ROOT / "configs/train/t4x2_stage_a_hour.yaml")
+        candidate = load_yaml_config(REPO_ROOT / "configs/train/t4x2_stage_a_field_hour_168.yaml")
+
+        contract = validate_field_hour_ablation_config(control, candidate)
+
+        self.assertFalse(contract["sample_contract_changed"])
+        self.assertFalse(contract["warm_start"])
+        self.assertEqual(contract["varied_factor"], "model.hour_tokenization")
+
+    def test_field_hour_ablation_config_rejects_training_drift(self) -> None:
+        control = load_yaml_config(REPO_ROOT / "configs/train/t4x2_stage_a_hour.yaml")
+        candidate = load_yaml_config(REPO_ROOT / "configs/train/t4x2_stage_a_field_hour_168.yaml")
+        candidate["training"]["learning_rate"] = 4.0e-5
+
+        with self.assertRaisesRegex(ValueError, "training.learning_rate"):
+            validate_field_hour_ablation_config(control, candidate)
 
     def test_main_route_config_requires_explicit_training_stage(self) -> None:
         config = {
@@ -514,6 +551,155 @@ class TrainingMainRouteTest(unittest.TestCase):
         self.assertEqual(adapter.field_embedding.num_embeddings, 8)
         self.assertEqual(adapter.field_hidden_size, 8)
 
+    @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is not installed")
+    def test_field_hour_adapter_outputs_seven_tokens_per_hour(self) -> None:
+        import torch
+
+        from trauma_predict.modeling.main_route import FieldHourStateAdapter, HourStateAdapter
+
+        torch.manual_seed(17)
+        adapter = FieldHourStateAdapter(
+            hidden_size=32,
+            adapter_hidden_size=16,
+            dropout=0.0,
+            field_hidden_size=8,
+        )
+        values = torch.zeros((2, 24, 7))
+        mask = torch.ones((2, 24, 7))
+        vent = torch.zeros((2, 24, 1))
+
+        output = adapter(values, mask, vent)
+
+        self.assertEqual(output.shape, (2, 24, 7, 32))
+        self.assertEqual(len(adapter.vital_value_projections), 7)
+        self.assertEqual(adapter.field_embedding.num_embeddings, 8)
+        torch.manual_seed(17)
+        control = HourStateAdapter(
+            hidden_size=32,
+            adapter_hidden_size=16,
+            dropout=0.0,
+            field_hidden_size=8,
+        )
+        self.assertEqual(
+            sum(parameter.numel() for parameter in adapter.parameters()),
+            sum(parameter.numel() for parameter in control.parameters()),
+        )
+        self.assertEqual(set(adapter.state_dict()), set(control.state_dict()))
+        for key, candidate_value in adapter.state_dict().items():
+            self.assertTrue(torch.equal(candidate_value, control.state_dict()[key]), key)
+
+    @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is not installed")
+    def test_field_hour_expansion_replaces_each_hour_placeholder_with_seven_tokens(self) -> None:
+        import torch
+
+        from trauma_predict.modeling.main_route import expand_hour_placeholders
+
+        token_embeddings = torch.arange(6, dtype=torch.float32).view(1, 6, 1)
+        attention_mask = torch.ones((1, 6), dtype=torch.long)
+        field_hours = torch.zeros((1, 2, 7, 1), dtype=torch.float32)
+        hour_positions = torch.tensor([[2, 3]], dtype=torch.long)
+        hour_position_mask = torch.tensor([[True, True]])
+        state_position = torch.tensor([4], dtype=torch.long)
+
+        expanded, expanded_mask, expanded_state = expand_hour_placeholders(
+            token_embeddings,
+            attention_mask,
+            field_hours,
+            hour_positions,
+            hour_position_mask,
+            state_position,
+        )
+
+        self.assertEqual(expanded.shape, (1, 18, 1))
+        self.assertEqual(expanded_mask.sum().item(), 18)
+        self.assertEqual(expanded_state.item(), 16)
+        self.assertEqual(expanded[0, 2:9, 0].tolist(), [2.0] * 7)
+        self.assertEqual(expanded[0, 9:16, 0].tolist(), [3.0] * 7)
+
+    @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is not installed")
+    def test_field_hour_model_forward_and_backward_use_expanded_sequence(self) -> None:
+        import torch
+        import torch.nn as nn
+
+        class FakeEncoder(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.config = types.SimpleNamespace(
+                    hidden_size=16,
+                    model_type="modernbert",
+                    max_position_embeddings=4096,
+                    use_cache=True,
+                )
+                self.embeddings = nn.Embedding(128, 16)
+                self.last_sequence_length = 0
+
+            def resize_token_embeddings(self, _: int):
+                return self.embeddings
+
+            def get_input_embeddings(self):
+                return self.embeddings
+
+            def forward(self, inputs_embeds, attention_mask, **_):
+                self.last_sequence_length = int(inputs_embeds.shape[1])
+                weights = attention_mask.unsqueeze(-1).to(inputs_embeds.dtype)
+                context = (inputs_embeds * weights).sum(dim=1, keepdim=True) / weights.sum(
+                    dim=1, keepdim=True
+                ).clamp_min(1.0)
+                return types.SimpleNamespace(last_hidden_state=inputs_embeds + context)
+
+        fake_encoder = FakeEncoder()
+        fake_transformers = types.ModuleType("transformers")
+        fake_transformers.AutoModel = types.SimpleNamespace(
+            from_pretrained=lambda _: fake_encoder
+        )
+        collator = MainRouteBatchCollator(
+            tokenizer=FakeTokenizer(),
+            max_input_tokens=128,
+            normalizer=HourValueNormalizer.from_config(None),
+            active_losses={
+                "next_hour_values": True,
+                "next_hour_vent": False,
+                "next24_domain": False,
+                "next24_binary": False,
+                "next24_multiclass": False,
+            },
+            hour_tokenization=HOUR_TOKENIZATION_FIELD_HOUR,
+        )
+        batch = collator([_main_route_record()])
+
+        with patch.dict(sys.modules, {"transformers": fake_transformers}):
+            from trauma_predict.modeling.main_route import MainRouteModel
+
+            model = MainRouteModel(
+                base_model="fake",
+                tokenizer_length=64,
+                adapter_hidden_size=12,
+                hour_field_hidden_size=8,
+                dropout=0.0,
+                active_losses={
+                    "next_hour_values": True,
+                    "next_hour_vent": False,
+                    "next24_domain": False,
+                    "next24_binary": False,
+                    "next24_multiclass": False,
+                },
+                loss_weights={
+                    "next_hour_values": 1.0,
+                    "next_hour_vent": 0.0,
+                    "next24_domain": 0.0,
+                    "next24_binary": 0.0,
+                    "next24_multiclass": 0.0,
+                },
+                hour_tokenization=HOUR_TOKENIZATION_FIELD_HOUR,
+            )
+            output = model(**batch)
+            output["loss"].backward()
+
+        original_length = int(batch["attention_mask"].sum().item())
+        self.assertEqual(fake_encoder.last_sequence_length, original_length + 12)
+        self.assertEqual(output["next_hour_value_logits"].shape, (1, 7))
+        self.assertTrue(any(parameter.grad is not None for parameter in model.hour_adapter.parameters()))
+
     def test_quarantine_rng_state_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             checkpoint = Path(tmp) / "checkpoint-500"
@@ -572,6 +758,32 @@ class TrainingMainRouteTest(unittest.TestCase):
 
             validate_resume_checkpoint_stage(str(checkpoint), contract)
 
+    def test_resume_checkpoint_rejects_24_token_checkpoint_for_168_run(self) -> None:
+        contract = resolve_training_stage_contract({
+            "schema_version": "trauma_predict.train_config.v1",
+            "run_name": "t4x2_stage_a_field_hour_168",
+            "training_stage": "stage_a_next_hour",
+            "training": _training_block(active_next24=False),
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint = Path(tmp) / "checkpoint-500"
+            checkpoint.mkdir()
+            (checkpoint / "training_stage_metadata.json").write_text(
+                json.dumps({
+                    "route": MAIN_ROUTE,
+                    **contract.to_metadata(),
+                    "model_contract": {"hour_tokenization": "hour"},
+                }),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "hour_tokenization mismatch"):
+                validate_resume_checkpoint_stage(
+                    str(checkpoint),
+                    contract,
+                    hour_tokenization=HOUR_TOKENIZATION_FIELD_HOUR,
+                )
+
     def test_verify_dataset_notebook_uses_v2_and_does_not_print_token_clone(self) -> None:
         notebook_text = (REPO_ROOT / "notebooks" / "kaggle" / "verify_private_dataset.ipynb").read_text(
             encoding="utf-8"
@@ -597,6 +809,28 @@ class TrainingMainRouteTest(unittest.TestCase):
         self.assertIn("torchrun_train.log", launcher_text)
         self.assertNotIn("for line in lines[-20:]", launcher_text)
         self.assertNotIn("stage-a-hour-training-20260708-r2", notebook_text)
+
+    def test_field_hour_notebook_pins_its_own_tag_and_launcher(self) -> None:
+        notebook_text = (
+            REPO_ROOT / "notebooks/kaggle/train_stage_a_field_hour_168.ipynb"
+        ).read_text(encoding="utf-8")
+        launcher_text = (
+            REPO_ROOT / "notebooks/kaggle/run_stage_a_field_hour_168.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("stage-a-v3-field-hour-168-20260710", notebook_text)
+        self.assertIn("run_stage_a_field_hour_168.py", notebook_text)
+        self.assertIn("exactly 2 visible GPUs", launcher_text)
+        self.assertIn("validate_field_hour_ablation_config", launcher_text)
+
+    def test_stage_a_launcher_keeps_bounded_output_and_heartbeat(self) -> None:
+        launcher_text = (
+            REPO_ROOT / "notebooks/kaggle/run_stage_a_hour.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("stream_patterns=stream_patterns", launcher_text)
+        self.assertIn("TRAUMA_PREDICT_HEARTBEAT_SECONDS", launcher_text)
+        self.assertIn("_HEARTBEAT elapsed_s=", launcher_text)
+        self.assertIn('status_label="STAGE_A_FULL_RUN"', launcher_text)
 
 
 def _main_route_record() -> dict[str, object]:

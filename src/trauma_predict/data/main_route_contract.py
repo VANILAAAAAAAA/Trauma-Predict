@@ -11,6 +11,9 @@ MAIN_ROUTE = "main_hour_adapter_structured_heads"
 STATE_TOKEN = "<STATE>"
 HOUR_VALUE_ORDER = ("hr", "sbp", "dbp", "map", "rr", "temp", "spo2")
 HOUR_SPECIAL_TOKENS = tuple(f"<H-{index:02d}>" for index in range(23, 0, -1)) + ("<H0>",)
+HOUR_TOKENIZATION_HOUR = "hour"
+HOUR_TOKENIZATION_FIELD_HOUR = "field_hour"
+HOUR_TOKENIZATION_MODES = (HOUR_TOKENIZATION_HOUR, HOUR_TOKENIZATION_FIELD_HOUR)
 TARGET_DOMAINS = ("shock", "resp", "renal", "heme", "tx")
 FORBIDDEN_HOUR_TEXT = ("hr=", "sbp=", "dbp=", "map=", "rr=", "temp=", "spo2=", "vent_on=")
 FORBIDDEN_LEGACY_TEXT = ("fio2", "fio2_max", "high_support", "very_high_support")
@@ -85,6 +88,23 @@ def hour_token_to_time_index(token: str) -> int:
         return HOUR_SPECIAL_TOKENS.index(token)
     except ValueError as exc:
         raise ValueError(f"unknown HOUR placeholder: {token}") from exc
+
+
+def resolve_hour_tokenization(value: Any) -> str:
+    mode = str(value or HOUR_TOKENIZATION_HOUR)
+    if mode not in HOUR_TOKENIZATION_MODES:
+        allowed = ", ".join(HOUR_TOKENIZATION_MODES)
+        raise ValueError(f"model.hour_tokenization must be one of: {allowed}")
+    return mode
+
+
+def effective_input_token_count(base_token_count: int, hour_count: int, mode: str) -> int:
+    resolved = resolve_hour_tokenization(mode)
+    if hour_count < 1 or hour_count > len(HOUR_SPECIAL_TOKENS):
+        raise ValueError(f"HOUR length must be 1..24, got {hour_count}")
+    if resolved == HOUR_TOKENIZATION_FIELD_HOUR:
+        return base_token_count + hour_count * (len(HOUR_VALUE_ORDER) - 1)
+    return base_token_count
 
 
 def validate_main_route_record(

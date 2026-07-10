@@ -13,18 +13,23 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `configs/train/p100_stage_a_hour.yaml` | config | Stage A single-GPU/P100 HOUR values-only training config. | Uses environment-variable paths only. |
 | `configs/train/t4x2_first_run.yaml` | config | Joint-baseline T4 x2 training config; not Stage A. | Uses environment-variable paths only. |
 | `configs/train/t4x2_smoke.yaml` | config | Joint-baseline smoke config; not Stage A. | Uses environment-variable paths only. |
+| `configs/train/t4x2_stage_a_field_hour_168.yaml` | config | Canonical T4 x2 Stage A candidate config for the 168-token HOUR ablation. | Uses environment-variable paths only. |
+| `configs/train/t4x2_stage_a_field_hour_168_smoke.yaml` | config | Two-step DDP smoke config for the 168-token HOUR ablation. | Uses environment-variable paths only. |
 | `configs/train/t4x2_stage_a_hour.yaml` | config | Stage A T4 x2 HOUR values-only training config with ventilation and `NEXT_24H` losses inactive. | Uses environment-variable paths only. |
 | `configs/train/t4x2_stage_a_hour_smoke.yaml` | config | Stage A smoke config that proves HOUR values-only model/data/runtime wiring. | Uses environment-variable paths only. |
 | `docs/DATA_POLICY.md` | docs | Allowed and forbidden repository content policy. | No data. |
 | `docs/FILE_INDEX.md` | docs | Tracked-file index. | No data. |
 | `docs/KAGGLE_RUNBOOK.md` | docs | Kaggle launch and output policy. | No data. |
 | `docs/REPO_STRUCTURE.md` | docs | Directory structure and design rules. | No data. |
+| `docs/STAGE_A_24_VS_168_ABLATION.md` | docs | Frozen control/candidate contract for the Stage A 24-token versus 168-token HOUR ablation. | No data. |
 | `docs/TRAINING_STAGES.md` | docs | Stage A/B/C and joint-baseline training contract. | No data. |
 | `notebooks/kaggle/README.md` | kaggle | Explains Kaggle launcher folder boundary. | No data. |
+| `notebooks/kaggle/run_stage_a_field_hour_168.py` | kaggle | Automated T4 x2 launcher that enforces and records the 168-token ablation contract. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/run_stage_a_hour.py` | kaggle | Automated Stage A Kaggle launcher for preferred-encoder HOUR-only training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/scan_token_lengths.py` | kaggle | Scans shard input token lengths against the configured encoder window before training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
 | `notebooks/kaggle/train_full_first_run.ipynb` | kaggle | End-to-end Kaggle notebook for the joint-baseline run; not Stage A. | No data. |
+| `notebooks/kaggle/train_stage_a_field_hour_168.ipynb` | kaggle | Upload-ready Kaggle notebook pinned to the independent 168-token Stage A branch/tag. | No data. |
 | `notebooks/kaggle/train_stage_a_hour.ipynb` | kaggle | End-to-end Kaggle notebook for Stage A HOUR-only training. | No data. |
 | `notebooks/kaggle/verify_private_dataset.ipynb` | kaggle | Kaggle notebook that verifies private Dataset mounting or API download before preflight. | No data. |
 | `pyproject.toml` | packaging | Python package, optional dependencies, and test config. | No data. |
@@ -47,6 +52,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `src/trauma_predict/training/__init__.py` | package | Training namespace. | No data. |
 | `src/trauma_predict/training/checkpoints.py` | package | Checkpoint retention helpers. | No data. |
 | `src/trauma_predict/training/config.py` | package | YAML config loading and environment expansion. | No data. |
+| `src/trauma_predict/training/hour_token_ablation.py` | package | Enforces that the 168-token candidate differs from Stage A v1 only in the declared representation factor and run paths. | No data. |
 | `src/trauma_predict/training/main_route.py` | package | Hugging Face Trainer loop for main-route structured prediction. | No data. |
 | `src/trauma_predict/training/runtime.py` | package | Shared training runtime helpers for logging, checkpoints, and snapshots. | No data. |
 | `src/trauma_predict/training/stages.py` | package | Explicit Stage A/B/C and joint-baseline active-loss contracts. | No data. |

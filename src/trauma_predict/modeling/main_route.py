@@ -6,10 +6,13 @@ from typing import Any
 
 from trauma_predict.data.main_route_contract import (
     BINARY_NEXT24_FIELD_SPECS,
+    HOUR_TOKENIZATION_FIELD_HOUR,
+    HOUR_TOKENIZATION_HOUR,
     HOUR_SPECIAL_TOKENS,
     HOUR_VALUE_ORDER,
     MULTICLASS_NEXT24_FIELD_SPECS,
     TARGET_DOMAINS,
+    resolve_hour_tokenization,
 )
 
 
@@ -74,6 +77,130 @@ class HourStateAdapter(_nn_module()):
         return self.hour_network(torch.cat(field_features, dim=-1))
 
 
+class FieldHourStateAdapter(_nn_module()):
+    """Build one encoder token for each vital in each hour.
+
+    Ventilation remains input-only context and is broadcast across the seven
+    vital tokens for the corresponding hour, preserving exactly 7 * L tokens.
+    """
+
+    def __init__(
+        self,
+        hidden_size: int,
+        adapter_hidden_size: int,
+        dropout: float,
+        field_hidden_size: int = 64,
+    ) -> None:
+        super().__init__()
+        import torch.nn as nn
+
+        self.field_hidden_size = field_hidden_size
+        self.field_embedding = nn.Embedding(len(HOUR_VALUE_ORDER) + 1, field_hidden_size)
+        self.vital_value_projections = nn.ModuleList([
+            nn.Linear(1, field_hidden_size)
+            for _ in HOUR_VALUE_ORDER
+        ])
+        self.vital_mask_embeddings = nn.ModuleList([
+            nn.Embedding(2, field_hidden_size)
+            for _ in HOUR_VALUE_ORDER
+        ])
+        self.vent_state_embedding = nn.Embedding(2, field_hidden_size)
+        self.field_norm = nn.LayerNorm(field_hidden_size)
+        self.hour_network = nn.Sequential(
+            nn.LayerNorm(field_hidden_size * (len(HOUR_VALUE_ORDER) + 1)),
+            nn.Linear(field_hidden_size * (len(HOUR_VALUE_ORDER) + 1), adapter_hidden_size),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(adapter_hidden_size, hidden_size),
+            nn.LayerNorm(hidden_size),
+        )
+
+    def forward(self, hour_values, hour_mask, hour_vent):  # type: ignore[no-untyped-def]
+        import torch
+
+        values = torch.nan_to_num(hour_values, nan=0.0, posinf=0.0, neginf=0.0)
+        masks = hour_mask.float().clamp(0.0, 1.0)
+        field_ids = torch.arange(len(HOUR_VALUE_ORDER) + 1, device=values.device)
+        field_embeddings = self.field_embedding(field_ids)
+        vent_state = hour_vent.float().clamp(0.0, 1.0).squeeze(-1).long()
+        vent_feature = self.field_norm(
+            self.vent_state_embedding(vent_state)
+            + field_embeddings[-1].view(1, 1, -1)
+        )
+
+        field_features = []
+        for index, value_projection in enumerate(self.vital_value_projections):
+            value = values[..., index:index + 1] * masks[..., index:index + 1]
+            value_feature = value_projection(value)
+            mask_feature = self.vital_mask_embeddings[index](masks[..., index].long())
+            field_feature = field_embeddings[index].view(1, 1, -1)
+            field_features.append(self.field_norm(value_feature + mask_feature + field_feature))
+
+        token_inputs = []
+        for active_index, field_feature in enumerate(field_features):
+            zero = torch.zeros_like(field_feature)
+            slots = [
+                field_feature if index == active_index else zero
+                for index in range(len(HOUR_VALUE_ORDER))
+            ]
+            slots.append(vent_feature)
+            token_inputs.append(torch.cat(slots, dim=-1))
+        return self.hour_network(torch.stack(token_inputs, dim=2))
+
+
+def expand_hour_placeholders(
+    token_embeddings,
+    attention_mask,
+    field_hour_embeddings,
+    hour_positions,
+    hour_position_mask,
+    state_position,
+):  # type: ignore[no-untyped-def]
+    """Replace each serialized HOUR placeholder with seven field tokens."""
+    import torch
+    from torch.nn.utils.rnn import pad_sequence
+
+    sequences = []
+    expanded_state_positions = []
+    for batch_index in range(token_embeddings.shape[0]):
+        valid_length = int(attention_mask[batch_index].sum().item())
+        valid_hours = hour_position_mask[batch_index].bool()
+        positions = hour_positions[batch_index][valid_hours].tolist()
+        if positions != sorted(positions):
+            raise ValueError("HOUR positions must be strictly ordered")
+        if any(position >= int(state_position[batch_index].item()) for position in positions):
+            raise ValueError("all HOUR positions must precede <STATE>")
+
+        parts = []
+        cursor = 0
+        for hour_index, position in enumerate(positions):
+            parts.append(token_embeddings[batch_index, cursor:position])
+            base_embedding = token_embeddings[batch_index, position].view(1, -1)
+            parts.append(base_embedding + field_hour_embeddings[batch_index, hour_index])
+            cursor = position + 1
+        parts.append(token_embeddings[batch_index, cursor:valid_length])
+        sequence = torch.cat(parts, dim=0)
+        sequences.append(sequence)
+        expanded_state_positions.append(
+            int(state_position[batch_index].item())
+            + len(positions) * (len(HOUR_VALUE_ORDER) - 1)
+        )
+
+    expanded_embeddings = pad_sequence(sequences, batch_first=True, padding_value=0.0)
+    expanded_attention_mask = torch.zeros(
+        expanded_embeddings.shape[:2],
+        dtype=attention_mask.dtype,
+        device=attention_mask.device,
+    )
+    for batch_index, sequence in enumerate(sequences):
+        expanded_attention_mask[batch_index, :sequence.shape[0]] = 1
+    return (
+        expanded_embeddings,
+        expanded_attention_mask,
+        torch.tensor(expanded_state_positions, dtype=state_position.dtype, device=state_position.device),
+    )
+
+
 class MainRouteModel(_nn_module()):
     def __init__(
         self,
@@ -84,6 +211,7 @@ class MainRouteModel(_nn_module()):
         dropout: float = 0.1,
         loss_weights: dict[str, float] | None = None,
         active_losses: dict[str, bool] | None = None,
+        hour_tokenization: str = HOUR_TOKENIZATION_HOUR,
     ) -> None:
         super().__init__()
         import torch
@@ -95,12 +223,21 @@ class MainRouteModel(_nn_module()):
         self.encoder.resize_token_embeddings(tokenizer_length)
         hidden_size = int(getattr(self.encoder.config, "hidden_size"))
         self.hidden_size = hidden_size
-        self.hour_adapter = HourStateAdapter(
-            hidden_size=hidden_size,
-            adapter_hidden_size=adapter_hidden_size,
-            dropout=dropout,
-            field_hidden_size=hour_field_hidden_size,
-        )
+        self.hour_tokenization = resolve_hour_tokenization(hour_tokenization)
+        if self.hour_tokenization == HOUR_TOKENIZATION_FIELD_HOUR:
+            self.hour_adapter = FieldHourStateAdapter(
+                hidden_size=hidden_size,
+                adapter_hidden_size=adapter_hidden_size,
+                dropout=dropout,
+                field_hidden_size=hour_field_hidden_size,
+            )
+        else:
+            self.hour_adapter = HourStateAdapter(
+                hidden_size=hidden_size,
+                adapter_hidden_size=adapter_hidden_size,
+                dropout=dropout,
+                field_hidden_size=hour_field_hidden_size,
+            )
         self.hour_time_embedding = nn.Embedding(len(HOUR_SPECIAL_TOKENS), hidden_size)
         self.hour_segment_embedding = nn.Parameter(torch.zeros(hidden_size))
         self.dropout = nn.Dropout(dropout)
@@ -170,18 +307,34 @@ class MainRouteModel(_nn_module()):
 
         token_embeddings = self.encoder.get_input_embeddings()(input_ids)
         hour_embeddings = self.hour_adapter(hour_values, hour_mask, hour_vent)
-        hour_embeddings = (
-            hour_embeddings
-            + self.hour_time_embedding(hour_time_indices)
-            + self.hour_segment_embedding.view(1, 1, -1)
-        )
-        inputs_embeds = token_embeddings.clone()
-        valid = hour_position_mask.bool()
-        if bool(valid.any()):
-            batch_index = torch.arange(input_ids.shape[0], device=input_ids.device).unsqueeze(1).expand_as(hour_positions)
-            inputs_embeds[batch_index[valid], hour_positions[valid]] = (
-                inputs_embeds[batch_index[valid], hour_positions[valid]] + hour_embeddings[valid]
+        hour_time_embeddings = self.hour_time_embedding(hour_time_indices)
+        if self.hour_tokenization == HOUR_TOKENIZATION_FIELD_HOUR:
+            hour_embeddings = (
+                hour_embeddings
+                + hour_time_embeddings.unsqueeze(2)
+                + self.hour_segment_embedding.view(1, 1, 1, -1)
             )
+            inputs_embeds, attention_mask, state_position = expand_hour_placeholders(
+                token_embeddings,
+                attention_mask,
+                hour_embeddings,
+                hour_positions,
+                hour_position_mask,
+                state_position,
+            )
+        else:
+            hour_embeddings = (
+                hour_embeddings
+                + hour_time_embeddings
+                + self.hour_segment_embedding.view(1, 1, -1)
+            )
+            inputs_embeds = token_embeddings.clone()
+            valid = hour_position_mask.bool()
+            if bool(valid.any()):
+                batch_index = torch.arange(input_ids.shape[0], device=input_ids.device).unsqueeze(1).expand_as(hour_positions)
+                inputs_embeds[batch_index[valid], hour_positions[valid]] = (
+                    inputs_embeds[batch_index[valid], hour_positions[valid]] + hour_embeddings[valid]
+                )
 
         encoder_kwargs: dict[str, Any] = {
             "inputs_embeds": inputs_embeds,
@@ -279,8 +432,19 @@ class MainRouteModel(_nn_module()):
             "hidden_size": self.hidden_size,
             "hour_adapter": {
                 "type": "field_aware",
+                "tokenization": self.hour_tokenization,
                 "field_hidden_size": self.hour_adapter.field_hidden_size,
                 "vital_mask_embedding": "per_field",
+                "full_window_token_count": (
+                    len(HOUR_SPECIAL_TOKENS) * len(HOUR_VALUE_ORDER)
+                    if self.hour_tokenization == HOUR_TOKENIZATION_FIELD_HOUR
+                    else len(HOUR_SPECIAL_TOKENS)
+                ),
+                "ventilation": (
+                    "broadcast_hour_context"
+                    if self.hour_tokenization == HOUR_TOKENIZATION_FIELD_HOUR
+                    else "separate_hour_field_before_aggregation"
+                ),
             },
             "hour_value_order": list(HOUR_VALUE_ORDER),
             "target_domains": list(TARGET_DOMAINS),
