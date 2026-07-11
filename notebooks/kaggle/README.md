@@ -12,6 +12,6 @@ configs, run name, and output archive. Use
 training/data setting still matches the archived Stage A v1 control before it
 starts.
 
-Formal Stage A launchers keep complete subprocess logs on disk, print only
-selected train/eval/status lines, and emit a 300-second heartbeat so a hosted
-Kaggle run is observable without flooding the notebook page.
+Formal Stage A launchers keep complete subprocess logs on disk. During formal
+training the notebook prints stable `TRAIN_LOSS=` and `EVAL_LOSS=` lines from
+rank zero, plus bounded status milestones and a 300-second heartbeat.

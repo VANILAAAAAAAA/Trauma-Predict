@@ -67,6 +67,20 @@ class MainRouteRunResult:
         }
 
 
+def loss_console_lines(logs: dict[str, Any]) -> list[str]:
+    """Return stable rank-zero console lines for hosted training observability."""
+    lines: list[str] = []
+    train_loss = logs.get("loss")
+    if train_loss is None:
+        train_loss = logs.get("train_loss")
+    if train_loss is not None:
+        lines.append(f"TRAIN_LOSS={float(train_loss):.6f}")
+    eval_loss = logs.get("eval_loss")
+    if eval_loss is not None:
+        lines.append(f"EVAL_LOSS={float(eval_loss):.6f}")
+    return lines
+
+
 def run_main_route_training(
     train_config: dict[str, Any],
     dataset_config: dict[str, Any],
@@ -214,6 +228,8 @@ def run_main_route_training(
             if not logs or int(getattr(args, "process_index", 0)) != 0:
                 return
             logs.update(getattr(trainer, "latest_loss_parts", {}))
+            for line in loss_console_lines(logs):
+                print(line, flush=True)
             append_jsonl(metrics_path, {
                 "created_at": utc_now(),
                 "event": "trainer_log",

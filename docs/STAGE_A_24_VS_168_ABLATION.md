@@ -10,7 +10,7 @@ This branch is the 168-token candidate only:
 
 ```text
 branch: codex/stage-a-v3-field-hour-168-20260710
-tag: stage-a-v3-field-hour-168-20260710
+tag: stage-a-v3-field-hour-168-run-20260711
 base commit: 5ce25c1
 control archive: kaggle_stage_a_v1_hour24_numeric_projection_20260709
 control run: t4x2_stage_a_hour
@@ -106,9 +106,11 @@ scans effective expanded token lengths, runs a two-step DDP smoke test, streams
 filtered training progress, trains 4000 steps, evaluates all validation records,
 and creates a compressed output archive.
 
-The page output is bounded to train/eval/status lines plus a heartbeat every 300
-seconds by default. Full subprocess output remains in the run-local log. This is
-an observability-only launcher repair and does not change model computation.
+During formal training the page prints rank-zero `TRAIN_LOSS=` and `EVAL_LOSS=`
+lines at every configured logging/evaluation interval, plus bounded status
+milestones and a heartbeat every 300 seconds. Full subprocess output remains in
+the run-local log. This is an observability-only launcher repair and does not
+change model computation.
 
 ## Interpretation boundary
 

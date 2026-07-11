@@ -28,6 +28,7 @@ from trauma_predict.data.main_route import (
 from trauma_predict.training.main_route import (
     _hour_input_context,
     _next_hour_target_for_active_losses,
+    loss_console_lines,
     select_prediction_records,
     validate_main_route_config,
     validate_resume_checkpoint_stage,
@@ -98,6 +99,20 @@ class FakeTokenizer:
 
 
 class TrainingMainRouteTest(unittest.TestCase):
+    def test_loss_console_lines_are_stable_and_loss_only(self) -> None:
+        self.assertEqual(
+            loss_console_lines({"loss": 0.12345678, "learning_rate": 3e-5, "epoch": 1.0}),
+            ["TRAIN_LOSS=0.123457"],
+        )
+        self.assertEqual(
+            loss_console_lines({"eval_loss": 0.23456789, "eval_runtime": 12.0}),
+            ["EVAL_LOSS=0.234568"],
+        )
+        self.assertEqual(
+            loss_console_lines({"train_loss": 0.34567891, "train_runtime": 30.0}),
+            ["TRAIN_LOSS=0.345679"],
+        )
+
     def test_main_route_config_rejects_text_generation_task(self) -> None:
         config = {
             "schema_version": "trauma_predict.train_config.v1",
@@ -818,7 +833,7 @@ class TrainingMainRouteTest(unittest.TestCase):
             REPO_ROOT / "notebooks/kaggle/run_stage_a_field_hour_168.py"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("stage-a-v3-field-hour-168-20260710", notebook_text)
+        self.assertIn("stage-a-v3-field-hour-168-run-20260711", notebook_text)
         self.assertIn("run_stage_a_field_hour_168.py", notebook_text)
         self.assertIn("exactly 2 visible GPUs", launcher_text)
         self.assertIn("validate_field_hour_ablation_config", launcher_text)
@@ -828,6 +843,10 @@ class TrainingMainRouteTest(unittest.TestCase):
             REPO_ROOT / "notebooks/kaggle/run_stage_a_hour.py"
         ).read_text(encoding="utf-8")
         self.assertIn("stream_patterns=stream_patterns", launcher_text)
+        self.assertIn('"TRAIN_LOSS="', launcher_text)
+        self.assertIn('"EVAL_LOSS="', launcher_text)
+        self.assertNotIn("{'loss':", launcher_text)
+        self.assertNotIn("{'eval_loss':", launcher_text)
         self.assertIn("TRAUMA_PREDICT_HEARTBEAT_SECONDS", launcher_text)
         self.assertIn("_HEARTBEAT elapsed_s=", launcher_text)
         self.assertIn('status_label="STAGE_A_FULL_RUN"', launcher_text)

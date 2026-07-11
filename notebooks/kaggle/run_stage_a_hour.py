@@ -533,16 +533,14 @@ def run_full_training(train_config: str, run_name: str, nproc: int, log_dir: Pat
         "--config",
         train_config,
     ]
-    print_train_loss = os.environ.get("TRAUMA_PREDICT_PRINT_TRAIN_LOSS", "1") != "0"
     stream_patterns = (
-        "{'eval_loss':",
+        "TRAIN_LOSS=",
+        "EVAL_LOSS=",
         "training_status=",
         "run_config_snapshot=",
         "metrics_jsonl=",
         "training_result=",
     )
-    if print_train_loss:
-        stream_patterns = ("{'loss':", *stream_patterns)
     run_to_log(
         command,
         train_log,

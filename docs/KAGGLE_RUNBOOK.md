@@ -168,7 +168,7 @@ The automated Stage A launcher keeps Kaggle notebook stdout short. Detailed comm
 /kaggle/working/trauma-predict-runs/<run_name>/logs/
 ```
 
-The notebook page prints only milestones, compact summaries, training/eval metric lines, and a short failure tail. Set `TRAUMA_PREDICT_PRINT_TRAIN_LOSS=0` to suppress intermediate training-loss lines as well.
+The notebook page prints milestones, compact summaries, rank-zero `TRAIN_LOSS=` and `EVAL_LOSS=` lines, a heartbeat during long-running training, and a short failure tail. Complete subprocess output remains in the run-local log.
 
 The direct preflight command expects the reconstructed artifact root, not the raw Kaggle upload folder:
 
