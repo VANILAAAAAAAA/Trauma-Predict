@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trauma-predict.local/schemas/multires_event_normalization.schema.json",
+  "title": "Train-only multires_event_v1 normalization statistics",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "version", "dataset_fingerprint", "supervision_sha256", "fit_split",
+    "subject_count", "subject_ids_sha256", "clip_value", "epsilon", "event_stats",
+    "fallback_event_stats", "fallback_event_keys", "fallback_level_counts", "static_stats"
+  ],
+  "properties": {
+    "schema": {"const": "trauma_predict.multires_event_normalization.v1"},
+    "version": {"const": 1},
+    "dataset_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "supervision_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "fit_split": {"const": "train"},
+    "subject_count": {"type": "integer", "minimum": 1},
+    "subject_ids_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "clip_value": {"type": "number", "exclusiveMinimum": 0},
+    "epsilon": {"type": "number", "exclusiveMinimum": 0},
+    "event_stats": {"type": "object"},
+    "fallback_event_stats": {"type": "object"},
+    "fallback_event_keys": {"type": "object"},
+    "fallback_level_counts": {
+      "type": "object",
+      "required": ["template", "field", "global"],
+      "properties": {
+        "template": {"type": "integer", "minimum": 0},
+        "field": {"type": "integer", "minimum": 0},
+        "global": {"type": "integer", "minimum": 0}
+      }
+    },
+    "static_stats": {"type": "object"}
+  }
+}

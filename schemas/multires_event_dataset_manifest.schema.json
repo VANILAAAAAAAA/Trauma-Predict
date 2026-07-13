@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trauma-predict.local/schemas/multires_event_dataset_manifest.schema.json",
+  "title": "multires_event_v1 dataset manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "dataset_id", "status", "fingerprint", "source", "counts", "files"],
+  "properties": {
+    "schema": {"const": "multires_event_dataset_manifest_v2"},
+    "dataset_id": {"const": "multires_event_v1_c4_full_20260712"},
+    "status": {"const": "SUCCEEDED"},
+    "plan_only": {"const": false},
+    "fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source": {
+      "type": "object",
+      "required": ["source_fingerprint", "registry_sha256"]
+    },
+    "counts": {
+      "type": "object",
+      "required": ["samples", "built_by_split", "completed_shards"],
+      "properties": {
+        "samples": {"const": 50350},
+        "built_by_split": {
+          "type": "object",
+          "properties": {
+            "train": {"const": 37734},
+            "val": {"const": 6309},
+            "test": {"const": 6307}
+          },
+          "required": ["train", "val", "test"]
+        },
+        "completed_shards": {"const": 52}
+      }
+    },
+    "files": {
+      "type": "object",
+      "required": ["sample_manifest", "event_templates", "time_blocks", "shards"],
+      "properties": {
+        "sample_manifest": {"type": "string"},
+        "event_templates": {"type": "string"},
+        "time_blocks": {"type": "string"},
+        "shards": {"type": "object", "minProperties": 52, "maxProperties": 52}
+      }
+    }
+  }
+}

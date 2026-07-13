@@ -1,0 +1,58 @@
+schema_version: trauma_predict.multires_event_dataset_config.v1
+dataset_id: multires_event_v1_c4_full_20260712
+dataset_root: ${TRAUMA_PREDICT_DATA_ROOT}
+dataset_manifest: dataset_manifest.json
+sample_manifest: sample_manifest.csv
+event_templates: event_templates.json
+time_blocks: time_blocks.json
+shards_from_dataset_manifest: true
+sample_unit: icu_stay_anchor
+split_key: subject_id
+
+expected:
+  dataset_fingerprint: d58d003b6a9b2dd7c1f8d269a1867b534ea475a91118d7d4d44804bee69f9e47
+  source_fingerprint: ed578cf6b6e82c96f3aef71d58d6c176c794c9e8fbd37a468a709d64e94739b9
+  registry_version: 2026-07-12-full-field-v1
+  samples: 50350
+  split_samples:
+    train: 37734
+    val: 6309
+    test: 6307
+  shards: 52
+  canonical_target_rows: 1314
+  canonical_target_layout_sha256: d681210135ebc16a1a4bd8b6cf1fdb185be05b1eafc44aaed63b17cf30be49fe
+
+supervision_path: configs/model/multires_event_v1_supervision.json
+normalization:
+  path: ${TRAUMA_PREDICT_OUTPUT_ROOT}/contracts/multires_event_v1_normalization.json
+  fit_split: train
+  key: [field_id, operator_id, condition_id, resolution]
+  clip_value: 10.0
+  epsilon: 1.0e-6
+  max_values_per_key: 200000
+  seed: 20260712
+
+loader:
+  train_batch_size: 1
+  eval_batch_size: 1
+  num_workers: 0
+  pin_memory: true
+  persistent_workers: false
+  cache_shards: 1
+
+sampler:
+  seed: 20260712
+  mode: subject_uniform
+  train_pad_to_world_size: false
+  train_require_even_divisible: true
+  eval_pad_to_world_size: false
+
+evaluation:
+  phase: interval
+  interval_anchor_policy: one_fixed_per_subject
+  final_anchor_policy: all_validation_anchors
+  no_ddp_padding_duplicates: true
+
+preflight:
+  verify_all_shard_headers: true
+  verify_shard_sha256: false

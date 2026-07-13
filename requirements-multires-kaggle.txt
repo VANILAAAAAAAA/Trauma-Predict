@@ -1,0 +1,3 @@
+PyYAML>=6.0,<7
+numpy>=1.26,<3
+safetensors>=0.4,<1

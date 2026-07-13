@@ -1,0 +1,84 @@
+schema_version: trauma_predict.multires_train_config.v1
+route: multires_event_v1_baseline
+run_name: t4x2_multires_event_v1_smoke
+seed: 20260712
+
+model:
+  config_path: configs/model/multires_event_v1.yaml
+
+data:
+  dataset_root: ${TRAUMA_PREDICT_DATA_ROOT}
+  dataset_id: multires_event_v1_c4_full_20260712
+  dataset_fingerprint: d58d003b6a9b2dd7c1f8d269a1867b534ea475a91118d7d4d44804bee69f9e47
+  source_fingerprint: ed578cf6b6e82c96f3aef71d58d6c176c794c9e8fbd37a468a709d64e94739b9
+  expected_counts:
+    samples: 50350
+    train: 37734
+    val: 6309
+    test: 6307
+    shards: 52
+  train_shards: shards/train/*.jsonl.gz
+  val_shards: shards/val/*.jsonl.gz
+  test_shards: shards/test/*.jsonl.gz
+  subject_split: subject_split.csv
+  sample_manifest: sample_manifest.csv
+  dataset_manifest: dataset_manifest.json
+  subject_uniform_anchor_sampling: true
+
+target:
+  supervision_path: configs/model/multires_event_v1_supervision.json
+  supervision_file_sha256: 722cae631ca2b7cf801514cccdfd6cf18be9742f0cb94c9a1e89fb3696d095f6
+  canonical_layout_sha256: d681210135ebc16a1a4bd8b6cf1fdb185be05b1eafc44aaed63b17cf30be49fe
+  contract_version: multires_event_training_target_v1
+  canonical_rows: 1314
+  primary_direct_queries: 986
+  h1_queries: 92
+  m4_blocks: 6
+  m4_queries_per_block: 149
+  f24_evaluation_queries: 149
+  auxiliary_direct_queries: 105
+  f24_training_loss: false
+  auxiliary_training_loss: false
+  predict_target_mask: false
+
+normalization:
+  schema_version: trauma_predict.multires_event_normalization.v1
+  path: ${TRAUMA_PREDICT_OUTPUT_ROOT}/multires_event_v1_normalization.json
+  fit_split: train
+  fit_by_subject_only: true
+
+evaluation:
+  checkpoint_metric: eval_primary_loss_subject_macro
+  interval_anchor_policy: one_fixed_anchor_per_subject
+  interval_expected_subjects: 16
+  interval_subject_denominator: eligible_validation_subjects_with_persisted_anchors
+  final_anchor_policy: all_validation_anchors
+  final_expected_samples: 16
+  subject_macro: true
+  no_ddp_padding_duplicates: true
+
+training:
+  required_cuda_devices: 2
+  required_world_size: 2
+  precision: fp16
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 1
+  max_steps: 2
+  learning_rate: 3.0e-4
+  warmup_steps: 0
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  dataloader_num_workers: 0
+  logging_steps: 1
+  eval_steps: 1
+  save_steps: 1
+  keep_last_checkpoints: 1
+  max_train_subjects: 32
+  max_eval_subjects: 16
+  resume: false
+  ddp_find_unused_parameters: false
+
+outputs:
+  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_multires_event_v1_smoke
+  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_multires_event_v1_smoke/metrics.jsonl

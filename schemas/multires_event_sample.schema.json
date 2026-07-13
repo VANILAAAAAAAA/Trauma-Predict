@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trauma-predict.local/schemas/multires_event_sample.schema.json",
+  "title": "multires_event_v1 canonical sample",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "sample_id",
+    "subject_id",
+    "hadm_id",
+    "stay_id",
+    "split",
+    "prediction_hour",
+    "static",
+    "block_table",
+    "input_events",
+    "input_source_count",
+    "target_events",
+    "target_mask",
+    "target_source_count",
+    "registry",
+    "content_hash"
+  ],
+  "properties": {
+    "schema": {"const": "multires_event_sample_v1"},
+    "sample_id": {"type": "string", "minLength": 1},
+    "subject_id": {"type": "string", "minLength": 1},
+    "hadm_id": {"type": "string", "minLength": 1},
+    "stay_id": {"type": "string", "minLength": 1},
+    "split": {"enum": ["train", "val", "test"]},
+    "prediction_hour": {"type": "integer", "minimum": 18, "maximum": 312},
+    "static": {"type": "object"},
+    "block_table": {"type": "array", "minItems": 9, "items": {"$ref": "#/$defs/block"}},
+    "input_events": {"type": "array", "items": {"$ref": "#/$defs/event"}},
+    "input_source_count": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+    "target_events": {"type": "array", "minItems": 1314, "maxItems": 1314, "items": {"$ref": "#/$defs/event"}},
+    "target_mask": {"type": "array", "minItems": 1314, "maxItems": 1314, "items": {"enum": [0, 1]}},
+    "target_source_count": {"type": "array", "minItems": 1314, "maxItems": 1314, "items": {"type": "integer", "minimum": 0}},
+    "registry": {
+      "type": "object",
+      "required": ["registry_version", "tuple_order", "padding_id"],
+      "properties": {
+        "registry_version": {"const": "2026-07-12-full-field-v1"},
+        "tuple_order": {"const": ["field_id", "operator_id", "condition_id", "value", "block_id"]},
+        "padding_id": {"const": 0}
+      }
+    },
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "event": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        {"type": "integer", "minimum": 1},
+        {"type": "integer", "minimum": 1},
+        {"type": "integer", "minimum": 1},
+        {"type": ["number", "null"]},
+        {"type": "integer", "minimum": 0}
+      ]
+    },
+    "block": {
+      "type": "object",
+      "required": [
+        "block_id", "side", "side_id", "role", "role_id", "resolution",
+        "resolution_id", "relative_start_hour", "relative_end_hour", "span_hours"
+      ],
+      "properties": {
+        "block_id": {"type": "integer", "minimum": 0},
+        "side": {"enum": ["input", "target"]},
+        "side_id": {"type": "integer", "minimum": 1},
+        "role": {"type": "string"},
+        "role_id": {"type": "integer", "minimum": 1},
+        "resolution": {"enum": ["H1", "M4", "F24"]},
+        "resolution_id": {"type": "integer", "minimum": 1},
+        "relative_start_hour": {"type": "integer"},
+        "relative_end_hour": {"type": "integer"},
+        "span_hours": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

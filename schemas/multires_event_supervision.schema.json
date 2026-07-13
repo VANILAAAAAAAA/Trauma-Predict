@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trauma-predict.local/schemas/multires_event_supervision.schema.json",
+  "title": "multires_event_v1 model-side supervision overlay",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "base_registry", "input", "target", "static", "loss_family_ids", "semantic_component_ids"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema": {"const": "trauma_predict.multires_event_supervision.v1"},
+    "version": {"const": "multires_event_training_target_v1"},
+    "status": {"type": "string"},
+    "base_registry": {
+      "type": "object",
+      "required": ["version", "tuple_order", "padding_id", "canonical_target_layout_sha256"]
+    },
+    "input": {
+      "type": "object",
+      "required": ["excluded_fields", "filter_parallel_source_count"]
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "canonical_rows", "direct_resolutions", "derived_eval_resolutions",
+        "auxiliary_fields", "semantic_exclusions", "loss_family_overrides",
+        "baseline", "expected_counts"
+      ],
+      "properties": {
+        "canonical_rows": {"const": 1314},
+        "direct_resolutions": {"const": ["H1", "M4"]},
+        "derived_eval_resolutions": {"const": ["F24"]},
+        "auxiliary_fields": {"type": "array", "minItems": 7, "maxItems": 7},
+        "semantic_exclusions": {"type": "array", "minItems": 3, "maxItems": 3},
+        "loss_family_overrides": {"type": "array"},
+        "expected_counts": {"type": "object"}
+      }
+    },
+    "static": {"type": "object"},
+    "loss_family_ids": {"type": "object"},
+    "semantic_component_ids": {"type": "object", "minProperties": 8, "maxProperties": 8}
+  }
+}

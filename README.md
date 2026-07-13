@@ -1,6 +1,6 @@
 # Trauma-Predict
 
-Trauma-Predict is the clean machine-learning repository for training and evaluating the textual V1 trauma ICU prediction model. It is a code-only repository: restricted MIMIC-derived data, generated samples, checkpoints, run outputs, and agent artifacts are not stored here.
+Trauma-Predict is the code-only repository for training and evaluating trauma ICU prediction models. Restricted MIMIC-derived data, generated samples, checkpoints, run outputs, and agent artifacts are not stored here.
 
 The upstream research workspace remains:
 
@@ -12,12 +12,13 @@ Use that workspace for cohort construction, field adapter development, sample-bu
 
 ## Current Scope
 
+- Active route: `multires_event_v1_baseline`, trained from scratch with a hierarchical event Transformer and fixed typed H1/M4 queries. It does not use ModernBERT or a tokenizer.
+- Frozen artifact: `multires_event_v1_c4_full_20260712`, 50,350 samples with persisted patient split; the baseline learns 986 direct primary queries and derives F24 only for evaluation.
+- Hosted contract: Kaggle T4 x2, PyTorch `torchrun`/DDP, fp16, 2-step smoke followed by 4,000 optimizer steps. Interval validation uses one fixed anchor for each of the 505 eligible validation subjects with persisted anchors; final validation uses all 6,309 anchors and subject-macro aggregation.
+- Legacy textual routes remain for experiment traceability and are not the active multi-resolution baseline.
 - Sample unit: one ICU stay plus one prediction anchor.
 - Primary key: `(subject_id, hadm_id, stay_id, prediction_hour)`.
 - Split key: `subject_id`.
-- Formal staged route: Stage A trains `NEXT_HOUR` vital values only with `hour_vent` retained as an input covariate, Stage B trains `NEXT_24H` from the Stage A checkpoint, and Stage C is optional alternating joint training. This branch keeps Stage B/C contracts reserved but blocks their training entry until checkpoint loading and alternating scheduling are implemented.
-- Current baseline route: a joint `NEXT_HOUR` + `NEXT_24H` run is allowed only when labeled `joint_baseline`, not Stage A.
-- First compute target: Kaggle GPU T4 x2 with `answerdotai/ModernBERT-base` for Stage A, with single-GPU fallback.
 
 ## Repository Layout
 
@@ -51,4 +52,4 @@ python tools/update_file_index.py --check
 
 ## Kaggle Direction
 
-Use `notebooks/kaggle/train_stage_a_hour.ipynb` for the Stage A HOUR values-only run. It is a thin Kaggle bootstrap; the versioned Python launcher performs clone verification, runtime guard, artifact reconstruction, preflight, token-length scan, smoke training, full training, and output archiving. Detailed command output is written to run-local `logs/` files instead of flooding notebook stdout. `notebooks/kaggle/train_full_first_run.ipynb` is a joint-baseline launcher and must not be used or reported as Stage A. Source MIMIC extraction and field-ready sample generation stay outside this repository.
+Use `notebooks/kaggle/train_multires_event_v1.ipynb` for the active baseline and select T4 x2. An attached exact private C4 dataset is preferred; otherwise the owner-private Kaggle dataset is downloaded by CLI and verified before use. The pinned notebook delegates exact identity preflight, DDP smoke, resumable full training, final evaluation, and export to `run_multires_event_v1.py`. Logs are append-only by attempt, while rank zero surfaces 250-step `TRAIN_LOSS`/`EVAL_LOSS` and a five-minute heartbeat. The older Stage A notebooks remain versioned historical entrypoints. Source MIMIC extraction and sample generation stay outside this repository.

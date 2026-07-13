@@ -1,0 +1,110 @@
+{
+  "$schema": "../../schemas/multires_event_supervision.schema.json",
+  "schema": "trauma_predict.multires_event_supervision.v1",
+  "version": "multires_event_training_target_v1",
+  "status": "frozen_baseline_contract",
+  "base_registry": {
+    "version": "2026-07-12-full-field-v1",
+    "tuple_order": ["field_id", "operator_id", "condition_id", "value", "block_id"],
+    "padding_id": 0,
+    "registry_manifest_sha256": "c7ea1baf8e0f7cc9b1efe07f35115ff4e4d155eb7a524b7b391027be2253f702",
+    "fixed_target_slots_sha256": "67eff3f2cdaaa2bae51d3f02d5a986e813b4cda18359af8033256cd05f2d48a5",
+    "event_templates_sha256": "b3386b5116936ccd85637249bb32b343f8c4188c6018b199455b9312adba73ac",
+    "canonical_target_layout_sha256": "d681210135ebc16a1a4bd8b6cf1fdb185be05b1eafc44aaed63b17cf30be49fe"
+  },
+  "input": {
+    "excluded_fields": [
+      {"field_id": 9, "field": "gcs_verbal", "reason": "UNABLE_ETT is conflated with numeric score 1 in the frozen artifact"}
+    ],
+    "filter_parallel_source_count": true
+  },
+  "target": {
+    "canonical_rows": 1314,
+    "direct_resolutions": ["H1", "M4"],
+    "derived_eval_resolutions": ["F24"],
+    "prediction_mask_is_not_a_target": true,
+    "classification_precedence": ["semantic_holdout", "auxiliary", "derived_eval", "primary_direct"],
+    "auxiliary_fields": [
+      {"field_id": 29, "field": "crystalloid"},
+      {"field_id": 30, "field": "rbc"},
+      {"field_id": 31, "field": "plasma"},
+      {"field_id": 32, "field": "platelet_transfusion"},
+      {"field_id": 33, "field": "cryoprecipitate"},
+      {"field_id": 34, "field": "antibiotics"},
+      {"field_id": 36, "field": "surgery"}
+    ],
+    "semantic_exclusions": [
+      {
+        "match": {"field_id": 9},
+        "reason": "exclude all gcs_verbal target semantics, including DURATION::OBSERVED"
+      },
+      {
+        "match": {"field_ids": [8, 10], "operator_id": 5},
+        "reason": "MEAN is not a valid primary summary for ordinal GCS eye or motor"
+      },
+      {
+        "match": {"field_id": 4, "operator_id": 8, "condition_id": 19},
+        "reason": "MAP_GE70 uses an hourly max while the lower MAP bins use hourly min"
+      }
+    ],
+    "loss_family_overrides": [
+      {
+        "match": {"field_ids": [8, 10], "operator_ids": [1, 2, 3, 4]},
+        "loss_family": "ordinal"
+      }
+    ],
+    "baseline": {
+      "enable_primary_direct": true,
+      "enable_auxiliary_direct": false,
+      "enable_f24_loss": false
+    },
+    "expected_counts": {
+      "canonical": {"H1": 110, "M4": 1032, "F24": 172, "total": 1314},
+      "primary_direct": {"H1": 92, "M4": 894, "total": 986},
+      "primary_direct_m4_per_block": 149,
+      "primary_f24_derived_eval": 149,
+      "auxiliary_direct": {"H1": 15, "M4": 90, "total": 105},
+      "auxiliary_f24_derived_eval": 15,
+      "semantic_holdout": {"H1": 3, "M4": 48, "F24": 8, "direct_total": 51, "total": 59},
+      "active_loss_families": {
+        "continuous": 472,
+        "ordinal": 38,
+        "duration": 210,
+        "count": 168,
+        "binary": 70,
+        "nonnegative": 28,
+        "total": 986
+      }
+    }
+  },
+  "static": {
+    "numeric_fields": ["age", "weight_kg", "initial_ed_sbp", "rsi"],
+    "categorical_fields": ["sex", "mechanism", "transfer", "ed", "head_injury"],
+    "categorical_values": {
+      "sex": ["M", "F"],
+      "mechanism": ["blunt", "penetrating", "other"],
+      "transfer": ["direct", "transfer"],
+      "ed": ["no", "yes"],
+      "head_injury": ["no", "yes"]
+    },
+    "unknown_id": 0
+  },
+  "loss_family_ids": {
+    "continuous": 1,
+    "ordinal": 2,
+    "duration": 3,
+    "count": 4,
+    "binary": 5,
+    "nonnegative": 6
+  },
+  "semantic_component_ids": {
+    "value_summary": 1,
+    "observation_coverage": 2,
+    "abnormal_duration": 3,
+    "observation_count": 4,
+    "support_duration": 5,
+    "state": 6,
+    "start": 7,
+    "amount_sum": 8
+  }
+}

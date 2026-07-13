@@ -1,0 +1,57 @@
+schema_version: trauma_predict.multires_model_config.v1
+route: multires_event_v1_baseline
+architecture: hierarchical_event_transformer_query_decoder
+initialization: from_scratch
+text_backbone: null
+tokenizer: null
+
+input:
+  tuple_order: [field_id, operator_id, condition_id, value, block_id]
+  registry_driven_vocabularies: true
+  max_input_events: 4096
+  max_time_blocks: 64
+  static_fields: 9
+  use_input_source_count: false
+
+embedding:
+  d_model: 256
+  field_embedding: true
+  operator_embedding: true
+  condition_embedding: true
+  study_slot_embedding: true
+  max_study_slots_per_block: 8
+  dropout: 0.1
+
+block_pooling:
+  type: learned_latent_cross_attention
+  latent_tokens_per_block: 8
+  cross_attention_layers: 1
+  event_self_attention_layers: 0
+
+encoder:
+  trajectory_layers: 4
+  attention_heads: 8
+  feed_forward_dim: 1024
+  dropout: 0.1
+  activation: gelu
+  norm_first: true
+
+decoder:
+  query_layers: 3
+  attention_heads: 8
+  feed_forward_dim: 1024
+  dropout: 0.1
+  primary_direct_queries: 986
+  h1_queries: 92
+  m4_queries_per_block: 149
+  m4_blocks: 6
+  f24_direct_queries: 0
+
+heads:
+  continuous: student_t
+  ordinal: cumulative_logits
+  count: hurdle_negative_binomial
+  point_duration: binomial
+  interval_duration: zero_one_inflated_beta
+  binary: binary_logits
+  nonnegative: hurdle_student_t

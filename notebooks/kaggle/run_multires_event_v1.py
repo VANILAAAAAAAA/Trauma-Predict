@@ -1,0 +1,525 @@
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import zipfile
+from pathlib import Path
+from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from trauma_predict.training.observability import (  # noqa: E402
+    atomic_write_json,
+    heartbeat,
+    next_attempt_dir,
+    utc_now,
+)
+
+
+EXPECTED_GIT_REF = "multires-event-v1-baseline-run-20260712"
+DATASET_REF = "vanilaaaa/trauma-predict-multires-event-v1-c4-20260712"
+EXPECTED_DATASET_ID = "multires_event_v1_c4_full_20260712"
+EXPECTED_DATASET_FINGERPRINT = "d58d003b6a9b2dd7c1f8d269a1867b534ea475a91118d7d4d44804bee69f9e47"
+EXPECTED_COUNTS = {"samples": 50350, "train": 37734, "val": 6309, "test": 6307, "shards": 52}
+SMOKE_CONFIG = "configs/train/t4x2_multires_event_v1_smoke.yaml"
+FULL_CONFIG = "configs/train/t4x2_multires_event_v1_full.yaml"
+SMOKE_RUN_NAME = "t4x2_multires_event_v1_smoke"
+FULL_RUN_NAME = "t4x2_multires_event_v1_full"
+KAGGLE_WORKING = Path(os.environ.get("KAGGLE_WORKING_DIR", "/kaggle/working"))
+KAGGLE_INPUT = Path(os.environ.get("KAGGLE_INPUT_DIR", "/kaggle/input"))
+OUTPUT_ROOT = Path(os.environ.get(
+    "TRAUMA_PREDICT_OUTPUT_ROOT", KAGGLE_WORKING / "trauma-predict-runs"
+))
+PREPARED_DATA_ROOT = Path(os.environ.get(
+    "TRAUMA_PREDICT_PREPARED_DATA_ROOT",
+    KAGGLE_WORKING / "trauma-predict-multires-event-v1-c4-20260712",
+))
+DOWNLOAD_ROOT = Path(os.environ.get(
+    "TRAUMA_PREDICT_DOWNLOAD_ROOT",
+    KAGGLE_WORKING / "kaggle-dataset-multires-event-v1-c4-20260712",
+))
+FAILURE_TAIL_LINES = int(os.environ.get("TRAUMA_PREDICT_FAILURE_TAIL_LINES", "80"))
+STREAM_PREFIXES = (
+    "TRAIN_LOSS ",
+    "EVAL_LOSS ",
+    "RESUME_CHECKPOINT ",
+    "MULTIRES_EVENT_PREFLIGHT_OK",
+    "MULTIRES_EVENT_TRAINING_COMPLETE",
+)
+
+
+def main() -> None:
+    print("repo_root", REPO_ROOT, flush=True)
+    print("output_root", OUTPUT_ROOT, flush=True)
+    verify_source_identity()
+    require_t4x2_runtime()
+    full_run_dir = OUTPUT_ROOT / FULL_RUN_NAME
+    attempt_dir = next_attempt_dir(full_run_dir)
+    print("attempt_log_dir", attempt_dir, flush=True)
+    dataset_source = explicit_or_attached_dataset_root(attempt_dir)
+    print("dataset_source", dataset_source, flush=True)
+    print("dataset_ref", DATASET_REF, flush=True)
+    dataset_root = prepare_dataset_root(dataset_source, PREPARED_DATA_ROOT, attempt_dir)
+    print("prepared_dataset_root", dataset_root, flush=True)
+    atomic_write_json(attempt_dir / "attempt_manifest.json", {
+        "schema_version": "trauma_predict.multires_kaggle_attempt.v1",
+        "started_at": utc_now(),
+        "git_ref": EXPECTED_GIT_REF,
+        "dataset_ref": DATASET_REF,
+        "dataset_source": str(dataset_source),
+        "prepared_dataset_root": str(dataset_root),
+        "smoke_config": SMOKE_CONFIG,
+        "full_config": FULL_CONFIG,
+    })
+    install_requirements(attempt_dir)
+    runtime_guard()
+
+    env = repo_env(dataset_root)
+    run_to_log(
+        [sys.executable, "notebooks/kaggle/train_multires_event_v1.py", "--config", FULL_CONFIG, "--dry-run"],
+        attempt_dir / "preflight.log",
+        env=env,
+        label="PREFLIGHT",
+    )
+    if os.environ.get("TRAUMA_PREDICT_DRY_RUN_ONLY") == "1":
+        print("MULTIRES_EVENT_DRY_RUN_ONLY_FINISHED", flush=True)
+        return
+
+    if os.environ.get("TRAUMA_PREDICT_SKIP_SMOKE") != "1":
+        archive_previous_smoke_output()
+        print_run_contract(SMOKE_CONFIG, attempt_dir / "smoke.log")
+        run_torchrun(SMOKE_CONFIG, attempt_dir / "smoke.log", env=env, label="SMOKE")
+        require_success_marker(OUTPUT_ROOT / SMOKE_RUN_NAME)
+        print("MULTIRES_EVENT_SMOKE_OK", flush=True)
+
+    print_run_contract(FULL_CONFIG, attempt_dir / "full.log")
+    run_torchrun(FULL_CONFIG, attempt_dir / "full.log", env=env, label="FULL")
+    require_success_marker(full_run_dir)
+    validate_final_outputs(full_run_dir)
+    atomic_write_json(attempt_dir / "attempt_complete.json", {
+        "schema_version": "trauma_predict.multires_kaggle_attempt_complete.v1",
+        "completed_at": utc_now(),
+        "run_dir": str(full_run_dir),
+        "run_manifest": str(full_run_dir / "run_manifest.json"),
+        "success": str(full_run_dir / "SUCCESS"),
+    })
+    print("MULTIRES_EVENT_KAGGLE_RUN_FINISHED", flush=True)
+    print("run_dir", full_run_dir, flush=True)
+
+
+def find_exact_attached_dataset(input_root: Path) -> Path:
+    if not input_root.is_dir():
+        raise FileNotFoundError(
+            f"Kaggle input root is absent: {input_root}. Attach private dataset {DATASET_REF}."
+        )
+    exact: list[Path] = []
+    inspected: list[dict[str, Any]] = []
+    for manifest_path in sorted(input_root.rglob("dataset_manifest.json")):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        counts = manifest.get("counts", {})
+        observed = {
+            "samples": int(counts.get("samples", -1)),
+            "train": int(counts.get("selected_by_split", {}).get("train", -1)),
+            "val": int(counts.get("selected_by_split", {}).get("val", -1)),
+            "test": int(counts.get("selected_by_split", {}).get("test", -1)),
+            "shards": int(counts.get("completed_shards", -1)),
+        }
+        inspected.append({
+            "root": str(manifest_path.parent),
+            "dataset_id": manifest.get("dataset_id"),
+            "fingerprint": manifest.get("fingerprint"),
+            "counts": observed,
+        })
+        if (
+            manifest.get("dataset_id") == EXPECTED_DATASET_ID
+            and manifest.get("fingerprint") == EXPECTED_DATASET_FINGERPRINT
+            and observed == EXPECTED_COUNTS
+        ):
+            exact.append(manifest_path.parent.resolve())
+    unique = sorted(set(exact))
+    if len(unique) > 1:
+        raise RuntimeError(f"multiple exact multires datasets are attached; detach all but one: {unique}")
+    if not unique:
+        raise FileNotFoundError(
+            f"no exact attached dataset matches id/fingerprint/counts; inspected={inspected}"
+        )
+    return unique[0]
+
+
+def explicit_or_attached_dataset_root(log_dir: Path | None = None) -> Path:
+    explicit = os.environ.get("TRAUMA_PREDICT_DATA_ROOT")
+    if explicit:
+        root = Path(explicit).resolve()
+        if not root.is_dir():
+            raise FileNotFoundError(root)
+        return root
+    try:
+        return find_exact_attached_dataset(KAGGLE_INPUT)
+    except FileNotFoundError:
+        if log_dir is None:
+            raise
+        return download_private_dataset(log_dir)
+
+
+def download_private_dataset(log_dir: Path) -> Path:
+    if DOWNLOAD_ROOT.is_dir():
+        try:
+            existing = find_exact_attached_dataset(DOWNLOAD_ROOT)
+            print("using_existing_download", existing, flush=True)
+            return existing
+        except FileNotFoundError:
+            archive = DOWNLOAD_ROOT.with_name(f"{DOWNLOAD_ROOT.name}.invalid-{os.getpid()}")
+            DOWNLOAD_ROOT.rename(archive)
+            print("archived_invalid_download", archive, flush=True)
+    DOWNLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    configure_kaggle_credentials()
+    run_to_log(
+        [
+            "kaggle",
+            "datasets",
+            "download",
+            "-d",
+            DATASET_REF,
+            "-p",
+            DOWNLOAD_ROOT,
+            "--unzip",
+        ],
+        log_dir / "dataset_download.log",
+        env=os.environ.copy(),
+        label="DATASET_DOWNLOAD",
+    )
+    downloaded = find_exact_attached_dataset(DOWNLOAD_ROOT)
+    print("DATASET_DOWNLOAD_EXACT_IDENTITY_OK", downloaded, flush=True)
+    return downloaded
+
+
+def configure_kaggle_credentials() -> None:
+    if os.environ.get("KAGGLE_USERNAME") and os.environ.get("KAGGLE_KEY"):
+        return
+    try:
+        from kaggle_secrets import UserSecretsClient
+
+        client = UserSecretsClient()
+        username = client.get_secret("KAGGLE_USERNAME")
+        key = client.get_secret("KAGGLE_KEY")
+    except Exception:
+        return
+    if username and key:
+        os.environ["KAGGLE_USERNAME"] = username
+        os.environ["KAGGLE_KEY"] = key
+
+
+def prepare_dataset_root(source_root: Path, destination: Path, log_dir: Path) -> Path:
+    """Reconstruct only the training-required shard tree from a read-only Kaggle mount."""
+    if is_prepared_dataset(destination):
+        print("using_existing_prepared_dataset", destination, flush=True)
+        return destination.resolve()
+    shards_zip = source_root / "shards.zip"
+    if not shards_zip.is_file():
+        # Local validation may point directly at the canonical unzipped artifact.
+        if is_prepared_dataset(source_root):
+            print("using_unzipped_dataset_source", source_root, flush=True)
+            return source_root.resolve()
+        raise FileNotFoundError(f"attached dataset lacks shards.zip: {shards_zip}")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.prepare-{os.getpid()}")
+    if temporary.exists():
+        shutil.rmtree(temporary)
+    temporary.mkdir(parents=True)
+    root_files = (
+        "dataset_manifest.json",
+        "sample_manifest.csv",
+        "subject_split.csv",
+        "event_templates.json",
+        "time_blocks.json",
+        "SUCCEEDED",
+    )
+    for name in root_files:
+        source = source_root / name
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        shutil.copy2(source, temporary / name)
+    extracted = safe_extract_shards(shards_zip, temporary)
+    if extracted != EXPECTED_COUNTS["shards"]:
+        raise RuntimeError(f"shards.zip must contain 52 gzip shards; extracted {extracted}")
+    if destination.exists():
+        archive = destination.with_name(f"{destination.name}.invalid-{os.getpid()}")
+        destination.rename(archive)
+        print("archived_invalid_prepared_dataset", archive, flush=True)
+    temporary.replace(destination)
+    atomic_write_json(log_dir / "dataset_prepare.json", {
+        "schema_version": "trauma_predict.multires_dataset_prepare.v1",
+        "created_at": utc_now(),
+        "source_root": str(source_root),
+        "destination": str(destination),
+        "copied_root_files": list(root_files),
+        "extracted_shards": extracted,
+        "skipped_archives": ["manifests.zip", "validation.zip", "audit.zip"],
+    })
+    return destination.resolve()
+
+
+def safe_extract_shards(archive_path: Path, destination: Path) -> int:
+    count = 0
+    with zipfile.ZipFile(archive_path) as archive:
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            member = Path(info.filename)
+            if member.is_absolute() or ".." in member.parts:
+                raise ValueError(f"unsafe shards.zip member: {info.filename}")
+            parts = list(member.parts)
+            if "shards" in parts:
+                parts = parts[parts.index("shards") + 1 :]
+            if not parts:
+                continue
+            relative = Path(*parts)
+            if relative.suffixes[-2:] != [".jsonl", ".gz"]:
+                raise ValueError(f"unexpected non-shard member in shards.zip: {info.filename}")
+            if relative.parts[0] not in {"train", "val", "test"}:
+                raise ValueError(f"shard member lacks split directory: {info.filename}")
+            target = destination / "shards" / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(info) as source, target.open("wb") as output:
+                shutil.copyfileobj(source, output)
+            count += 1
+    return count
+
+
+def is_prepared_dataset(root: Path) -> bool:
+    manifest_path = root / "dataset_manifest.json"
+    if not manifest_path.is_file() or not (root / "sample_manifest.csv").is_file():
+        return False
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if (
+        manifest.get("dataset_id") != EXPECTED_DATASET_ID
+        or manifest.get("fingerprint") != EXPECTED_DATASET_FINGERPRINT
+    ):
+        return False
+    return len(list((root / "shards").glob("*/*.jsonl.gz"))) == EXPECTED_COUNTS["shards"]
+
+
+def repo_env(dataset_root: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["TRAUMA_PREDICT_DATA_ROOT"] = str(dataset_root)
+    env["TRAUMA_PREDICT_OUTPUT_ROOT"] = str(OUTPUT_ROOT)
+    env["PYTHONPATH"] = str(SRC_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+    env["REQUIRED_GIT_REF"] = EXPECTED_GIT_REF
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    return env
+
+
+def run_torchrun(config: str, log_path: Path, *, env: dict[str, str], label: str) -> None:
+    run_to_log(
+        [
+            sys.executable,
+            "-m",
+            "torch.distributed.run",
+            "--standalone",
+            "--nproc_per_node=2",
+            "notebooks/kaggle/train_multires_event_v1.py",
+            "--config",
+            config,
+        ],
+        log_path,
+        env=env,
+        label=label,
+    )
+
+
+def print_run_contract(config_path: str, log_path: Path) -> None:
+    from trauma_predict.training.config import load_yaml_config
+
+    config = load_yaml_config(REPO_ROOT / config_path)
+    training = config["training"]
+    output_dir = str(config["outputs"]["output_dir"]).replace(
+        "${TRAUMA_PREDICT_OUTPUT_ROOT}", str(OUTPUT_ROOT)
+    )
+    metrics_jsonl = str(config["outputs"]["metrics_jsonl"]).replace(
+        "${TRAUMA_PREDICT_OUTPUT_ROOT}", str(OUTPUT_ROOT)
+    )
+    print("MULTIRES_EVENT_RUN_CONTRACT", json.dumps({
+        "run_name": config["run_name"],
+        "route": config["route"],
+        "git_ref": EXPECTED_GIT_REF,
+        "max_steps": int(training["max_steps"]),
+        "logging_steps": int(training["logging_steps"]),
+        "eval_steps": int(training["eval_steps"]),
+        "save_steps": int(training["save_steps"]),
+        "output_dir": output_dir,
+        "metrics_jsonl": metrics_jsonl,
+        "full_log": str(log_path),
+    }, sort_keys=True), flush=True)
+
+
+def run_to_log(
+    command: list[Any],
+    log_path: Path,
+    *,
+    env: dict[str, str] | None = None,
+    label: str,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    command = [str(part) for part in command]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    print("$", " ".join(command), ">>", log_path, flush=True)
+    with log_path.open("a", encoding="utf-8") as log, heartbeat(label, log_path, seconds=300):
+        process = subprocess.Popen(
+            command,
+            cwd=REPO_ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            log.write(line)
+            log.flush()
+            stripped = line.rstrip()
+            if stripped.startswith(STREAM_PREFIXES):
+                print(stripped, flush=True)
+        returncode = process.wait()
+    if returncode != 0:
+        if check:
+            print_failure_tail(log_path)
+            raise subprocess.CalledProcessError(returncode, command)
+        print(f"{label}_NONZERO returncode={returncode} log={log_path}", flush=True)
+        return subprocess.CompletedProcess(command, returncode)
+    print(f"{label}_OK log={log_path}", flush=True)
+    return subprocess.CompletedProcess(command, returncode)
+
+
+def install_requirements(log_dir: Path) -> None:
+    if os.environ.get("TRAUMA_PREDICT_SKIP_INSTALL") == "1":
+        print("SKIP_MULTIRES_PIP_INSTALL", flush=True)
+        return
+    run_to_log(
+        [sys.executable, "-m", "pip", "install", "-q", "-r", "requirements-multires-kaggle.txt"],
+        log_dir / "pip_install.log",
+        env=os.environ.copy(),
+        label="PIP_INSTALL",
+    )
+    run_to_log(
+        [sys.executable, "-m", "pip", "check"],
+        log_dir / "pip_check.log",
+        env=os.environ.copy(),
+        label="PIP_CHECK",
+        check=False,
+    )
+
+
+def runtime_guard() -> None:
+    import torch
+
+    payload = {
+        "torch": torch.__version__,
+        "torch_cuda": torch.version.cuda,
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_count": torch.cuda.device_count(),
+        "devices": [torch.cuda.get_device_name(index) for index in range(torch.cuda.device_count())],
+    }
+    print("runtime", json.dumps(payload, sort_keys=True), flush=True)
+    if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
+        raise RuntimeError("multires_event_v1 requires two visible CUDA devices")
+    for index in range(2):
+        value = torch.ones(1, device=f"cuda:{index}")
+        if float(value.item()) != 1.0:
+            raise RuntimeError(f"CUDA tensor smoke failed on device {index}")
+    print("MULTIRES_EVENT_RUNTIME_GUARD_OK", flush=True)
+
+
+def require_t4x2_runtime() -> None:
+    result = subprocess.run(["nvidia-smi", "-L"], text=True, capture_output=True, check=False)
+    if result.stdout:
+        print(result.stdout.strip(), flush=True)
+    gpu_count = sum(1 for line in result.stdout.splitlines() if line.startswith("GPU "))
+    if gpu_count < 2:
+        raise RuntimeError(f"select Kaggle T4 x2; detected {gpu_count} GPU(s)")
+
+
+def verify_source_identity() -> None:
+    required = os.environ.get("REQUIRED_GIT_REF", EXPECTED_GIT_REF)
+    if required != EXPECTED_GIT_REF:
+        raise RuntimeError(f"REQUIRED_GIT_REF must be immutable tag {EXPECTED_GIT_REF}")
+    head = _git_text("rev-parse", "HEAD")
+    tagged = _git_text("rev-parse", f"{required}^{{commit}}")
+    if head != tagged:
+        raise RuntimeError(f"HEAD {head} does not match pinned tag {required} ({tagged})")
+    print("source_identity", json.dumps({"git_ref": required, "commit": head}), flush=True)
+
+
+def _git_text(*args: str) -> str:
+    result = subprocess.run(["git", *args], cwd=REPO_ROOT, text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"git {' '.join(args)} failed")
+    return result.stdout.strip()
+
+
+def archive_previous_smoke_output() -> None:
+    smoke_dir = OUTPUT_ROOT / SMOKE_RUN_NAME
+    if not smoke_dir.exists():
+        return
+    archive_root = OUTPUT_ROOT / "smoke-history"
+    archive_root.mkdir(parents=True, exist_ok=True)
+    index = 1
+    while (archive_root / f"{SMOKE_RUN_NAME}-attempt-{index:04d}").exists():
+        index += 1
+    destination = archive_root / f"{SMOKE_RUN_NAME}-attempt-{index:04d}"
+    smoke_dir.rename(destination)
+    print("archived_previous_smoke", destination, flush=True)
+
+
+def require_success_marker(run_dir: Path) -> None:
+    marker = run_dir / "SUCCESS"
+    if not marker.is_file():
+        raise FileNotFoundError(f"training subprocess returned but SUCCESS is absent: {marker}")
+
+
+def validate_final_outputs(run_dir: Path) -> None:
+    required = [
+        "resolved_config.json",
+        "source_identity.json",
+        "dataset_fingerprint.json",
+        "target_contract.json",
+        "normalization.json",
+        "runtime_environment.json",
+        "metrics.jsonl",
+        "best_checkpoint.json",
+        "final_model/model_manifest.json",
+        "val_predictions.jsonl.gz",
+        "evaluation.json",
+        "run_manifest.json",
+        "SUCCESS",
+    ]
+    missing = [name for name in required if not (run_dir / name).is_file()]
+    if missing:
+        raise FileNotFoundError(f"completed run lacks required outputs: {missing}")
+
+
+def print_failure_tail(path: Path) -> None:
+    print(f"FAILURE_LOG_TAIL log={path}", flush=True)
+    if not path.is_file():
+        return
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    for line in lines[-FAILURE_TAIL_LINES:]:
+        print(line, flush=True)
+
+
+if __name__ == "__main__":
+    main()
