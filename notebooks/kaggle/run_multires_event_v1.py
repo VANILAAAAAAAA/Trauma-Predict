@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import shutil
@@ -23,7 +24,7 @@ from trauma_predict.training.observability import (  # noqa: E402
 )
 
 
-EXPECTED_GIT_REF = "multires-event-v1-baseline-run-20260712-r2"
+EXPECTED_GIT_REF = "multires-event-v1-baseline-run-20260712-r3"
 DATASET_REF = "vanilaaaa/trauma-predict-multires-event-v1-c4-20260712"
 EXPECTED_DATASET_ID = "multires_event_v1_c4_full_20260712"
 EXPECTED_DATASET_FINGERPRINT = "d58d003b6a9b2dd7c1f8d269a1867b534ea475a91118d7d4d44804bee69f9e47"
@@ -210,6 +211,11 @@ def download_private_dataset(log_dir: Path) -> Path:
         )
     package_root = DOWNLOAD_ROOT / "dataset-package"
     safe_extract_dataset_package(package_archives[0], package_root)
+    print(
+        "KAGGLE_DATASET_PACKAGE_LAYOUT",
+        json.dumps(summarize_dataset_layout(package_root), sort_keys=True),
+        flush=True,
+    )
     downloaded = find_exact_attached_dataset(DOWNLOAD_ROOT)
     if not has_usable_shard_payload(downloaded):
         raise FileNotFoundError(
@@ -250,6 +256,34 @@ def safe_extract_dataset_package(archive_path: Path, destination: Path) -> int:
     return count
 
 
+def summarize_dataset_layout(root: Path) -> dict[str, Any]:
+    """Return bounded diagnostics for Kaggle's server-side archive transforms."""
+
+    summary: dict[str, Any] = {
+        "files": 0,
+        "jsonl": 0,
+        "jsonl_gz": 0,
+        "zip": 0,
+        "top_level": {},
+    }
+    top_level: dict[str, int] = {}
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        summary["files"] += 1
+        if path.name.endswith(".jsonl.gz"):
+            summary["jsonl_gz"] += 1
+        elif path.suffix == ".jsonl":
+            summary["jsonl"] += 1
+        elif path.suffix == ".zip":
+            summary["zip"] += 1
+        key = relative.parts[0]
+        top_level[key] = top_level.get(key, 0) + 1
+    summary["top_level"] = dict(sorted(top_level.items()))
+    return summary
+
+
 def configure_kaggle_credentials() -> None:
     if os.environ.get("KAGGLE_USERNAME") and os.environ.get("KAGGLE_KEY"):
         return
@@ -267,12 +301,11 @@ def configure_kaggle_credentials() -> None:
 
 
 def prepare_dataset_root(source_root: Path, destination: Path, log_dir: Path) -> Path:
-    """Normalize either Kaggle archive layout into the required shard tree.
+    """Normalize local or Kaggle-hosted payloads into gzip split shards.
 
-    An attached Dataset normally exposes ``shards.zip`` unchanged.  The Kaggle
-    CLI ``datasets download --unzip`` instead expands that inner archive and
-    removes it, leaving ``train/``, ``val/``, and ``test/`` shard directories.
-    Both are valid representations of the same fingerprinted artifact.
+    Kaggle may expand the uploaded ``shards.zip`` and gunzip each ``.jsonl.gz``
+    member during Dataset ingestion.  The hosted form is therefore commonly
+    ``shards/<split>/*.jsonl`` even though the canonical artifact is gzip.
     """
     if is_prepared_dataset(destination):
         print("using_existing_prepared_dataset", destination, flush=True)
@@ -306,7 +339,7 @@ def prepare_dataset_root(source_root: Path, destination: Path, log_dir: Path) ->
         shard_source_layout = "shards_zip"
         extracted = safe_extract_shards(shards_zip, temporary)
     else:
-        shard_source_layout = "kaggle_cli_extracted_split_tree"
+        shard_source_layout = "kaggle_hosted_extracted_split_tree"
         extracted = copy_extracted_shards(source_root, temporary)
     if extracted != EXPECTED_COUNTS["shards"]:
         raise RuntimeError(
@@ -342,23 +375,27 @@ def has_usable_shard_payload(root: Path) -> bool:
 
 def discover_extracted_shards(source_root: Path) -> dict[str, list[Path]]:
     discovered: dict[str, list[Path]] = {split: [] for split in EXPECTED_SHARD_COUNTS}
-    for source in sorted(source_root.rglob("*.jsonl.gz")):
+    candidates = set(source_root.rglob("*.jsonl.gz"))
+    candidates.update(source_root.rglob("*.jsonl"))
+    for source in sorted(candidates):
         relative = source.relative_to(source_root)
-        split_parts = [part for part in relative.parts[:-1] if part in discovered]
-        if len(split_parts) == 1:
-            split = split_parts[0]
+        parts = relative.parts
+        logical_parts = tuple(part.removesuffix(".zip") for part in parts)
+        if "validation" in logical_parts or "manifests" in logical_parts:
+            continue
+        if "shards" in logical_parts:
+            shard_index = logical_parts.index("shards")
+            split = logical_parts[shard_index + 1] if len(logical_parts) > shard_index + 1 else None
         else:
-            split = next(
-                (name for name in discovered if source.name.startswith(f"{name}-")),
-                None,
-            )
-        if split is not None:
+            split_parts = [part for part in logical_parts[:-1] if part in discovered]
+            split = split_parts[0] if len(split_parts) == 1 else None
+        if split in discovered and source.name.startswith(f"{split}-"):
             discovered[split].append(source)
     return discovered
 
 
 def copy_extracted_shards(source_root: Path, destination: Path) -> int:
-    """Copy/hard-link the split tree produced by Kaggle CLI ``--unzip``."""
+    """Restore Kaggle-hosted plain or gzip JSONL shards to canonical gzip."""
 
     discovered = discover_extracted_shards(source_root)
 
@@ -370,19 +407,40 @@ def copy_extracted_shards(source_root: Path, destination: Path) -> int:
         )
 
     seen_names: set[tuple[str, str]] = set()
+    converted_plain_jsonl = 0
     for split, paths in discovered.items():
         for source in paths:
-            key = (split, source.name)
+            target_name = source.name if source.name.endswith(".jsonl.gz") else f"{source.name}.gz"
+            key = (split, target_name)
             if key in seen_names:
-                raise RuntimeError(f"duplicate extracted shard: {split}/{source.name}")
+                raise RuntimeError(f"duplicate extracted shard: {split}/{target_name}")
             seen_names.add(key)
-            target = destination / "shards" / split / source.name
+            target = destination / "shards" / split / target_name
             target.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                os.link(source, target)
-            except OSError:
-                shutil.copy2(source, target)
-    print("KAGGLE_EXTRACTED_SPLIT_TREE_OK", json.dumps(observed, sort_keys=True), flush=True)
+            if source.suffix == ".jsonl":
+                with source.open("rb") as input_handle, target.open("wb") as raw_output:
+                    with gzip.GzipFile(
+                        filename="",
+                        mode="wb",
+                        compresslevel=1,
+                        fileobj=raw_output,
+                        mtime=0,
+                    ) as output_handle:
+                        shutil.copyfileobj(input_handle, output_handle, length=1024 * 1024)
+                converted_plain_jsonl += 1
+            else:
+                try:
+                    os.link(source, target)
+                except OSError:
+                    shutil.copy2(source, target)
+    print(
+        "KAGGLE_EXTRACTED_SPLIT_TREE_OK",
+        json.dumps(
+            {"counts": observed, "plain_jsonl_recompressed": converted_plain_jsonl},
+            sort_keys=True,
+        ),
+        flush=True,
+    )
     return sum(observed.values())
 
 

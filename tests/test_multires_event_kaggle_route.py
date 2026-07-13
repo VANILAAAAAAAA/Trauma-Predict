@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import importlib.util
 import json
 import tempfile
@@ -51,7 +52,7 @@ class MultiresEventKaggleRouteTest(unittest.TestCase):
         notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
         self.assertEqual(len(notebook["cells"]), 2)
         code = "".join(notebook["cells"][1]["source"])
-        self.assertIn('REQUIRED_GIT_REF = "multires-event-v1-baseline-run-20260712-r2"', code)
+        self.assertIn('REQUIRED_GIT_REF = "multires-event-v1-baseline-run-20260712-r3"', code)
         self.assertNotIn("TRAUMA_PREDICT_GIT_REF", code)
         self.assertIn("run_multires_event_v1.py", code)
 
@@ -96,8 +97,52 @@ class MultiresEventKaggleRouteTest(unittest.TestCase):
             self.assertEqual(prepared, destination.resolve())
             self.assertTrue(launcher.is_prepared_dataset(prepared))
             record = json.loads((log_dir / "dataset_prepare.json").read_text())
-            self.assertEqual(record["shard_source_layout"], "kaggle_cli_extracted_split_tree")
+            self.assertEqual(record["shard_source_layout"], "kaggle_hosted_extracted_split_tree")
             self.assertEqual(record["extracted_shards"], 52)
+
+    def test_prepare_accepts_kaggle_hosted_plain_jsonl_and_ignores_validation(self) -> None:
+        launcher = load_launcher()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "dataset.zip"
+            source = root / "dataset-package"
+            with zipfile.ZipFile(package, "w") as handle:
+                handle.writestr("dataset_manifest.json", json.dumps(self.exact_manifest()))
+                for name in (
+                    "sample_manifest.csv",
+                    "subject_split.csv",
+                    "event_templates.json",
+                    "time_blocks.json",
+                    "SUCCEEDED",
+                    "anchor_plan.csv",
+                    "build_state.json",
+                    "heartbeat.json",
+                    "audit/build_summary.json",
+                    "audit/dataset_audit.json",
+                ):
+                    handle.writestr(name, "test")
+                for split, count in launcher.EXPECTED_SHARD_COUNTS.items():
+                    for index in range(count):
+                        name = f"{split}-{index:05d}"
+                        handle.writestr(f"shards/{split}/{name}.jsonl", '{"kind":"sample"}\n')
+                        handle.writestr(
+                            f"validation/{split}/{name}.jsonl",
+                            '{"kind":"validation"}\n',
+                        )
+                        handle.writestr(f"manifests/{split}/{name}.csv", "sample_id\n")
+            self.assertEqual(launcher.safe_extract_dataset_package(package, source), 167)
+            source = launcher.find_exact_attached_dataset(source)
+            self.assertTrue(launcher.has_usable_shard_payload(source))
+            summary = launcher.summarize_dataset_layout(source)
+            self.assertEqual(summary["jsonl"], 104)
+            destination = root / "prepared"
+            log_dir = root / "logs"
+            log_dir.mkdir()
+            prepared = launcher.prepare_dataset_root(source, destination, log_dir)
+            self.assertTrue(launcher.is_prepared_dataset(prepared))
+            with gzip.open(prepared / "shards/train/train-00000.jsonl.gz", "rt") as handle:
+                self.assertEqual(json.loads(handle.readline())["kind"], "sample")
+            self.assertFalse((prepared / "validation").exists())
 
     def test_controlled_package_extraction_preserves_nested_shards_zip(self) -> None:
         launcher = load_launcher()
