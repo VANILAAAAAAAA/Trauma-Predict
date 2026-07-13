@@ -51,7 +51,7 @@ class MultiresEventKaggleRouteTest(unittest.TestCase):
         notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
         self.assertEqual(len(notebook["cells"]), 2)
         code = "".join(notebook["cells"][1]["source"])
-        self.assertIn('REQUIRED_GIT_REF = "multires-event-v1-baseline-run-20260712"', code)
+        self.assertIn('REQUIRED_GIT_REF = "multires-event-v1-baseline-run-20260712-r1"', code)
         self.assertNotIn("TRAUMA_PREDICT_GIT_REF", code)
         self.assertIn("run_multires_event_v1.py", code)
 
@@ -68,6 +68,36 @@ class MultiresEventKaggleRouteTest(unittest.TestCase):
             self.assertEqual(launcher.safe_extract_shards(archive, destination), 2)
             self.assertTrue((destination / "shards/train/train-00000.jsonl.gz").is_file())
             self.assertTrue((destination / "shards/val/val-00000.jsonl.gz").is_file())
+
+    def test_prepare_accepts_kaggle_cli_extracted_split_tree(self) -> None:
+        launcher = load_launcher()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "downloaded"
+            source.mkdir()
+            (source / "dataset_manifest.json").write_text(json.dumps(self.exact_manifest()))
+            for name in (
+                "sample_manifest.csv",
+                "subject_split.csv",
+                "event_templates.json",
+                "time_blocks.json",
+                "SUCCEEDED",
+            ):
+                (source / name).write_text("test")
+            for split, count in launcher.EXPECTED_SHARD_COUNTS.items():
+                split_dir = source / split
+                split_dir.mkdir()
+                for index in range(count):
+                    (split_dir / f"{split}-{index:05d}.jsonl.gz").write_bytes(b"gzip")
+            destination = root / "prepared"
+            log_dir = root / "logs"
+            log_dir.mkdir()
+            prepared = launcher.prepare_dataset_root(source, destination, log_dir)
+            self.assertEqual(prepared, destination.resolve())
+            self.assertTrue(launcher.is_prepared_dataset(prepared))
+            record = json.loads((log_dir / "dataset_prepare.json").read_text())
+            self.assertEqual(record["shard_source_layout"], "kaggle_cli_extracted_split_tree")
+            self.assertEqual(record["extracted_shards"], 52)
 
     def test_launcher_is_torchrun_smoke_then_full_without_hf(self) -> None:
         source = LAUNCHER_PATH.read_text(encoding="utf-8")

@@ -23,11 +23,12 @@ from trauma_predict.training.observability import (  # noqa: E402
 )
 
 
-EXPECTED_GIT_REF = "multires-event-v1-baseline-run-20260712"
+EXPECTED_GIT_REF = "multires-event-v1-baseline-run-20260712-r1"
 DATASET_REF = "vanilaaaa/trauma-predict-multires-event-v1-c4-20260712"
 EXPECTED_DATASET_ID = "multires_event_v1_c4_full_20260712"
 EXPECTED_DATASET_FINGERPRINT = "d58d003b6a9b2dd7c1f8d269a1867b534ea475a91118d7d4d44804bee69f9e47"
 EXPECTED_COUNTS = {"samples": 50350, "train": 37734, "val": 6309, "test": 6307, "shards": 52}
+EXPECTED_SHARD_COUNTS = {"train": 38, "val": 7, "test": 7}
 SMOKE_CONFIG = "configs/train/t4x2_multires_event_v1_smoke.yaml"
 FULL_CONFIG = "configs/train/t4x2_multires_event_v1_full.yaml"
 SMOKE_RUN_NAME = "t4x2_multires_event_v1_smoke"
@@ -220,7 +221,13 @@ def configure_kaggle_credentials() -> None:
 
 
 def prepare_dataset_root(source_root: Path, destination: Path, log_dir: Path) -> Path:
-    """Reconstruct only the training-required shard tree from a read-only Kaggle mount."""
+    """Normalize either Kaggle archive layout into the required shard tree.
+
+    An attached Dataset normally exposes ``shards.zip`` unchanged.  The Kaggle
+    CLI ``datasets download --unzip`` instead expands that inner archive and
+    removes it, leaving ``train/``, ``val/``, and ``test/`` shard directories.
+    Both are valid representations of the same fingerprinted artifact.
+    """
     if is_prepared_dataset(destination):
         print("using_existing_prepared_dataset", destination, flush=True)
         return destination.resolve()
@@ -230,7 +237,6 @@ def prepare_dataset_root(source_root: Path, destination: Path, log_dir: Path) ->
         if is_prepared_dataset(source_root):
             print("using_unzipped_dataset_source", source_root, flush=True)
             return source_root.resolve()
-        raise FileNotFoundError(f"attached dataset lacks shards.zip: {shards_zip}")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(f".{destination.name}.prepare-{os.getpid()}")
@@ -250,9 +256,17 @@ def prepare_dataset_root(source_root: Path, destination: Path, log_dir: Path) ->
         if not source.is_file():
             raise FileNotFoundError(source)
         shutil.copy2(source, temporary / name)
-    extracted = safe_extract_shards(shards_zip, temporary)
+    if shards_zip.is_file():
+        shard_source_layout = "shards_zip"
+        extracted = safe_extract_shards(shards_zip, temporary)
+    else:
+        shard_source_layout = "kaggle_cli_extracted_split_tree"
+        extracted = copy_extracted_shards(source_root, temporary)
     if extracted != EXPECTED_COUNTS["shards"]:
-        raise RuntimeError(f"shards.zip must contain 52 gzip shards; extracted {extracted}")
+        raise RuntimeError(
+            "dataset must provide the exact 52-shard archive or extracted split tree; "
+            f"materialized {extracted}"
+        )
     if destination.exists():
         archive = destination.with_name(f"{destination.name}.invalid-{os.getpid()}")
         destination.rename(archive)
@@ -264,10 +278,53 @@ def prepare_dataset_root(source_root: Path, destination: Path, log_dir: Path) ->
         "source_root": str(source_root),
         "destination": str(destination),
         "copied_root_files": list(root_files),
+        "shard_source_layout": shard_source_layout,
         "extracted_shards": extracted,
         "skipped_archives": ["manifests.zip", "validation.zip", "audit.zip"],
     })
     return destination.resolve()
+
+
+def copy_extracted_shards(source_root: Path, destination: Path) -> int:
+    """Copy/hard-link the split tree produced by Kaggle CLI ``--unzip``."""
+
+    discovered: dict[str, list[Path]] = {split: [] for split in EXPECTED_SHARD_COUNTS}
+    for source in sorted(source_root.rglob("*.jsonl.gz")):
+        relative = source.relative_to(source_root)
+        split_parts = [part for part in relative.parts[:-1] if part in discovered]
+        if len(split_parts) == 1:
+            split = split_parts[0]
+        else:
+            split = next(
+                (name for name in discovered if source.name.startswith(f"{name}-")),
+                None,
+            )
+        if split is None:
+            continue
+        discovered[split].append(source)
+
+    observed = {split: len(paths) for split, paths in discovered.items()}
+    if observed != EXPECTED_SHARD_COUNTS:
+        raise FileNotFoundError(
+            f"shards.zip is absent and extracted shard counts are {observed}; "
+            f"expected {EXPECTED_SHARD_COUNTS}"
+        )
+
+    seen_names: set[tuple[str, str]] = set()
+    for split, paths in discovered.items():
+        for source in paths:
+            key = (split, source.name)
+            if key in seen_names:
+                raise RuntimeError(f"duplicate extracted shard: {split}/{source.name}")
+            seen_names.add(key)
+            target = destination / "shards" / split / source.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.link(source, target)
+            except OSError:
+                shutil.copy2(source, target)
+    print("KAGGLE_EXTRACTED_SPLIT_TREE_OK", json.dumps(observed, sort_keys=True), flush=True)
+    return sum(observed.values())
 
 
 def safe_extract_shards(archive_path: Path, destination: Path) -> int:
@@ -310,7 +367,11 @@ def is_prepared_dataset(root: Path) -> bool:
         or manifest.get("fingerprint") != EXPECTED_DATASET_FINGERPRINT
     ):
         return False
-    return len(list((root / "shards").glob("*/*.jsonl.gz"))) == EXPECTED_COUNTS["shards"]
+    observed = {
+        split: len(list((root / "shards" / split).glob("*.jsonl.gz")))
+        for split in EXPECTED_SHARD_COUNTS
+    }
+    return observed == EXPECTED_SHARD_COUNTS
 
 
 def repo_env(dataset_root: Path) -> dict[str, str]:
