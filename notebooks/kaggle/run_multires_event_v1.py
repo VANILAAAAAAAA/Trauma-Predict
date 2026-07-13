@@ -23,7 +23,7 @@ from trauma_predict.training.observability import (  # noqa: E402
 )
 
 
-EXPECTED_GIT_REF = "multires-event-v1-baseline-run-20260712-r1"
+EXPECTED_GIT_REF = "multires-event-v1-baseline-run-20260712-r2"
 DATASET_REF = "vanilaaaa/trauma-predict-multires-event-v1-c4-20260712"
 EXPECTED_DATASET_ID = "multires_event_v1_c4_full_20260712"
 EXPECTED_DATASET_FINGERPRINT = "d58d003b6a9b2dd7c1f8d269a1867b534ea475a91118d7d4d44804bee69f9e47"
@@ -176,8 +176,12 @@ def download_private_dataset(log_dir: Path) -> Path:
     if DOWNLOAD_ROOT.is_dir():
         try:
             existing = find_exact_attached_dataset(DOWNLOAD_ROOT)
-            print("using_existing_download", existing, flush=True)
-            return existing
+            if has_usable_shard_payload(existing):
+                print("using_existing_download", existing, flush=True)
+                return existing
+            raise FileNotFoundError(
+                f"existing exact manifest has no preserved shard archive/tree: {existing}"
+            )
         except FileNotFoundError:
             archive = DOWNLOAD_ROOT.with_name(f"{DOWNLOAD_ROOT.name}.invalid-{os.getpid()}")
             DOWNLOAD_ROOT.rename(archive)
@@ -193,15 +197,57 @@ def download_private_dataset(log_dir: Path) -> Path:
             DATASET_REF,
             "-p",
             DOWNLOAD_ROOT,
-            "--unzip",
         ],
         log_dir / "dataset_download.log",
         env=os.environ.copy(),
         label="DATASET_DOWNLOAD",
     )
+    package_archives = sorted(DOWNLOAD_ROOT.glob("*.zip"))
+    if len(package_archives) != 1:
+        raise RuntimeError(
+            "controlled Kaggle download must produce exactly one outer dataset ZIP; "
+            f"found {[path.name for path in package_archives]}"
+        )
+    package_root = DOWNLOAD_ROOT / "dataset-package"
+    safe_extract_dataset_package(package_archives[0], package_root)
     downloaded = find_exact_attached_dataset(DOWNLOAD_ROOT)
+    if not has_usable_shard_payload(downloaded):
+        raise FileNotFoundError(
+            f"downloaded package has the exact manifest but no preserved shard payload: {downloaded}"
+        )
     print("DATASET_DOWNLOAD_EXACT_IDENTITY_OK", downloaded, flush=True)
     return downloaded
+
+
+def safe_extract_dataset_package(archive_path: Path, destination: Path) -> int:
+    """Extract one outer Kaggle package without recursively unpacking its files."""
+
+    temporary = destination.with_name(f".{destination.name}.extract-{os.getpid()}")
+    if temporary.exists():
+        shutil.rmtree(temporary)
+    temporary.mkdir(parents=True)
+    count = 0
+    with zipfile.ZipFile(archive_path) as archive:
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            relative = Path(info.filename)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError(f"unsafe dataset package member: {info.filename}")
+            target = temporary / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(info) as source, target.open("wb") as output:
+                shutil.copyfileobj(source, output)
+            count += 1
+    if destination.exists():
+        shutil.rmtree(destination)
+    temporary.replace(destination)
+    print(
+        "KAGGLE_DATASET_PACKAGE_EXTRACT_OK",
+        json.dumps({"archive": archive_path.name, "files": count}, sort_keys=True),
+        flush=True,
+    )
+    return count
 
 
 def configure_kaggle_credentials() -> None:
@@ -285,9 +331,16 @@ def prepare_dataset_root(source_root: Path, destination: Path, log_dir: Path) ->
     return destination.resolve()
 
 
-def copy_extracted_shards(source_root: Path, destination: Path) -> int:
-    """Copy/hard-link the split tree produced by Kaggle CLI ``--unzip``."""
+def has_usable_shard_payload(root: Path) -> bool:
+    if (root / "shards.zip").is_file() or is_prepared_dataset(root):
+        return True
+    return {
+        split: len(paths)
+        for split, paths in discover_extracted_shards(root).items()
+    } == EXPECTED_SHARD_COUNTS
 
+
+def discover_extracted_shards(source_root: Path) -> dict[str, list[Path]]:
     discovered: dict[str, list[Path]] = {split: [] for split in EXPECTED_SHARD_COUNTS}
     for source in sorted(source_root.rglob("*.jsonl.gz")):
         relative = source.relative_to(source_root)
@@ -299,9 +352,15 @@ def copy_extracted_shards(source_root: Path, destination: Path) -> int:
                 (name for name in discovered if source.name.startswith(f"{name}-")),
                 None,
             )
-        if split is None:
-            continue
-        discovered[split].append(source)
+        if split is not None:
+            discovered[split].append(source)
+    return discovered
+
+
+def copy_extracted_shards(source_root: Path, destination: Path) -> int:
+    """Copy/hard-link the split tree produced by Kaggle CLI ``--unzip``."""
+
+    discovered = discover_extracted_shards(source_root)
 
     observed = {split: len(paths) for split, paths in discovered.items()}
     if observed != EXPECTED_SHARD_COUNTS:

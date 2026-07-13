@@ -51,7 +51,7 @@ class MultiresEventKaggleRouteTest(unittest.TestCase):
         notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
         self.assertEqual(len(notebook["cells"]), 2)
         code = "".join(notebook["cells"][1]["source"])
-        self.assertIn('REQUIRED_GIT_REF = "multires-event-v1-baseline-run-20260712-r1"', code)
+        self.assertIn('REQUIRED_GIT_REF = "multires-event-v1-baseline-run-20260712-r2"', code)
         self.assertNotIn("TRAUMA_PREDICT_GIT_REF", code)
         self.assertIn("run_multires_event_v1.py", code)
 
@@ -99,6 +99,38 @@ class MultiresEventKaggleRouteTest(unittest.TestCase):
             self.assertEqual(record["shard_source_layout"], "kaggle_cli_extracted_split_tree")
             self.assertEqual(record["extracted_shards"], 52)
 
+    def test_controlled_package_extraction_preserves_nested_shards_zip(self) -> None:
+        launcher = load_launcher()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inner = root / "shards.zip"
+            with zipfile.ZipFile(inner, "w") as handle:
+                for split, count in launcher.EXPECTED_SHARD_COUNTS.items():
+                    for index in range(count):
+                        handle.writestr(f"{split}/{split}-{index:05d}.jsonl.gz", b"gzip")
+            package = root / "dataset.zip"
+            with zipfile.ZipFile(package, "w") as handle:
+                handle.write(inner, "shards.zip")
+                handle.writestr("dataset_manifest.json", json.dumps(self.exact_manifest()))
+                for name in (
+                    "sample_manifest.csv",
+                    "subject_split.csv",
+                    "event_templates.json",
+                    "time_blocks.json",
+                    "SUCCEEDED",
+                ):
+                    handle.writestr(name, "test")
+            package_root = root / "package"
+            self.assertEqual(launcher.safe_extract_dataset_package(package, package_root), 7)
+            source = launcher.find_exact_attached_dataset(package_root)
+            self.assertTrue(launcher.has_usable_shard_payload(source))
+            with zipfile.ZipFile(source / "shards.zip") as preserved:
+                self.assertEqual(len(preserved.namelist()), 52)
+            log_dir = root / "logs"
+            log_dir.mkdir()
+            prepared = launcher.prepare_dataset_root(source, root / "prepared", log_dir)
+            self.assertTrue(launcher.is_prepared_dataset(prepared))
+
     def test_launcher_is_torchrun_smoke_then_full_without_hf(self) -> None:
         source = LAUNCHER_PATH.read_text(encoding="utf-8")
         self.assertIn('"--nproc_per_node=2"', source)
@@ -109,7 +141,8 @@ class MultiresEventKaggleRouteTest(unittest.TestCase):
             self.assertIn(f'"{key}"', source)
         self.assertIn('log_path.open("a"', source)
         self.assertIn('"datasets",\n            "download"', source)
-        self.assertIn('"--unzip"', source)
+        self.assertNotIn('"--unzip"', source)
+        self.assertIn("safe_extract_dataset_package", source)
         self.assertIn("safe_extract_shards", source)
         self.assertNotIn("ModernBERT", source)
         self.assertNotIn("transformers", source)
