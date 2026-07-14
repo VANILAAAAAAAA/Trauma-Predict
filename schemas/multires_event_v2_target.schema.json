@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trauma-predict.local/schemas/multires_event_v2_target.schema.json",
+  "title": "Multi-resolution Event M4 Target Sidecar V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "sample_id",
+    "subject_id",
+    "hadm_id",
+    "stay_id",
+    "prediction_hour",
+    "split",
+    "base_dataset_id",
+    "base_dataset_fingerprint",
+    "base_content_hash",
+    "contract_hashes",
+    "target_arithmetic_canonicalization",
+    "source_evidence",
+    "blocks",
+    "target_content_hash"
+  ],
+  "properties": {
+    "schema": {"const": "multires_event_m4_target_sidecar_v2"},
+    "sample_id": {"type": "string", "minLength": 1},
+    "subject_id": {"type": "string", "minLength": 1},
+    "hadm_id": {"type": "string", "minLength": 1},
+    "stay_id": {"type": "string", "minLength": 1},
+    "prediction_hour": {"type": "integer", "minimum": 12, "maximum": 312},
+    "split": {"enum": ["train", "val", "test"]},
+    "base_dataset_id": {"type": "string", "minLength": 1},
+    "base_dataset_fingerprint": {"$ref": "#/$defs/sha256"},
+    "base_content_hash": {"$ref": "#/$defs/sha256"},
+    "contract_hashes": {"$ref": "#/$defs/contractHashes"},
+    "target_arithmetic_canonicalization": {
+      "$ref": "#/$defs/targetArithmeticCanonicalization"
+    },
+    "source_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field_ready_contract_hash",
+        "point_events_sha256",
+        "gcs_verbal_reaggregated"
+      ],
+      "properties": {
+        "field_ready_contract_hash": {"$ref": "#/$defs/sha256"},
+        "point_events_sha256": {"$ref": "#/$defs/sha256"},
+        "gcs_verbal_reaggregated": {"const": true}
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {"$ref": "#/$defs/block"}
+    },
+    "target_content_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "contractHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "process",
+        "emission",
+        "projection",
+        "category",
+        "relation",
+        "element_extension",
+        "sidecar_schema"
+      ],
+      "properties": {
+        "process": {"$ref": "#/$defs/sha256"},
+        "emission": {"$ref": "#/$defs/sha256"},
+        "projection": {"$ref": "#/$defs/sha256"},
+        "category": {"$ref": "#/$defs/sha256"},
+        "relation": {"$ref": "#/$defs/sha256"},
+        "element_extension": {"$ref": "#/$defs/sha256"},
+        "sidecar_schema": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "targetArithmeticCanonicalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "policy", "count", "by_type", "records"],
+      "properties": {
+        "schema": {"const": "multires_event_m4_target_arithmetic_canonicalization_v1"},
+        "policy": {"const": "dense_mean_exact_support_r8"},
+        "count": {"type": "integer", "minimum": 0, "maximum": 54},
+        "by_type": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dense_zero_range_mean_to_min": {"type": "integer", "minimum": 1},
+            "dense_positive_range_mean_lower_outside_one_ulp": {"type": "integer", "minimum": 1},
+            "dense_positive_range_mean_lower_inside_one_ulp": {"type": "integer", "minimum": 1},
+            "dense_positive_range_mean_upper_inside_one_ulp": {"type": "integer", "minimum": 1},
+            "dense_positive_range_mean_upper_outside_one_ulp": {"type": "integer", "minimum": 1}
+          }
+        },
+        "records": {
+          "type": "array",
+          "maxItems": 54,
+          "items": {"$ref": "#/$defs/arithmeticCanonicalizationRecord"}
+        }
+      }
+    },
+    "arithmeticCanonicalizationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_id", "field", "type", "observed_hours", "original_mean",
+        "canonical_mean", "support_boundary", "boundary_value", "ulp_rule"
+      ],
+      "properties": {
+        "block_id": {"pattern": "^M4_0[1-6]$"},
+        "field": {
+          "enum": [
+            "heart_rate", "systolic_bp", "diastolic_bp", "mean_arterial_pressure",
+            "respiratory_rate", "temperature", "spo2", "fio2", "peep"
+          ]
+        },
+        "type": {
+          "enum": [
+            "dense_zero_range_mean_to_min",
+            "dense_positive_range_mean_lower_outside_one_ulp",
+            "dense_positive_range_mean_lower_inside_one_ulp",
+            "dense_positive_range_mean_upper_inside_one_ulp",
+            "dense_positive_range_mean_upper_outside_one_ulp"
+          ]
+        },
+        "observed_hours": {"type": "integer", "minimum": 1, "maximum": 4},
+        "original_mean": {"type": "number"},
+        "canonical_mean": {"type": "number"},
+        "support_boundary": {"enum": ["MIN", "LOWER", "UPPER"]},
+        "boundary_value": {"type": "number"},
+        "ulp_rule": {
+          "enum": [
+            "original_MEAN_equals_nextafter(MIN,-infinity)",
+            "original_MEAN_equals_nextafter(MIN,+infinity)",
+            "original_MEAN_equals_nextafter(lower,-infinity)",
+            "original_MEAN_equals_nextafter(lower,+infinity)",
+            "original_MEAN_equals_nextafter(upper,-infinity)",
+            "original_MEAN_equals_nextafter(upper,+infinity)"
+          ]
+        }
+      }
+    },
+    "valueState4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["last", "min", "max", "mean"],
+      "properties": {
+        "last": {"type": "number"},
+        "min": {"type": "number"},
+        "max": {"type": "number"},
+        "mean": {"type": "number"}
+      }
+    },
+    "valueState3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["last", "min", "max"],
+      "properties": {
+        "last": {"type": "number"},
+        "min": {"type": "number"},
+        "max": {"type": "number"}
+      }
+    },
+    "dense": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "observed_hours", "value_state", "abnormal_occupancy"],
+      "properties": {
+        "family": {"const": "dense_point"},
+        "observed_hours": {"type": "integer", "minimum": 0, "maximum": 4},
+        "value_state": {"anyOf": [{"$ref": "#/$defs/valueState4"}, {"type": "null"}]},
+        "abnormal_occupancy": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0, "maximum": 4}
+        }
+      }
+    },
+    "ordinal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "observed_hours", "ordinal_state"],
+      "properties": {
+        "family": {"const": "ordinal_point"},
+        "observed_hours": {"type": "integer", "minimum": 0, "maximum": 4},
+        "ordinal_state": {"anyOf": [{"$ref": "#/$defs/valueState3"}, {"type": "null"}]}
+      }
+    },
+    "verbal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "observed_hours",
+        "ungradable_hours",
+        "gradable_hours",
+        "last_observation_status",
+        "gradable_state"
+      ],
+      "properties": {
+        "family": {"const": "gcs_verbal_testability"},
+        "observed_hours": {"type": "integer", "minimum": 0, "maximum": 4},
+        "ungradable_hours": {"type": "integer", "minimum": 0, "maximum": 4},
+        "gradable_hours": {"type": "integer", "minimum": 0, "maximum": 4},
+        "last_observation_status": {"enum": ["UNOBSERVED", "GRADABLE", "UNGRADABLE"]},
+        "gradable_state": {"anyOf": [{"$ref": "#/$defs/valueState3"}, {"type": "null"}]}
+      }
+    },
+    "lab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "observation_count", "value_state"],
+      "properties": {
+        "family": {"const": "intermittent_lab"},
+        "observation_count": {"type": "integer", "minimum": 0},
+        "value_state": {"anyOf": [{"$ref": "#/$defs/valueState3"}, {"type": "null"}]}
+      }
+    },
+    "respiratory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "block_evidence",
+        "edge_evidence",
+        "documented_duration",
+        "uncovered_duration",
+        "edge_category",
+        "onset_count"
+      ],
+      "properties": {
+        "family": {"const": "respiratory_support"},
+        "block_evidence": {"type": "boolean"},
+        "edge_evidence": {"type": "boolean"},
+        "documented_duration": {"type": ["object", "null"]},
+        "uncovered_duration": {"type": ["number", "null"]},
+        "edge_category": {
+          "enum": [
+            "RESP_INVASIVE",
+            "RESP_NONINVASIVE",
+            "RESP_HIGH_FLOW",
+            "RESP_OTHER_OXYGEN",
+            null
+          ]
+        },
+        "onset_count": {"type": ["object", "null"]}
+      }
+    },
+    "vasopressor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "duration", "edge_state", "onset_count"],
+      "properties": {
+        "family": {"const": "vasopressor_support"},
+        "duration": {"type": "object"},
+        "edge_state": {"type": "object"},
+        "onset_count": {"type": "object"}
+      }
+    },
+    "ned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "value_state"],
+      "properties": {
+        "family": {"const": "norepinephrine_equivalent_dose"},
+        "value_state": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["last", "max", "mean"],
+          "properties": {
+            "last": {"type": "number", "minimum": 0},
+            "max": {"type": "number", "minimum": 0},
+            "mean": {"type": "number", "minimum": 0}
+          }
+        }
+      }
+    },
+    "uop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "observation_count", "sum"],
+      "properties": {
+        "family": {"const": "urine_output"},
+        "observation_count": {"type": "integer", "minimum": 0},
+        "sum": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "process": {
+      "oneOf": [
+        {"$ref": "#/$defs/dense"},
+        {"$ref": "#/$defs/ordinal"},
+        {"$ref": "#/$defs/verbal"},
+        {"$ref": "#/$defs/lab"},
+        {"$ref": "#/$defs/respiratory"},
+        {"$ref": "#/$defs/vasopressor"},
+        {"$ref": "#/$defs/ned"},
+        {"$ref": "#/$defs/uop"}
+      ]
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_id",
+        "block_index",
+        "relative_start_hour",
+        "relative_end_hour",
+        "processes"
+      ],
+      "properties": {
+        "block_id": {"type": "string", "pattern": "^M4_0[1-6]$"},
+        "block_index": {"type": "integer", "minimum": 1, "maximum": 6},
+        "relative_start_hour": {"type": "integer", "minimum": 0, "maximum": 20},
+        "relative_end_hour": {"type": "integer", "minimum": 4, "maximum": 24},
+        "processes": {
+          "type": "object",
+          "minProperties": 29,
+          "maxProperties": 29,
+          "propertyNames": {
+            "enum": [
+              "heart_rate",
+              "systolic_bp",
+              "diastolic_bp",
+              "mean_arterial_pressure",
+              "respiratory_rate",
+              "temperature",
+              "spo2",
+              "gcs_eye",
+              "gcs_verbal",
+              "gcs_motor",
+              "respiratory_support",
+              "fio2",
+              "peep",
+              "lactate",
+              "base_excess",
+              "bicarbonate",
+              "creatinine",
+              "bun",
+              "wbc",
+              "hemoglobin",
+              "platelet_count",
+              "inr",
+              "sodium",
+              "potassium",
+              "chloride",
+              "glucose",
+              "vasopressor_support",
+              "norepinephrine_equivalent_dose",
+              "urine_output"
+            ]
+          },
+          "additionalProperties": {"$ref": "#/$defs/process"}
+        }
+      }
+    }
+  }
+}

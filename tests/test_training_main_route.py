@@ -29,6 +29,7 @@ from trauma_predict.training.main_route import (
     validate_resume_checkpoint_stage,
 )
 from trauma_predict.training.multires_event import validate_multires_event_config
+from trauma_predict.training.multires_event_v2 import validate_multires_event_v2_configs
 from trauma_predict.training.config import load_yaml_config
 from trauma_predict.training.runtime import quarantine_rng_state_files
 from trauma_predict.training.stages import resolve_training_stage_contract
@@ -217,6 +218,14 @@ class TrainingMainRouteTest(unittest.TestCase):
                 if config.get("route") == "multires_event_v1_baseline":
                     model_path = REPO_ROOT / config["model"]["config_path"]
                     validate_multires_event_config(config, load_yaml_config(model_path))
+                elif config.get("route") == "multires_event_v2_m4_trajectory":
+                    dataset_path = REPO_ROOT / config["dataset"]["config_path"]
+                    model_path = REPO_ROOT / config["model"]["config_path"]
+                    validate_multires_event_v2_configs(
+                        config,
+                        load_yaml_config(dataset_path),
+                        load_yaml_config(model_path),
+                    )
                 else:
                     validate_main_route_config(config)
 

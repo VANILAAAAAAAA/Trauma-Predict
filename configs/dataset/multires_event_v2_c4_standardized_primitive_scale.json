@@ -1,0 +1,464 @@
+{
+  "content_sha256": "0f13f933ae008613ca0665a2de21674de571cbd1102eeca21376e00e582b49e7",
+  "coordinate_contract": "registered_primitive_injective_phi_v2_natural_conditional",
+  "coordinate_schema_sha256": "db9317767bab9abfd7e42cb59ff1f1a0edaf9d31ccf1dc670734b5a91ca3933b",
+  "fit_audit": {
+    "fitted_key_count": 38,
+    "fitted_keys": [
+      "diastolic_bp|dense_joint_value_state|last",
+      "diastolic_bp|dense_joint_value_state|max",
+      "diastolic_bp|dense_joint_value_state|mean",
+      "diastolic_bp|dense_joint_value_state|min",
+      "fio2|dense_joint_value_state|last",
+      "fio2|dense_joint_value_state|max",
+      "fio2|dense_joint_value_state|mean",
+      "fio2|dense_joint_value_state|min",
+      "heart_rate|dense_joint_value_state|last",
+      "heart_rate|dense_joint_value_state|max",
+      "heart_rate|dense_joint_value_state|mean",
+      "heart_rate|dense_joint_value_state|min",
+      "mean_arterial_pressure|dense_joint_value_state|last",
+      "mean_arterial_pressure|dense_joint_value_state|max",
+      "mean_arterial_pressure|dense_joint_value_state|mean",
+      "mean_arterial_pressure|dense_joint_value_state|min",
+      "norepinephrine_equivalent_dose|ned_joint_value_state|log_positive_max",
+      "peep|dense_joint_value_state|last",
+      "peep|dense_joint_value_state|max",
+      "peep|dense_joint_value_state|mean",
+      "peep|dense_joint_value_state|min",
+      "respiratory_rate|dense_joint_value_state|last",
+      "respiratory_rate|dense_joint_value_state|max",
+      "respiratory_rate|dense_joint_value_state|mean",
+      "respiratory_rate|dense_joint_value_state|min",
+      "spo2|dense_joint_value_state|last",
+      "spo2|dense_joint_value_state|max",
+      "spo2|dense_joint_value_state|mean",
+      "spo2|dense_joint_value_state|min",
+      "systolic_bp|dense_joint_value_state|last",
+      "systolic_bp|dense_joint_value_state|max",
+      "systolic_bp|dense_joint_value_state|mean",
+      "systolic_bp|dense_joint_value_state|min",
+      "temperature|dense_joint_value_state|last",
+      "temperature|dense_joint_value_state|max",
+      "temperature|dense_joint_value_state|mean",
+      "temperature|dense_joint_value_state|min",
+      "urine_output|uop_sum_given_count|log_positive_sum"
+    ],
+    "scale_fallback": "forbidden",
+    "zero_iqr_keys": []
+  },
+  "fit_population": {
+    "authority": "persisted_full_sidecar_train_target_shards",
+    "collapsed_duplicate_field_windows": 1437436,
+    "duplicate_truth_policy": "require_exact_canonical_json_then_count_once",
+    "fitted_fields": [
+      "heart_rate",
+      "systolic_bp",
+      "diastolic_bp",
+      "mean_arterial_pressure",
+      "respiratory_rate",
+      "temperature",
+      "spo2",
+      "fio2",
+      "peep",
+      "norepinephrine_equivalent_dose",
+      "urine_output"
+    ],
+    "physical_window_key": [
+      "subject_id",
+      "stay_id",
+      "absolute_start_hour",
+      "absolute_end_hour",
+      "field"
+    ],
+    "train_samples": 37734,
+    "train_subject_ids_sha256": "187a840331eeb4a12a90f8840b37b8ebc8f910eb031381249126e7e837d67a88",
+    "train_subjects": 3022,
+    "unique_fitted_physical_field_windows": 1053008,
+    "window_truth_ledger_sha256": "d96cae7a10793fc4f701fc0a1ff3717c6503d78b871ddeac5263a3c3ae783d6a"
+  },
+  "fit_split": "train",
+  "lab_scales": {
+    "base_excess": {
+      "center": 1.0,
+      "scale": 5.0
+    },
+    "bicarbonate": {
+      "center": 25.0,
+      "scale": 6.0
+    },
+    "bun": {
+      "center": 20.0,
+      "scale": 21.0
+    },
+    "chloride": {
+      "center": 104.0,
+      "scale": 9.0
+    },
+    "creatinine": {
+      "center": 0.9,
+      "scale": 0.7999999999999999
+    },
+    "glucose": {
+      "center": 126.0,
+      "scale": 46.75
+    },
+    "hemoglobin": {
+      "center": 9.2,
+      "scale": 2.3000000000000007
+    },
+    "inr": {
+      "center": 1.2,
+      "scale": 0.3999999999999999
+    },
+    "lactate": {
+      "center": 1.4,
+      "scale": 1.0
+    },
+    "platelet_count": {
+      "center": 182.0,
+      "scale": 151.0
+    },
+    "potassium": {
+      "center": 3.9,
+      "scale": 0.5999999999999996
+    },
+    "sodium": {
+      "center": 140.0,
+      "scale": 8.0
+    },
+    "wbc": {
+      "center": 10.4,
+      "scale": 6.2
+    }
+  },
+  "scales": {
+    "diastolic_bp|dense_joint_value_state|last": {
+      "center": 63.0,
+      "fit_count": 94664,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 54.0,
+      "q75": 73.0,
+      "scale": 19.0
+    },
+    "diastolic_bp|dense_joint_value_state|max": {
+      "center": 71.0,
+      "fit_count": 94664,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 61.0,
+      "q75": 82.0,
+      "scale": 21.0
+    },
+    "diastolic_bp|dense_joint_value_state|mean": {
+      "center": 63.0,
+      "fit_count": 94664,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 55.0,
+      "q75": 72.33333333333333,
+      "scale": 17.33333333333333
+    },
+    "diastolic_bp|dense_joint_value_state|min": {
+      "center": 56.0,
+      "fit_count": 94664,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 48.0,
+      "q75": 65.0,
+      "scale": 17.0
+    },
+    "fio2|dense_joint_value_state|last": {
+      "center": 0.4,
+      "fit_count": 54620,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 0.4,
+      "q75": 0.5,
+      "scale": 0.09999999999999998
+    },
+    "fio2|dense_joint_value_state|max": {
+      "center": 0.4,
+      "fit_count": 54620,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 0.4,
+      "q75": 0.5,
+      "scale": 0.09999999999999998
+    },
+    "fio2|dense_joint_value_state|mean": {
+      "center": 0.4,
+      "fit_count": 54620,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 0.4,
+      "q75": 0.5,
+      "scale": 0.09999999999999998
+    },
+    "fio2|dense_joint_value_state|min": {
+      "center": 0.4,
+      "fit_count": 54620,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 0.4,
+      "q75": 0.5,
+      "scale": 0.09999999999999998
+    },
+    "heart_rate|dense_joint_value_state|last": {
+      "center": 84.0,
+      "fit_count": 95018,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 72.0,
+      "q75": 97.0,
+      "scale": 25.0
+    },
+    "heart_rate|dense_joint_value_state|max": {
+      "center": 91.0,
+      "fit_count": 95018,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 79.0,
+      "q75": 104.0,
+      "scale": 25.0
+    },
+    "heart_rate|dense_joint_value_state|mean": {
+      "center": 84.5,
+      "fit_count": 95018,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 73.25,
+      "q75": 96.75,
+      "scale": 23.5
+    },
+    "heart_rate|dense_joint_value_state|min": {
+      "center": 79.0,
+      "fit_count": 95018,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 68.0,
+      "q75": 91.0,
+      "scale": 23.0
+    },
+    "mean_arterial_pressure|dense_joint_value_state|last": {
+      "center": 80.0,
+      "fit_count": 92615,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 70.0,
+      "q75": 91.0,
+      "scale": 21.0
+    },
+    "mean_arterial_pressure|dense_joint_value_state|max": {
+      "center": 89.0,
+      "fit_count": 92615,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 79.0,
+      "q75": 100.0,
+      "scale": 21.0
+    },
+    "mean_arterial_pressure|dense_joint_value_state|mean": {
+      "center": 80.25,
+      "fit_count": 92615,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 71.75,
+      "q75": 89.75,
+      "scale": 18.0
+    },
+    "mean_arterial_pressure|dense_joint_value_state|min": {
+      "center": 72.0,
+      "fit_count": 92615,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 64.0,
+      "q75": 82.0,
+      "scale": 18.0
+    },
+    "norepinephrine_equivalent_dose|ned_joint_value_state|log_positive_max": {
+      "center": -2.3030168212430744,
+      "fit_count": 15307,
+      "fit_kind": "train_unique_physical_window_median_iqr_log_positive",
+      "q25": -2.995421299985405,
+      "q75": -1.6140879978483618,
+      "scale": 1.381333302137043
+    },
+    "peep|dense_joint_value_state|last": {
+      "center": 5.0,
+      "fit_count": 45046,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 5.0,
+      "q75": 9.0,
+      "scale": 4.0
+    },
+    "peep|dense_joint_value_state|max": {
+      "center": 5.0,
+      "fit_count": 45046,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 5.0,
+      "q75": 10.0,
+      "scale": 5.0
+    },
+    "peep|dense_joint_value_state|mean": {
+      "center": 5.0,
+      "fit_count": 45046,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 5.0,
+      "q75": 9.0,
+      "scale": 4.0
+    },
+    "peep|dense_joint_value_state|min": {
+      "center": 5.0,
+      "fit_count": 45046,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 5.0,
+      "q75": 8.0,
+      "scale": 3.0
+    },
+    "respiratory_rate|dense_joint_value_state|last": {
+      "center": 20.0,
+      "fit_count": 94503,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 16.0,
+      "q75": 24.0,
+      "scale": 8.0
+    },
+    "respiratory_rate|dense_joint_value_state|max": {
+      "center": 23.0,
+      "fit_count": 94503,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 19.0,
+      "q75": 27.0,
+      "scale": 8.0
+    },
+    "respiratory_rate|dense_joint_value_state|mean": {
+      "center": 19.5,
+      "fit_count": 94503,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 16.5,
+      "q75": 23.0,
+      "scale": 6.5
+    },
+    "respiratory_rate|dense_joint_value_state|min": {
+      "center": 17.0,
+      "fit_count": 94503,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 14.0,
+      "q75": 20.0,
+      "scale": 6.0
+    },
+    "spo2|dense_joint_value_state|last": {
+      "center": 98.0,
+      "fit_count": 94717,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 96.0,
+      "q75": 99.0,
+      "scale": 3.0
+    },
+    "spo2|dense_joint_value_state|max": {
+      "center": 99.0,
+      "fit_count": 94717,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 97.0,
+      "q75": 100.0,
+      "scale": 3.0
+    },
+    "spo2|dense_joint_value_state|mean": {
+      "center": 97.5,
+      "fit_count": 94717,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 95.75,
+      "q75": 99.0,
+      "scale": 3.25
+    },
+    "spo2|dense_joint_value_state|min": {
+      "center": 96.0,
+      "fit_count": 94717,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 94.0,
+      "q75": 98.0,
+      "scale": 4.0
+    },
+    "systolic_bp|dense_joint_value_state|last": {
+      "center": 123.0,
+      "fit_count": 94668,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 109.0,
+      "q75": 139.0,
+      "scale": 30.0
+    },
+    "systolic_bp|dense_joint_value_state|max": {
+      "center": 135.0,
+      "fit_count": 94668,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 121.0,
+      "q75": 151.0,
+      "scale": 30.0
+    },
+    "systolic_bp|dense_joint_value_state|mean": {
+      "center": 123.5,
+      "fit_count": 94668,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 110.5,
+      "q75": 137.5,
+      "scale": 27.0
+    },
+    "systolic_bp|dense_joint_value_state|min": {
+      "center": 112.0,
+      "fit_count": 94668,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 99.0,
+      "q75": 126.0,
+      "scale": 27.0
+    },
+    "temperature|dense_joint_value_state|last": {
+      "center": 37.05555555555556,
+      "fit_count": 88561,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 36.72222222222222,
+      "q75": 37.5,
+      "scale": 0.7777777777777786
+    },
+    "temperature|dense_joint_value_state|max": {
+      "center": 37.111111111111114,
+      "fit_count": 88561,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 36.77777777777778,
+      "q75": 37.55555555555556,
+      "scale": 0.7777777777777786
+    },
+    "temperature|dense_joint_value_state|mean": {
+      "center": 37.05555555555556,
+      "fit_count": 88561,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 36.72222222222222,
+      "q75": 37.5,
+      "scale": 0.7777777777777786
+    },
+    "temperature|dense_joint_value_state|min": {
+      "center": 37.05555555555556,
+      "fit_count": 88561,
+      "fit_kind": "train_unique_physical_window_median_iqr_raw",
+      "q25": 36.72222222222222,
+      "q75": 37.44444444444444,
+      "scale": 0.7222222222222214
+    },
+    "urine_output|uop_sum_given_count|log_positive_sum": {
+      "center": 5.652489180268651,
+      "fit_count": 79410,
+      "fit_kind": "train_unique_physical_window_median_iqr_log_positive",
+      "q25": 5.10594547390058,
+      "q75": 6.173786103901937,
+      "scale": 1.0678406300013563
+    }
+  },
+  "schema": "multires_event_v2_standardized_primitive_scale_v2",
+  "source": {
+    "contract_bundle_hash": "10e9ed6c2fb94610fa61edc5061b8465e967ef6c222f22455877da583420cd10",
+    "emission_contract_sha256": "e926e1a3e6e3e71039a26548ca8d3f35bf2eee5725be3195992d4d47f715e96c",
+    "lab_scale_artifact_sha256": "dbd5b14254338ff8c42fbfbaf02ca024050b83860f21ffb3b58a27899469cd12",
+    "process_contract_sha256": "3f90bec35d6473a0e9dc69f3654d1b55eaf1c9d3f9850078df1361e84b2cd7db",
+    "projection_contract_sha256": "7efdf7d3c0415e6aa26d99411f5df66907b5ff74b30f6880e72de72fe4c3d34b",
+    "sidecar_dataset_id": "multires_event_m4_target_v2_c4_full_20260713_r8",
+    "sidecar_dataset_manifest_sha256": "fb8748a5d396c5342be143032096acef03af2345bdd80e53dc82f69a7875b8b6",
+    "sidecar_sample_manifest_sha256": "96ce73f2cfb4a2a8af0bd21cbbab9634bd02268d03e7cda68ac4f21229596a4e"
+  },
+  "status": "frozen_train_only_fit",
+  "transform": {
+    "bounded_duration": "x/4",
+    "clipping": "forbidden",
+    "conditional_ratio": "numerator/positive_denominator_else_0",
+    "fitted_continuous": "asinh((x-center)/scale)",
+    "fitted_positive": "gate=1[x>0]; asinh((log(x)-center)/scale)",
+    "lab_reuse": "asinh((x-lab_center)/lab_scale)",
+    "nonnegative_integer": "asinh(x)",
+    "pooling": "shared_across_six_M4_blocks"
+  },
+  "version": "2026-07-13-train-target-natural-conditional-v2"
+}

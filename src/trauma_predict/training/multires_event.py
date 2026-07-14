@@ -637,10 +637,17 @@ def _build_scheduler(optimizer: Any, training: Mapping[str, Any]) -> Any:
 
 def _build_grad_scaler(torch_module: Any, device: Any, training: Mapping[str, Any]) -> Any:
     enabled = training.get("precision") == "fp16" and device.type == "cuda"
+    scaler_kwargs = {
+        "enabled": enabled,
+        "init_scale": float(training.get("grad_scaler_initial_scale", 65536.0)),
+        "growth_factor": float(training.get("grad_scaler_growth_factor", 2.0)),
+        "backoff_factor": float(training.get("grad_scaler_backoff_factor", 0.5)),
+        "growth_interval": int(training.get("grad_scaler_growth_interval", 2000)),
+    }
     try:
-        return torch_module.amp.GradScaler("cuda", enabled=enabled)
+        return torch_module.amp.GradScaler("cuda", **scaler_kwargs)
     except (AttributeError, TypeError):
-        return torch_module.cuda.amp.GradScaler(enabled=enabled)
+        return torch_module.cuda.amp.GradScaler(**scaler_kwargs)
 
 
 def _autocast_context(device: Any, training: Mapping[str, Any]) -> Any:
@@ -1179,22 +1186,34 @@ def _save_checkpoint(
     import torch
 
     step = int(trainer_state["global_step"])
-    checkpoint = output_dir / "checkpoints" / f"checkpoint-{step:08d}"
+    checkpoint_root = output_dir / "checkpoints"
+    checkpoint = checkpoint_root / f"checkpoint-{step:08d}"
+    partial = checkpoint_root / f".checkpoint-{step:08d}.partial"
+    checkpoint_root.mkdir(parents=True, exist_ok=True)
+    if checkpoint.exists():
+        raise FileExistsError(f"refusing to overwrite completed checkpoint {checkpoint}")
     if is_rank_zero():
-        checkpoint.mkdir(parents=True, exist_ok=True)
+        if partial.exists():
+            abandoned_root = checkpoint_root / "incomplete"
+            abandoned_root.mkdir(parents=True, exist_ok=True)
+            timestamp = utc_now().replace(":", "-")
+            partial.rename(
+                abandoned_root / f"{partial.name}-{timestamp}-pid{os.getpid()}"
+            )
+        partial.mkdir(parents=False, exist_ok=False)
     _barrier()
-    torch.save(_capture_rng_state(), checkpoint / f"rng-rank-{rank:04d}.pt")
+    torch.save(_capture_rng_state(), partial / f"rng-rank-{rank:04d}.pt")
     sampler_state = runtime.train_sampler.state_dict() if hasattr(runtime.train_sampler, "state_dict") else None
-    torch.save(sampler_state, checkpoint / f"sampler-rank-{rank:04d}.pt")
+    torch.save(sampler_state, partial / f"sampler-rank-{rank:04d}.pt")
     _barrier()
     if is_rank_zero():
-        torch.save(_unwrapped_model(model).state_dict(), checkpoint / "model.pt")
-        torch.save(optimizer.state_dict(), checkpoint / "optimizer.pt")
-        torch.save(scheduler.state_dict(), checkpoint / "scheduler.pt")
-        torch.save(scaler.state_dict(), checkpoint / "scaler.pt")
-        atomic_write_json(checkpoint / "trainer_state.json", dict(trainer_state))
-        atomic_write_json(checkpoint / "identity_hashes.json", dict(identity_hashes))
-        atomic_write_json(checkpoint / "checkpoint_manifest.json", {
+        torch.save(_unwrapped_model(model).state_dict(), partial / "model.pt")
+        torch.save(optimizer.state_dict(), partial / "optimizer.pt")
+        torch.save(scheduler.state_dict(), partial / "scheduler.pt")
+        torch.save(scaler.state_dict(), partial / "scaler.pt")
+        atomic_write_json(partial / "trainer_state.json", dict(trainer_state))
+        atomic_write_json(partial / "identity_hashes.json", dict(identity_hashes))
+        atomic_write_json(partial / "checkpoint_manifest.json", {
             "schema_version": "trauma_predict.multires_checkpoint.v1",
             "created_at": utc_now(),
             "global_step": step,
@@ -1211,6 +1230,7 @@ def _save_checkpoint(
                 *[f"sampler-rank-{index:04d}.pt" for index in range(_world_size())],
             ],
         })
+        partial.replace(checkpoint)
     _barrier()
     if is_rank_zero():
         _prune_checkpoints(output_dir / "checkpoints", keep_last)
@@ -1231,7 +1251,20 @@ def _maybe_resume(
     runtime: Any,
 ) -> tuple[dict[str, Any], Mapping[str, Any] | None]:
     resume = bool(config["training"].get("resume", False))
-    checkpoints = _sorted_checkpoints(output_dir / "checkpoints")
+    all_checkpoints = _sorted_checkpoints(output_dir / "checkpoints")
+    checkpoints = [path for path in all_checkpoints if _checkpoint_is_complete(path)]
+    incomplete = [path for path in all_checkpoints if path not in checkpoints]
+    if incomplete and is_rank_zero():
+        print(
+            "IGNORING_INCOMPLETE_CHECKPOINTS "
+            + json.dumps([str(path) for path in incomplete]),
+            flush=True,
+        )
+    if all_checkpoints and not checkpoints:
+        raise RuntimeError(
+            "checkpoint directory contains no complete recoverable checkpoint: "
+            f"{all_checkpoints}"
+        )
     if not checkpoints:
         return {
             "global_step": 0,
@@ -1467,10 +1500,35 @@ def _sorted_checkpoints(checkpoint_root: Path) -> list[Path]:
     )
 
 
+def _checkpoint_is_complete(path: Path) -> bool:
+    manifest_path = path / "checkpoint_manifest.json"
+    if not manifest_path.is_file():
+        return False
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    files = manifest.get("files")
+    if not isinstance(files, list) or not files:
+        return False
+    return all(
+        isinstance(name, str)
+        and name
+        and not Path(name).is_absolute()
+        and ".." not in Path(name).parts
+        and (path / name).is_file()
+        for name in files
+    )
+
+
 def _prune_checkpoints(checkpoint_root: Path, keep_last: int) -> None:
     if keep_last < 1:
         raise ValueError("keep_last_checkpoints must be >= 1")
-    for path in _sorted_checkpoints(checkpoint_root)[:-keep_last]:
+    complete = [
+        path for path in _sorted_checkpoints(checkpoint_root)
+        if _checkpoint_is_complete(path)
+    ]
+    for path in complete[:-keep_last]:
         shutil.rmtree(path)
 
 

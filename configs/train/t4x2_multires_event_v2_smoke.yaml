@@ -1,0 +1,98 @@
+schema_version: trauma_predict.multires_event_v2_train_config.v1
+route: multires_event_v2_m4_trajectory
+run_name: t4x2_multires_event_v2_smoke
+mode: relational
+seed: 20260713
+lab_scale_artifact: configs/dataset/multires_event_v2_c4_lab_affine_scale.json
+lab_scale_artifact_hash: dbd5b14254338ff8c42fbfbaf02ca024050b83860f21ffb3b58a27899469cd12
+standardized_primitive_scale_artifact: configs/dataset/multires_event_v2_c4_standardized_primitive_scale.json
+standardized_primitive_scale_artifact_hash: 0f13f933ae008613ca0665a2de21674de571cbd1102eeca21376e00e582b49e7
+promotion_metric_contract: configs/evaluation/multires_event_v2_promotion_v2.json
+promotion_metric_contract_hash: 7b5b85d5d3b3604308e1fe8b1471bc6c5c0c20bb16e3b9aaffd0c5e3afb53f3f
+
+dataset:
+  config_path: configs/dataset/multires_event_v2_c4.yaml
+model:
+  config_path: configs/model/multires_event_v2.yaml
+
+objective:
+  future_resolution: M4
+  future_blocks: 6
+  core_fields: 29
+  stochastic_primitive_factors: 414
+  factor_composition: joint_log_probability_sum
+  anchor_reduction: mean
+  active_target_denominator: false
+  deterministic_projection_loss: false
+  h1_training_loss: false
+  f24_training_loss: false
+  auxiliary_training_loss: false
+  family_weights: null
+
+evaluation:
+  checkpoint_metric: joint_nll_subject_macro
+  interval_anchor_policy: all_validation_anchors
+  interval_expected_samples: 6309
+  final_anchor_policy: all_validation_anchors
+  final_expected_samples: 6309
+  subject_macro: true
+  no_ddp_padding_duplicates: true
+  free_running_final: false
+  free_running_trajectories_per_anchor: 100
+  free_running_trajectory_batch_size: 100
+  free_running_crn_seed: 20260713
+
+comparison:
+  matched_mode_order: [block, trajectory, relational]
+  paired_rows: all_6309_persisted_validation_anchors
+  paired_unit: subject_id
+  estimands: [candidate_minus_control_subject_macro_joint_nll, candidate_over_control_subject_macro_score_ratio]
+  bootstrap_repetitions: 2000
+  bootstrap_seed: 20260713
+  shared_subject_bootstrap_schedule: true
+  physical_metrics_decision_role: report_only
+  coherence_required_rate: 1.0
+  promotion_gate: sequential_conjunction
+  decision_authority: sequential_nll_structural_marginal_coherence_v2
+
+training:
+  required_cuda_devices: 2
+  required_world_size: 2
+  precision: fp16
+  per_device_train_batch_size: 32
+  per_device_eval_batch_size: 32
+  gradient_accumulation_steps: 1
+  grad_scaler_initial_scale: 32.0
+  grad_scaler_growth_factor: 2.0
+  grad_scaler_backoff_factor: 0.5
+  grad_scaler_growth_interval: 1000000
+  max_consecutive_scaler_skips: 0
+  grad_scaler_overflow_policy: fail_run_preserve_matched_rows
+  train_samples_per_epoch: 3072
+  max_steps: 2
+  optimizer_contract_version: trauma_predict.multires_event_v2_optimizer.v1
+  loss_reduction: raw_414_factor_joint_nll_batch_mean
+  optimizer: AdamW
+  learning_rate: 2.0e-4
+  warmup_steps: 1
+  weight_decay: 0.01
+  adamw_betas: [0.9, 0.999]
+  adamw_eps: 1.0e-8
+  adamw_amsgrad: false
+  adamw_maximize: false
+  adamw_foreach: false
+  adamw_fused: false
+  gradient_clipping: disabled
+  dataloader_num_workers: 0
+  logging_steps: 1
+  eval_steps: 1
+  save_steps: 1
+  keep_last_checkpoints: 1
+  max_train_subjects: 16
+  max_eval_subjects: null
+  resume: false
+  ddp_find_unused_parameters: false
+
+outputs:
+  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_multires_event_v2_smoke
+  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_multires_event_v2_smoke/metrics.jsonl

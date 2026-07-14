@@ -90,6 +90,31 @@ class MultiresEventSamplerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not divisible"):
             list(sampler)
 
+    def test_replacement_sampler_emits_exact_unbiased_batch_denominator(self) -> None:
+        arguments = dict(
+            world_size=2,
+            seed=17,
+            mode="subject_uniform_replacement",
+            pad_to_world_size=False,
+            require_even_divisible=True,
+            max_samples=64,
+        )
+        left = SubjectAnchorDistributedSampler(_FakeDataset(), rank=0, **arguments)
+        right = SubjectAnchorDistributedSampler(_FakeDataset(), rank=1, **arguments)
+        self.assertEqual(len(left), 32)
+        self.assertEqual(len(right), 32)
+        self.assertEqual(left.global_sample_count, 64)
+        initial = list(left)
+        self.assertEqual(
+            initial,
+            list(SubjectAnchorDistributedSampler(_FakeDataset(), rank=0, **arguments)),
+        )
+        self.assertTrue(
+            all(_FakeDataset.subject_ids[index] in {"s1", "s2", "s3", "s4"} for index in initial)
+        )
+        left.set_epoch(1)
+        self.assertNotEqual(initial, list(left))
+
 
 @unittest.skipUnless(CANONICAL_ROOT.is_dir(), "canonical C4 artifact is not mounted")
 class MultiresEventDataTest(unittest.TestCase):

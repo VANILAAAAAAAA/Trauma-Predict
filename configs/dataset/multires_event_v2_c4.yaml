@@ -1,0 +1,57 @@
+schema_version: trauma_predict.multires_event_v2_dataset_config.v1
+route: multires_event_v2_m4_trajectory
+
+base:
+  root: ${TRAUMA_PREDICT_DATA_ROOT}
+  dataset_id: multires_event_v1_c4_full_20260712
+  fingerprint: d58d003b6a9b2dd7c1f8d269a1867b534ea475a91118d7d4d44804bee69f9e47
+  source_fingerprint: ed578cf6b6e82c96f3aef71d58d6c176c794c9e8fbd37a468a709d64e94739b9
+  dataset_manifest_sha256: 4e7742900907e0e2f774099ba1dd485468210ff3da9ddaef3ec3bf67957000c3
+  sample_manifest_sha256: b3d4305353997320fe310c4df6e15619026db6f229a124b0c9a5e1d89898f05e
+  subject_split_sha256: 89deb50c2c6415dff5ce00338a980e25531433e8dee835b004a27d561e7adb6d
+
+target:
+  root: ${TRAUMA_PREDICT_V2_TARGET_ROOT}
+  dataset_id: multires_event_m4_target_v2_c4_full_20260713_r8
+  dataset_manifest_sha256: fb8748a5d396c5342be143032096acef03af2345bdd80e53dc82f69a7875b8b6
+  sample_manifest_sha256: 96ce73f2cfb4a2a8af0bd21cbbab9634bd02268d03e7cda68ac4f21229596a4e
+  contract_bundle_hash: 10e9ed6c2fb94610fa61edc5061b8465e967ef6c222f22455877da583420cd10
+  process_contract_sha256: 3f90bec35d6473a0e9dc69f3654d1b55eaf1c9d3f9850078df1361e84b2cd7db
+  emission_contract_sha256: e926e1a3e6e3e71039a26548ca8d3f35bf2eee5725be3195992d4d47f715e96c
+  projection_contract_sha256: 7efdf7d3c0415e6aa26d99411f5df66907b5ff74b30f6880e72de72fe4c3d34b
+  relation_contract_sha256: 65286cd9fb7e1038270de39ea17daafffb160cf9c5ab7bb3beb2556a9aa8eea0
+  sidecar_schema_sha256: a2e4018d9dac3c4245ad13852036e6cb3ff9014eea9dc996fa9b0b6235251e8f
+
+expected_counts:
+  samples: 50350
+  train: 37734
+  val: 6309
+  test: 6307
+  shards: 52
+
+split_authority: base/sample_manifest.csv
+split_key: subject_id
+join_key: sample_id
+join_guards: [base_content_hash, target_content_hash]
+supervision_path: configs/model/multires_event_v1_supervision.json
+supervision_sha256: 722cae631ca2b7cf801514cccdfd6cf18be9742f0cb94c9a1e89fb3696d095f6
+
+normalization:
+  path: ${TRAUMA_PREDICT_OUTPUT_ROOT}/contracts/multires_event_v1_input_normalization.json
+  fit_split: train
+  fit_by_subject_only: true
+  clip_value: 10.0
+  epsilon: 1.0e-6
+  max_values_per_key: 200000
+  seed: 20260713
+
+loader:
+  cache_shards: 1
+  num_workers: 0
+  pin_memory: true
+  persistent_workers: false
+
+preflight:
+  verify_all_shard_headers: true
+  verify_shard_sha256: false
+  verify_target_shard_sha256: false

@@ -17,10 +17,12 @@ except ImportError:  # pragma: no cover - torch is a train extra
 class SubjectAnchorDistributedSampler(Sampler[int]):
     """Deterministic subject/anchor sampling with gzip-shard locality.
 
-    In training, subjects are sampled exactly once per epoch and one of that
-    subject's persisted anchors is selected uniformly. Selected indices are
-    emitted in a randomized shard order and randomized within each shard, so a
-    one-shard LRU cache does not repeatedly decompress gzip files.
+    ``subject_uniform`` visits each subject once and chooses one anchor.
+    ``subject_uniform_replacement`` makes an exact number of independent
+    uniform-subject then uniform-anchor draws, which is useful for fixed-size
+    unbiased optimizer batches. Selected indices are emitted in a randomized
+    shard order and randomized within each shard, so a one-shard LRU cache does
+    not repeatedly decompress gzip files.
     """
 
     def __init__(
@@ -39,8 +41,17 @@ class SubjectAnchorDistributedSampler(Sampler[int]):
     ) -> None:
         if world_size < 1 or not 0 <= rank < world_size:
             raise ValueError(f"invalid distributed sampler rank/world_size: {rank}/{world_size}")
-        if mode not in {"subject_uniform", "one_fixed_per_subject", "anchor_uniform"}:
+        if mode not in {
+            "subject_uniform",
+            "subject_uniform_replacement",
+            "one_fixed_per_subject",
+            "anchor_uniform",
+        }:
             raise ValueError(f"invalid multires sampler mode: {mode}")
+        if mode == "subject_uniform_replacement" and max_samples is None:
+            raise ValueError(
+                "subject_uniform_replacement requires an exact max_samples draw count"
+            )
         if len(dataset.subject_ids) != len(dataset) or len(dataset.shard_keys) != len(dataset):
             raise ValueError("dataset must expose aligned subject_ids and shard_keys")
         self.dataset = dataset
@@ -135,6 +146,16 @@ class SubjectAnchorDistributedSampler(Sampler[int]):
     def _selected_indices(self) -> list[int]:
         mode = self.active_mode
         rng = random.Random(self.seed + self.epoch * 1_000_003)
+        if mode == "subject_uniform_replacement":
+            if self.max_samples is None:  # guarded in __init__; keeps the type explicit
+                raise AssertionError("replacement sampler lacks its exact draw count")
+            subjects = tuple(self.subject_to_indices)
+            selected = []
+            for _ in range(self.max_samples):
+                subject = subjects[rng.randrange(len(subjects))]
+                values = self.subject_to_indices[subject]
+                selected.append(values[rng.randrange(len(values))])
+            return selected
         if mode in {"subject_uniform", "one_fixed_per_subject"}:
             selected = []
             for subject, values in self.subject_to_indices.items():

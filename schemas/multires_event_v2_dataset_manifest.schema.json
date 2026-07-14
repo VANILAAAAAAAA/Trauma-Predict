@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trauma-predict.local/schemas/multires_event_v2_dataset_manifest.schema.json",
+  "title": "M4 Target Sidecar Dataset Manifest V2",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "dataset_id",
+    "status",
+    "base_dataset",
+    "contract_hashes",
+    "contract_bundle_hash",
+    "selection",
+    "counts",
+    "files"
+  ],
+  "properties": {
+    "schema": {"const": "multires_event_m4_target_dataset_manifest_v2"},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "status": {"const": "SUCCEEDED"},
+    "contract_bundle_hash": {"$ref": "#/$defs/sha256"},
+    "base_dataset": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "dataset_id",
+        "dataset_manifest_sha256",
+        "fingerprint",
+        "root",
+        "sample_manifest_sha256",
+        "subject_split_sha256"
+      ],
+      "properties": {
+        "dataset_id": {"type": "string", "minLength": 1},
+        "dataset_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "fingerprint": {"$ref": "#/$defs/sha256"},
+        "root": {"type": "string", "minLength": 1},
+        "sample_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "subject_split_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "contract_hashes": {"$ref": "#/$defs/contractHashes"},
+    "selection": {
+      "type": "object",
+      "required": ["input_storage", "sample_authority", "splits"]
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "samples", "valid_samples", "errors", "shards", "by_split",
+        "target_arithmetic_canonicalizations",
+        "samples_with_target_arithmetic_canonicalization",
+        "target_arithmetic_canonicalization_by_type"
+      ],
+      "properties": {
+        "samples": {"type": "integer", "minimum": 1},
+        "valid_samples": {"type": "integer", "minimum": 1},
+        "errors": {"const": 0},
+        "shards": {"type": "integer", "minimum": 1},
+        "target_arithmetic_canonicalizations": {"const": 824},
+        "samples_with_target_arithmetic_canonicalization": {"const": 804},
+        "target_arithmetic_canonicalization_by_type": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dense_zero_range_mean_to_min",
+            "dense_positive_range_mean_lower_outside_one_ulp",
+            "dense_positive_range_mean_lower_inside_one_ulp",
+            "dense_positive_range_mean_upper_inside_one_ulp",
+            "dense_positive_range_mean_upper_outside_one_ulp"
+          ],
+          "properties": {
+            "dense_zero_range_mean_to_min": {"const": 774},
+            "dense_positive_range_mean_lower_outside_one_ulp": {"const": 14},
+            "dense_positive_range_mean_lower_inside_one_ulp": {"const": 19},
+            "dense_positive_range_mean_upper_inside_one_ulp": {"const": 11},
+            "dense_positive_range_mean_upper_outside_one_ulp": {"const": 6}
+          }
+        },
+        "by_split": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["train", "val", "test"],
+          "properties": {
+            "train": {"type": "integer", "minimum": 1},
+            "val": {"type": "integer", "minimum": 1},
+            "test": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["sample_manifest", "subject_split", "target_shards"],
+      "properties": {
+        "sample_manifest": {"$ref": "#/$defs/file"},
+        "subject_split": {"$ref": "#/$defs/file"},
+        "target_shards": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/shard"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "shard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "samples", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "samples": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "contractHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "process",
+        "emission",
+        "projection",
+        "category",
+        "relation",
+        "element_extension",
+        "sidecar_schema"
+      ],
+      "properties": {
+        "process": {"$ref": "#/$defs/sha256"},
+        "emission": {"$ref": "#/$defs/sha256"},
+        "projection": {"$ref": "#/$defs/sha256"},
+        "category": {"$ref": "#/$defs/sha256"},
+        "relation": {"$ref": "#/$defs/sha256"},
+        "element_extension": {"$ref": "#/$defs/sha256"},
+        "sidecar_schema": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}
