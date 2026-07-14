@@ -86,7 +86,7 @@ AUTHORIZED_TRAINING_RUN_NAMES: tuple[str, ...] = (
     "t4x2_multires_event_v2_block",
 )
 TRAINING_AUTHORIZATION_REASON = (
-    "the r6 zero-Input hosted verification passed the exact dual-T4 data, "
+    "the r7 zero-Input hosted verification passed the exact dual-T4 data, "
     "optimizer, checkpoint/resume, and 100x100 rollout path; authorization "
     "remains limited to the block control"
 )

@@ -1438,10 +1438,10 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         self.assertEqual(len(notebook["cells"]), 2)
         code = "".join(notebook["cells"][1]["source"])
         markdown = "".join(notebook["cells"][0]["source"])
-        self.assertIn("multires-event-v2-block-run-20260714-r7", code)
+        self.assertIn("multires-event-v2-block-run-20260714-r8", code)
         self.assertIn("refs/tags/", code)
         self.assertIn("run_multires_event_v2.py", code)
-        self.assertIn('REQUIRED_GIT_REF = "multires-event-v2-block-run-20260714-r7"', code)
+        self.assertIn('REQUIRED_GIT_REF = "multires-event-v2-block-run-20260714-r8"', code)
         self.assertIn('V2_ACTION = "block"', code)
         self.assertIn("Do not attach any Kaggle Input", markdown)
         self.assertIn("MULTIRES_EVENT_V2_HOSTED_SMOKE_OK", markdown)
@@ -1467,7 +1467,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         code = "".join(notebook["cells"][1]["source"])
         self.assertIn("formal_optimizer_steps=0", markdown)
         self.assertIn(
-            'REQUIRED_GIT_REF = "multires-event-v2-block-run-20260714-r7"',
+            'REQUIRED_GIT_REF = "multires-event-v2-block-run-20260714-r8"',
             code,
         )
         self.assertIn('V2_ACTION = "verify_block"', code)
@@ -1495,6 +1495,8 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         self.assertIn('if action == "promotion":', main_source)
         self.assertNotIn("ModernBERT", source)
         self.assertNotIn("transformers", source)
+        self.assertNotIn('"pip", "check"', source)
+        self.assertIn("MULTIRES_DEPENDENCY_IMPORT", source)
         self.assertTrue(ENTRYPOINT_PATH.is_file())
 
     def test_formal_torchrun_contains_one_capacity_gate_invocation(self) -> None:

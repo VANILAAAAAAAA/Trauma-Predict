@@ -2089,11 +2089,19 @@ def install_requirements(log_dir: Path) -> None:
         label="PIP_INSTALL",
     )
     run_to_log(
-        [sys.executable, "-m", "pip", "check"],
-        log_dir / "pip_check.log",
+        [
+            sys.executable,
+            "-c",
+            (
+                "import numpy, safetensors, yaml; "
+                "print('numpy', numpy.__version__); "
+                "print('safetensors', safetensors.__version__); "
+                "print('pyyaml', yaml.__version__)"
+            ),
+        ],
+        log_dir / "dependency_import_check.log",
         env=os.environ.copy(),
-        label="PIP_CHECK",
-        check=False,
+        label="MULTIRES_DEPENDENCY_IMPORT",
     )
 
 
