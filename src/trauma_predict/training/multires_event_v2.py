@@ -3796,6 +3796,13 @@ def _is_sha256(value: str) -> bool:
     return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
+def _is_git_object_id(value: Any) -> bool:
+    text = str(value or "")
+    return len(text) in {40, 64} and all(
+        character in "0123456789abcdef" for character in text
+    )
+
+
 def _copy_verified_file_atomic(source: Path, destination: Path) -> str:
     """Copy an immutable run input without ever replacing a conflicting prior copy."""
 
@@ -4611,8 +4618,8 @@ def _source_tree_identity(repo_root: Path) -> dict[str, Any]:
             candidate.get("schema_version")
             != "trauma_predict.multires_event_v2_source_release.v1"
             or candidate.get("source_tree_sha256") != source_tree_sha256
-            or not _is_sha256(candidate.get("git_commit"))
-            or not _is_sha256(candidate.get("git_head_tree"))
+            or not _is_git_object_id(candidate.get("git_commit"))
+            or not _is_git_object_id(candidate.get("git_head_tree"))
         ):
             raise ValueError("SOURCE_RELEASE.json does not bind the executable source tree")
         release_identity = candidate

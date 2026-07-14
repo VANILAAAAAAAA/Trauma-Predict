@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,6 +36,7 @@ from trauma_predict.training.multires_event_v2 import (
     _optimizer_step_health_payload,
     _save_v2_checkpoint,
     _hosted_verification_stop_step,
+    _source_tree_identity,
     _verification_stop_after_formal_step2_requested,
     _verification_stop_after_resume_step3_requested,
     _validate_resume_optimizer_alignment,
@@ -150,6 +152,36 @@ class MultiresEventV2TrainingContractTest(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "must restore optimizer step 2"):
                 _hosted_verification_stop_step(starting_global_step=0)
+
+    def test_source_release_accepts_git_sha1_without_a_git_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            release = Path(directory) / "Trauma-Predict"
+            shutil.copytree(REPO_ROOT / "src/trauma_predict", release / "src/trauma_predict")
+            entry = release / "notebooks/kaggle/train_relational_primary.py"
+            entry.parent.mkdir(parents=True)
+            shutil.copy2(
+                REPO_ROOT / "notebooks/kaggle/train_relational_primary.py", entry
+            )
+            for name in ("requirements-multires-kaggle.txt", "pyproject.toml"):
+                shutil.copy2(REPO_ROOT / name, release / name)
+            identity = _source_tree_identity(release)
+            (release / "SOURCE_RELEASE.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": (
+                            "trauma_predict.multires_event_v2_source_release.v1"
+                        ),
+                        "git_commit": "1" * 40,
+                        "git_head_tree": "2" * 40,
+                        "source_tree_sha256": identity["source_tree_sha256"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            released = _source_tree_identity(release)
+            self.assertEqual(released["git_commit"], "1" * 40)
+            self.assertEqual(released["git_head_tree"], "2" * 40)
+            self.assertTrue(released["git_clean"])
 
     def test_all_four_configs_share_the_explicit_optimizer_contract(self) -> None:
         payloads = []
