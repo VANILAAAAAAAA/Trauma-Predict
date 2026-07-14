@@ -434,7 +434,7 @@ def run_multires_event_training(config_path: Path, *, repo_root: Path) -> dict[s
     if is_rank_zero():
         _export_final_model(output_dir, model, identity_hashes, final_evaluation, result)
         atomic_write_json(output_dir / "evaluation.json", final_evaluation)
-        run_manifest = _write_run_manifest(
+        _write_run_manifest(
             output_dir=output_dir,
             config=config,
             identity_hashes=identity_hashes,

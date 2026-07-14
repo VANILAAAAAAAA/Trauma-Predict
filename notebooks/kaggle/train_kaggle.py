@@ -13,9 +13,12 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from trauma_predict.data.preflight import preflight_training_artifact
-from trauma_predict.training.config import load_yaml_config
-from trauma_predict.training.main_route import run_main_route_training, validate_main_route_config
+from trauma_predict.data.preflight import preflight_training_artifact  # noqa: E402
+from trauma_predict.training.config import load_yaml_config  # noqa: E402
+from trauma_predict.training.main_route import (  # noqa: E402
+    run_main_route_training,
+    validate_main_route_config,
+)
 
 
 def parse_args() -> argparse.Namespace:

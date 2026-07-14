@@ -194,23 +194,25 @@ class MultiresEventV2TrainingContractTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     validate_multires_event_v2_configs(candidate, self.dataset, self.model)
 
-    def test_core_blocks_formal_training_and_separately_authorizes_block_verification(self) -> None:
+    def test_core_authorizes_only_capacity_gated_block_and_block_verification(self) -> None:
         config = REPO_ROOT / "configs/train/t4x2_multires_event_v2_block.yaml"
         trajectory_config = REPO_ROOT / "configs/train/t4x2_multires_event_v2_trajectory.yaml"
-        self.assertFalse(TRAINING_AUTHORIZED)
-        self.assertEqual(AUTHORIZED_TRAINING_RUN_NAMES, ())
-        with self.assertRaisesRegex(RuntimeError, "source-gated"):
-            require_multires_event_v2_training_authorization(self.trains["block"])
-        with self.assertRaisesRegex(RuntimeError, "source-gated"):
+        self.assertTrue(TRAINING_AUTHORIZED)
+        self.assertEqual(
+            AUTHORIZED_TRAINING_RUN_NAMES,
+            ("t4x2_multires_event_v2_block",),
+        )
+        require_multires_event_v2_training_authorization(self.trains["block"])
+        with self.assertRaisesRegex(RuntimeError, "same-process capacity PASS"):
             run_multires_event_v2_training(config, repo_root=REPO_ROOT)
-        with self.assertRaisesRegex(RuntimeError, "source-gated"):
+        with self.assertRaisesRegex(RuntimeError, "not authorized for run_name"):
             run_multires_event_v2_capacity_probe(
                 trajectory_config,
                 repo_root=REPO_ROOT,
                 output_dir=REPO_ROOT / "unused-capacity",
                 elapsed_before_capacity_seconds=0.0,
             )
-        with self.assertRaisesRegex(RuntimeError, "source-gated"):
+        with self.assertRaisesRegex(RuntimeError, "not authorized for run_name"):
             run_multires_event_v2_capacity_gated_training(
                 trajectory_config,
                 repo_root=REPO_ROOT,

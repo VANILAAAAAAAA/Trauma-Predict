@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
-from .contract import EventTemplateRegistry, SupervisionContract, TargetLayout
+from .contract import EventTemplateRegistry, SupervisionContract
 
 
 @dataclass(frozen=True)

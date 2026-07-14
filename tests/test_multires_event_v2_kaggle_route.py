@@ -17,7 +17,6 @@ from unittest.mock import patch
 import yaml
 
 from trauma_predict.training.multires_event_v2 import (
-    EXPECTED_OPTIMIZER_CONTRACT,
     OPTIMIZER_CONTRACT_VERSION,
     RAW_JOINT_NLL_REDUCTION,
     summarize_optimizer_health_metrics,
@@ -1298,8 +1297,9 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
 
     def test_hosted_training_has_a_source_level_authorization_gate(self) -> None:
         launcher = load_launcher()
-        self.assertFalse(launcher.TRAINING_AUTHORIZED)
-        for action in ("smoke", "block", "trajectory", "relational"):
+        self.assertTrue(launcher.TRAINING_AUTHORIZED)
+        launcher.require_training_authorization("block")
+        for action in ("smoke", "trajectory", "relational"):
             with self.subTest(action=action), self.assertRaisesRegex(
                 RuntimeError, "not authorized"
             ):
@@ -1328,7 +1328,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         )
         with patch.object(entrypoint, "parse_args", return_value=args), patch.object(
             entrypoint, "run_multires_event_v2_training"
-        ) as training, self.assertRaisesRegex(RuntimeError, "source-gated"):
+        ) as training, self.assertRaisesRegex(RuntimeError, "capacity-gated single-torchrun"):
             entrypoint.main()
         training.assert_not_called()
 
@@ -1340,7 +1340,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         )
         with patch.object(
             entrypoint, "parse_args", return_value=unauthorized_args
-        ), self.assertRaisesRegex(RuntimeError, "source-gated"):
+        ), self.assertRaisesRegex(RuntimeError, "not authorized for run_name"):
             entrypoint.main()
 
         dry_args = SimpleNamespace(
@@ -1467,7 +1467,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         code = "".join(notebook["cells"][1]["source"])
         self.assertIn("formal_optimizer_steps=0", markdown)
         self.assertIn(
-            'REQUIRED_GIT_REF = "multires-event-v2-block-verify-20260714-r6"',
+            'REQUIRED_GIT_REF = "multires-event-v2-block-run-20260714-r7"',
             code,
         )
         self.assertIn('V2_ACTION = "verify_block"', code)

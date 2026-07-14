@@ -12,9 +12,9 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from trauma_predict.data.main_route_contract import HOUR_SPECIAL_TOKENS, STATE_TOKEN
-from trauma_predict.data.records import read_jsonl, resolve_shard_paths
-from trauma_predict.training.config import load_yaml_config
+from trauma_predict.data.main_route_contract import HOUR_SPECIAL_TOKENS, STATE_TOKEN  # noqa: E402
+from trauma_predict.data.records import read_jsonl, resolve_shard_paths  # noqa: E402
+from trauma_predict.training.config import load_yaml_config  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:

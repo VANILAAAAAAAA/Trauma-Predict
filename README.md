@@ -17,7 +17,7 @@ Use that workspace for cohort construction, field adapter development, sample-bu
 - Matched modes: `block`, `trajectory`, and `relational` have identical structures at a chosen capacity and differ only in the declared attention/relation access rule. The implemented control size is 30,684,479 parameters; a width-only 47,801,855-parameter candidate is diagnostic-only until the predeclared capacity comparison closes.
 - Backbone boundary: neither capacity uses ModernBERT, a tokenizer, or another text backbone. The inputs are structured continuous/categorical event tuples and the outputs are mixed-measure clinical process distributions; pretrained text is a separate later matched factor, not a substitute for this decoder contract.
 - Optimizer contract: one-group AdamW over the raw 414-factor joint-NLL batch mean, with no hidden factor normalization or global gradient clipping. Every step must carry complete gradient, scaler, Adam-state, LR, and resume-schedule health evidence.
-- Hosted contract: formal training is currently **NO-GO** during the full re-audit. No tag, bundle, Notebook, or model size is user-authorized. A verification-only T4 x2 run owned by the agent must pass before any new user upload action is issued.
+- Hosted contract: r6 passed the private zero-Input dual-T4 verification path, including the complete 50,350-anchor preflight, two exact B64 FP16 optimizer updates, checkpoint/resume, and 100 validation anchors with 100 free-running trajectories each. The final r7 source authorizes only the capacity-gated `block` control; `trajectory`, `relational`, standalone smoke, and direct non-gated formal entry remain blocked.
 - Historical V1 scratch Transformer and GRU-D runs remain retained evidence, not the active prediction task.
 - Legacy textual routes remain for experiment traceability and are not the active multi-resolution baseline.
 - Sample unit: one ICU stay plus one prediction anchor.
@@ -57,4 +57,4 @@ python tools/update_file_index.py --check
 
 ## Kaggle Direction
 
-Do not upload or Save & Run the current V2 Notebook. The re-audit must first close probability, capacity, optimizer, failure-path, and agent-owned hosted verification gates. Only a later evidence-bound release may restore one exact user action. The V1 and Stage A notebooks remain versioned historical entrypoints. Source MIMIC extraction and sample generation stay outside this repository.
+The release Notebook is `notebooks/kaggle/train_multires_event_v2.ipynb`, pinned to immutable tag `multires-event-v2-block-run-20260714-r7`. It is a two-cell, zero-Input route: select T4 x2, keep Internet enabled, and choose Save & Run All. It automatically clones the pinned source and downloads both frozen private Datasets. The same-process capacity gate must pass before formal optimizer step one. The V1 and Stage A notebooks remain versioned historical entrypoints. Source MIMIC extraction and sample generation stay outside this repository.

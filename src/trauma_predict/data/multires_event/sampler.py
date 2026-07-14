@@ -5,7 +5,7 @@ import math
 import random
 from collections import defaultdict
 from collections.abc import Iterator
-from typing import Any, Sequence
+from typing import Any
 
 try:
     from torch.utils.data import Sampler

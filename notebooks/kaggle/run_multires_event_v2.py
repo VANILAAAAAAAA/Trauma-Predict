@@ -54,7 +54,6 @@ from trauma_predict.training.multires_event_v2 import (  # noqa: E402
     VERIFICATION_AUTHORIZATION_REASON as CORE_VERIFICATION_AUTHORIZATION_REASON,
     VERIFICATION_AUTHORIZED as CORE_VERIFICATION_AUTHORIZED,
     V2_CHECKPOINT_SCHEMA,
-    V2_DISTRIBUTED_TIMEOUT_SECONDS,
     V2_NCCL_MONITOR_HEARTBEAT_TIMEOUT_SECONDS,
     validate_multires_event_v2_configs,
     validate_optimizer_health_summary,

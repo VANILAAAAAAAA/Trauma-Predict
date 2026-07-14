@@ -354,7 +354,6 @@ def _interval_zoib_nll(
     log_weights = F.log_softmax(mixture_logits, dim=-1)
     at_zero = fraction.le(EPS)
     at_one = fraction.ge(1.0 - EPS)
-    interior = ~(at_zero | at_one)
     safe_fraction = fraction.clamp(EPS, 1.0 - EPS)
     beta_nll = -torch.distributions.Beta(alpha, beta).log_prob(safe_fraction)
     return torch.where(

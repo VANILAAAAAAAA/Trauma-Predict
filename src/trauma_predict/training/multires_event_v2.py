@@ -81,11 +81,14 @@ from trauma_predict.training.observability import (
 
 ROUTE = "multires_event_v2_m4_trajectory"
 MATCHED_MODES = ("block", "trajectory", "relational")
-TRAINING_AUTHORIZED = False
-AUTHORIZED_TRAINING_RUN_NAMES: tuple[str, ...] = ()
+TRAINING_AUTHORIZED = True
+AUTHORIZED_TRAINING_RUN_NAMES: tuple[str, ...] = (
+    "t4x2_multires_event_v2_block",
+)
 TRAINING_AUTHORIZATION_REASON = (
-    "the 2026-07-14 full re-audit withdrew every formal hosted-training "
-    "authorization after the version-9 deterministic DDP artifact failure"
+    "the r6 zero-Input hosted verification passed the exact dual-T4 data, "
+    "optimizer, checkpoint/resume, and 100x100 rollout path; authorization "
+    "remains limited to the block control"
 )
 VERIFICATION_AUTHORIZED = True
 AUTHORIZED_VERIFICATION_RUN_NAMES = ("t4x2_multires_event_v2_block",)
@@ -1625,7 +1628,6 @@ def run_multires_event_v2_rank_artifact_preflight_only(
 
     if mode not in MATCHED_MODES:
         raise ValueError("early rank artifact preflight mode is invalid")
-    rank = int(os.environ.get("RANK", "0"))
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     if world_size != 2:
