@@ -1864,9 +1864,18 @@ def _capacity_optimizer_step_health_valid(row: Mapping[str, Any]) -> bool:
             and "grad_norm_after_unscale_before_clip" not in row
             and "max_grad_norm" not in row
             and math.isfinite(learning_rate_used)
-            and learning_rate_used == expected_learning_rate
-            and float(row.get("expected_learning_rate_used", math.nan))
-            == expected_learning_rate
+            and math.isclose(
+                learning_rate_used,
+                expected_learning_rate,
+                rel_tol=1e-12,
+                abs_tol=1e-15,
+            )
+            and math.isclose(
+                float(row.get("expected_learning_rate_used", math.nan)),
+                expected_learning_rate,
+                rel_tol=1e-12,
+                abs_tol=1e-15,
+            )
             and int(row.get("expected_optimizer_step", -1)) == step
             and float(row.get("observed_optimizer_step_min", math.nan)) == float(step)
             and float(row.get("observed_optimizer_step_max", math.nan)) == float(step)
@@ -1924,8 +1933,12 @@ def _capacity_optimizer_step_health_valid(row: Mapping[str, Any]) -> bool:
             and int(configuration.get("parameter_group_count", -1)) == 1
             and float(configuration.get("base_learning_rate", math.nan))
             == float(EXPECTED_OPTIMIZER_CONTRACT["learning_rate"])
-            and float(configuration.get("current_learning_rate", math.nan))
-            == learning_rate_used
+            and math.isclose(
+                float(configuration.get("current_learning_rate", math.nan)),
+                learning_rate_used,
+                rel_tol=1e-12,
+                abs_tol=1e-15,
+            )
             and float(configuration.get("weight_decay", math.nan))
             == float(EXPECTED_OPTIMIZER_CONTRACT["weight_decay"])
             and list(configuration.get("adamw_betas", ()))

@@ -44,7 +44,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
 | `notebooks/kaggle/train_multires_event_v1.ipynb` | kaggle | Two-cell Save & Run notebook pinned to the immutable multires baseline tag. | No embedded data. |
 | `notebooks/kaggle/train_multires_event_v1.py` | kaggle | DDP training entrypoint and dry-run preflight for the multires route. | Reads the frozen private artifact only at runtime. |
-| `notebooks/kaggle/train_multires_event_v2.ipynb` | kaggle | Zero-Input two-cell formal block release candidate pinned to the prospective r6 tag; it is not a handoff until hosted verification closes and source authorization is restored. | No embedded data. |
+| `notebooks/kaggle/train_multires_event_v2.ipynb` | kaggle | Zero-Input two-cell formal block release candidate pinned to the prospective r7 tag; it is not a handoff until hosted verification closes and source authorization is restored. | No embedded data. |
 | `notebooks/kaggle/train_multires_event_v2.py` | kaggle | V2 CLI entrypoint for config-free rank canary, exact preflight, verification-only capacity probe, and source-gated formal routes. | Reads mounted private V1/r8 artifacts only at runtime. |
 | `notebooks/kaggle/verify_multires_event_v2.ipynb` | kaggle | Zero-Input agent-owned T4 x2 verification Notebook pinned to `verify_block`; it must stop with zero formal optimizer steps. | No embedded data. |
 | `notebooks/kaggle/train_full_first_run.ipynb` | kaggle | End-to-end Kaggle notebook for the joint-baseline run; not Stage A. | No data. |

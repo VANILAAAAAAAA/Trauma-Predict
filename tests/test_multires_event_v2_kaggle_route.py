@@ -921,8 +921,8 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                         "expected_optimizer_step": step,
                         "observed_optimizer_step_min": float(step),
                         "observed_optimizer_step_max": float(step),
-                        "expected_learning_rate_used": 2.0e-4 * step / 400.0,
-                        "learning_rate_used": 2.0e-4 * step / 400.0,
+                        "expected_learning_rate_used": 2.0e-4 * (step / 400.0),
+                        "learning_rate_used": 2.0e-4 * (step / 400.0),
                         "optimizer_audit_wall_seconds": 0.1,
                         "gradient_health": {
                             "optimizer_contract_version": launcher.OPTIMIZER_CONTRACT_VERSION,
@@ -964,7 +964,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                                 "optimizer": "AdamW",
                                 "parameter_group_count": 1,
                                 "base_learning_rate": 2.0e-4,
-                                "current_learning_rate": 2.0e-4 * step / 400.0,
+                                "current_learning_rate": 2.0e-4 * (step / 400.0),
                                 "weight_decay": 0.01,
                                 "adamw_betas": [0.9, 0.999],
                                 "adamw_eps": 1.0e-8,
@@ -1438,10 +1438,10 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         self.assertEqual(len(notebook["cells"]), 2)
         code = "".join(notebook["cells"][1]["source"])
         markdown = "".join(notebook["cells"][0]["source"])
-        self.assertIn("multires-event-v2-block-run-20260714-r6", code)
+        self.assertIn("multires-event-v2-block-run-20260714-r7", code)
         self.assertIn("refs/tags/", code)
         self.assertIn("run_multires_event_v2.py", code)
-        self.assertIn('REQUIRED_GIT_REF = "multires-event-v2-block-run-20260714-r6"', code)
+        self.assertIn('REQUIRED_GIT_REF = "multires-event-v2-block-run-20260714-r7"', code)
         self.assertIn('V2_ACTION = "block"', code)
         self.assertIn("Do not attach any Kaggle Input", markdown)
         self.assertIn("MULTIRES_EVENT_V2_HOSTED_SMOKE_OK", markdown)
@@ -1467,7 +1467,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         code = "".join(notebook["cells"][1]["source"])
         self.assertIn("formal_optimizer_steps=0", markdown)
         self.assertIn(
-            'REQUIRED_GIT_REF = "multires-event-v2-block-verify-20260714-r5"',
+            'REQUIRED_GIT_REF = "multires-event-v2-block-verify-20260714-r6"',
             code,
         )
         self.assertIn('V2_ACTION = "verify_block"', code)
@@ -1609,7 +1609,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             valid_report = self.capacity_report_fixture(valid_root, launcher)
             self.assertEqual(
                 [row["learning_rate_used"] for row in valid_report["optimizer"]["steps"]],
-                [5.0e-7, 1.0e-6],
+                [5.000000000000001e-7, 1.0000000000000002e-6],
             )
             validation = launcher.validate_capacity_probe_report(
                 valid_root, expected_mode="block"
