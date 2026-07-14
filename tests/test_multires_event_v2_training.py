@@ -21,17 +21,21 @@ from trauma_predict.eval.multires_event_v2 import (
 )
 from trauma_predict.training.multires_event_v2 import (
     AUTHORIZED_TRAINING_RUN_NAMES,
+    AUTHORIZED_VERIFICATION_RUN_NAMES,
     EXPECTED_FORMAL_MODEL_PARAMETER_COUNT,
     EXPECTED_OPTIMIZER_CONTRACT,
     MATCHED_MODES,
     OPTIMIZER_CONTRACT_VERSION,
     RAW_JOINT_NLL_REDUCTION,
     TRAINING_AUTHORIZED,
+    VERIFICATION_AUTHORIZED,
     _audited_optimizer_step,
     _audit_optimizer_state_after_step,
     _audit_unscaled_gradients,
     _optimizer_step_health_payload,
+    _save_v2_checkpoint,
     _validate_resume_optimizer_alignment,
+    _validate_v2_checkpoint_integrity,
     _validated_optimizer_loss,
     build_multires_event_v2_model,
     build_multires_event_v2_optimizer,
@@ -41,9 +45,11 @@ from trauma_predict.training.multires_event_v2 import (
     project_multires_event_v2_capacity_runtime,
     raw_414_factor_joint_nll_batch_mean,
     require_multires_event_v2_training_authorization,
+    require_multires_event_v2_verification_authorization,
     run_multires_event_v2_capacity_gated_training,
     run_multires_event_v2_capacity_probe,
     run_multires_event_v2_training,
+    run_multires_event_v2_verification_probe,
     _step_grad_scaler,
     validate_formal_model_parameter_count,
     validate_formal_target_field_order,
@@ -188,36 +194,39 @@ class MultiresEventV2TrainingContractTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     validate_multires_event_v2_configs(candidate, self.dataset, self.model)
 
-    def test_core_authorizes_only_block_and_formal_still_needs_capacity_token(self) -> None:
+    def test_core_blocks_formal_training_and_separately_authorizes_block_verification(self) -> None:
         config = REPO_ROOT / "configs/train/t4x2_multires_event_v2_block.yaml"
         trajectory_config = REPO_ROOT / "configs/train/t4x2_multires_event_v2_trajectory.yaml"
-        self.assertTrue(TRAINING_AUTHORIZED)
-        self.assertEqual(
-            AUTHORIZED_TRAINING_RUN_NAMES,
-            ("t4x2_multires_event_v2_block",),
-        )
-        require_multires_event_v2_training_authorization(self.trains["block"])
-        with self.assertRaisesRegex(RuntimeError, "not authorized for run_name"):
-            require_multires_event_v2_training_authorization(self.trains["trajectory"])
-        with patch(
-            "trauma_predict.training.multires_event_v2.TRAINING_AUTHORIZED", False
-        ), self.assertRaisesRegex(RuntimeError, "source-gated"):
+        self.assertFalse(TRAINING_AUTHORIZED)
+        self.assertEqual(AUTHORIZED_TRAINING_RUN_NAMES, ())
+        with self.assertRaisesRegex(RuntimeError, "source-gated"):
             require_multires_event_v2_training_authorization(self.trains["block"])
-        with self.assertRaisesRegex(RuntimeError, "internal same-process capacity PASS"):
+        with self.assertRaisesRegex(RuntimeError, "source-gated"):
             run_multires_event_v2_training(config, repo_root=REPO_ROOT)
-        with self.assertRaisesRegex(RuntimeError, "not authorized for run_name"):
+        with self.assertRaisesRegex(RuntimeError, "source-gated"):
             run_multires_event_v2_capacity_probe(
                 trajectory_config,
                 repo_root=REPO_ROOT,
                 output_dir=REPO_ROOT / "unused-capacity",
                 elapsed_before_capacity_seconds=0.0,
             )
-        with self.assertRaisesRegex(RuntimeError, "not authorized for run_name"):
+        with self.assertRaisesRegex(RuntimeError, "source-gated"):
             run_multires_event_v2_capacity_gated_training(
                 trajectory_config,
                 repo_root=REPO_ROOT,
                 capacity_output_dir=REPO_ROOT / "unused-capacity",
                 elapsed_before_capacity_seconds=0.0,
+            )
+
+        self.assertTrue(VERIFICATION_AUTHORIZED)
+        self.assertEqual(
+            AUTHORIZED_VERIFICATION_RUN_NAMES,
+            ("t4x2_multires_event_v2_block",),
+        )
+        require_multires_event_v2_verification_authorization(self.trains["block"])
+        with self.assertRaisesRegex(RuntimeError, "not authorized for run_name"):
+            require_multires_event_v2_verification_authorization(
+                self.trains["trajectory"]
             )
 
         with tempfile.TemporaryDirectory() as directory, patch.dict(
@@ -229,7 +238,7 @@ class MultiresEventV2TrainingContractTest(unittest.TestCase):
                 ValueError,
                 "must not overlap the formal run root",
             ):
-                run_multires_event_v2_capacity_probe(
+                run_multires_event_v2_verification_probe(
                     config,
                     repo_root=REPO_ROOT,
                     output_dir=formal_root / "logs" / "attempt-0001" / "capacity-probe",
@@ -245,6 +254,12 @@ class MultiresEventV2TrainingContractTest(unittest.TestCase):
                 "report_path": str(report_path),
             }
             with patch(
+                "trauma_predict.training.multires_event_v2.TRAINING_AUTHORIZED",
+                True,
+            ), patch(
+                "trauma_predict.training.multires_event_v2.AUTHORIZED_TRAINING_RUN_NAMES",
+                ("t4x2_multires_event_v2_block",),
+            ), patch(
                 "trauma_predict.training.multires_event_v2."
                 "run_multires_event_v2_capacity_probe",
                 return_value=report,
@@ -261,6 +276,39 @@ class MultiresEventV2TrainingContractTest(unittest.TestCase):
                 )
             self.assertEqual(result, {"status": "called"})
             self.assertIsNotNone(formal.call_args.kwargs["_capacity_authorization"])
+
+    def test_capacity_failure_does_not_block_in_process_group_destroy(self) -> None:
+        config = REPO_ROOT / "configs/train/t4x2_multires_event_v2_block.yaml"
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "trauma_predict.training.multires_event_v2.TRAINING_AUTHORIZED",
+            True,
+        ), patch(
+            "trauma_predict.training.multires_event_v2.AUTHORIZED_TRAINING_RUN_NAMES",
+            ("t4x2_multires_event_v2_block",),
+        ), patch(
+            "trauma_predict.training.multires_event_v2."
+            "run_multires_event_v2_capacity_probe",
+            side_effect=RuntimeError("rank-local failure"),
+        ), patch.object(
+            torch.distributed,
+            "is_available",
+            return_value=True,
+        ), patch.object(
+            torch.distributed,
+            "is_initialized",
+            return_value=True,
+        ), patch.object(
+            torch.distributed,
+            "destroy_process_group",
+        ) as destroy:
+            with self.assertRaisesRegex(RuntimeError, "rank-local failure"):
+                run_multires_event_v2_capacity_gated_training(
+                    config,
+                    repo_root=REPO_ROOT,
+                    capacity_output_dir=Path(directory) / "capacity",
+                    elapsed_before_capacity_seconds=0.0,
+                )
+        destroy.assert_not_called()
 
     def test_resume_alignment_binds_adam_step_scheduler_epoch_and_lr(self) -> None:
         training = self.trains["trajectory"]["training"]
@@ -300,6 +348,43 @@ class MultiresEventV2TrainingContractTest(unittest.TestCase):
         self.assertEqual(completed["observed_optimizer_step_min"], 4000.0)
         self.assertEqual(completed["expected_learning_rate"], 0.0)
         self.assertEqual(completed["observed_learning_rate"], 0.0)
+
+    def test_v2_checkpoint_is_hash_bound_before_resume(self) -> None:
+        class State:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def state_dict(self):
+                return self.payload
+
+        class Sampler:
+            def state_dict(self):
+                return {"epoch": 3}
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = torch.nn.Linear(2, 1)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=1.0e-3)
+            runtime = SimpleNamespace(train_sampler=Sampler())
+            _save_v2_checkpoint(
+                output_dir=root,
+                model=model,
+                optimizer=optimizer,
+                scheduler=State({"last_epoch": 1}),
+                scaler=State({"scale": 32.0}),
+                trainer_state={"global_step": 1},
+                identity_hashes={"source": "a" * 64},
+                runtime=runtime,
+                rank=0,
+                keep_last=2,
+            )
+            checkpoint = root / "checkpoints/checkpoint-00000001"
+            self.assertTrue(checkpoint.is_dir())
+            _validate_v2_checkpoint_integrity(root, expected_world_size=1)
+            model_path = checkpoint / "model.pt"
+            model_path.write_bytes(model_path.read_bytes() + b"tamper")
+            with self.assertRaisesRegex(ValueError, "file/hash"):
+                _validate_v2_checkpoint_integrity(root, expected_world_size=1)
 
     def test_raw_joint_nll_and_adamw_builder_are_exact_and_auditable(self) -> None:
         primitive_log_prob = torch.randn(3, 414, requires_grad=True)

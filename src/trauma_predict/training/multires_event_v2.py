@@ -14,6 +14,7 @@ import sys
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -35,7 +36,11 @@ from trauma_predict.eval.multires_event_v2 import (
     exact_teacher_forced_loss,
     move_to_device,
 )
-from trauma_predict.eval.multires_event_v2_free_running import evaluate_free_running_v2
+from trauma_predict.eval.multires_event_v2_free_running import (
+    _collect_distributed_phase,
+    evaluate_free_running_v2,
+    verify_rank_local_artifact_preflight,
+)
 from trauma_predict.eval.multires_event_v2_promotion_contract import (
     load_promotion_metric_contract,
 )
@@ -49,12 +54,14 @@ from trauma_predict.training.multires_event import (
     _barrier,
     _build_grad_scaler,
     _build_scheduler,
+    _capture_rng_state,
     _maybe_resume,
+    _prune_checkpoints,
     _restore_rng_state,
-    _save_checkpoint,
     _seed_everything,
     _set_sampler_epoch,
     _unwrapped_model,
+    _world_size,
 )
 from trauma_predict.training.multires_event_v2_loss import (
     REGISTERED_CORE_FIELD_IDS,
@@ -74,11 +81,17 @@ from trauma_predict.training.observability import (
 
 ROUTE = "multires_event_v2_m4_trajectory"
 MATCHED_MODES = ("block", "trajectory", "relational")
-TRAINING_AUTHORIZED = True
-AUTHORIZED_TRAINING_RUN_NAMES = ("t4x2_multires_event_v2_block",)
+TRAINING_AUTHORIZED = False
+AUTHORIZED_TRAINING_RUN_NAMES: tuple[str, ...] = ()
 TRAINING_AUTHORIZATION_REASON = (
-    "the user explicitly authorized preparation of the first matched block-control "
-    "run on 2026-07-13; every other training run name remains source-blocked"
+    "the 2026-07-14 full re-audit withdrew every formal hosted-training "
+    "authorization after the version-9 deterministic DDP artifact failure"
+)
+VERIFICATION_AUTHORIZED = True
+AUTHORIZED_VERIFICATION_RUN_NAMES = ("t4x2_multires_event_v2_block",)
+VERIFICATION_AUTHORIZATION_REASON = (
+    "agent-owned capacity and failure-path verification is authorized, but it must "
+    "stop before formal optimizer step one"
 )
 EXPECTED_BASE_DATASET_ID = "multires_event_v1_c4_full_20260712"
 EXPECTED_BASE_FINGERPRINT = "d58d003b6a9b2dd7c1f8d269a1867b534ea475a91118d7d4d44804bee69f9e47"
@@ -129,10 +142,15 @@ EXPECTED_OPTIMIZER_CONTRACT = {
     "adamw_fused": False,
     "gradient_clipping": "disabled",
 }
-CAPACITY_PROBE_SCHEMA = "trauma_predict.multires_event_v2_capacity_probe.v1"
+CAPACITY_PROBE_SCHEMA = "trauma_predict.multires_event_v2_capacity_probe.v2"
 CAPACITY_PROBE_OPTIMIZER_STEPS = 2
 CAPACITY_PROBE_VALIDATION_ANCHORS = 100
 CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR = 100
+CAPACITY_SEMANTIC_CANARY_ANCHORS = 2
+CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR = 100
+V2_DISTRIBUTED_TIMEOUT_SECONDS = 600
+V2_NCCL_MONITOR_HEARTBEAT_TIMEOUT_SECONDS = 120
+V2_EARLY_CANARY_PROCESS_GROUP_TIMEOUT_SECONDS = 60
 CAPACITY_SESSION_BUDGET_SECONDS = 12 * 60 * 60
 CAPACITY_SESSION_RESERVE_SECONDS = 60 * 60
 CAPACITY_STRUCTURAL_METRICS = (
@@ -153,6 +171,7 @@ EXPECTED_FORMAL_ARCHITECTURE = {
     "relation_type_count": 14,
 }
 BEST_CHECKPOINT_SCHEMA = "trauma_predict.multires_event_v2_best_checkpoint.v1"
+V2_CHECKPOINT_SCHEMA = "trauma_predict.multires_event_v2_checkpoint.v2"
 SELECTED_MODEL_SCHEMA = "trauma_predict.multires_event_v2_selected_model.v1"
 RUN_ARTIFACT_PATHS = {
     "input_normalization": "artifacts/input_normalization.json",
@@ -188,6 +207,7 @@ class _OptimizerUpdateProbe:
 
 
 _CAPACITY_AUTHORIZATION_GUARD = object()
+_VERIFICATION_AUTHORIZATION_GUARD = object()
 
 
 @dataclass(frozen=True)
@@ -1458,6 +1478,25 @@ def require_multires_event_v2_training_authorization(
         )
 
 
+def require_multires_event_v2_verification_authorization(
+    train: Mapping[str, Any] | None,
+) -> None:
+    if not VERIFICATION_AUTHORIZED:
+        raise RuntimeError(
+            "V2 verification is source-gated. Reason: "
+            f"{VERIFICATION_AUTHORIZATION_REASON}."
+        )
+    if not isinstance(train, Mapping):
+        raise RuntimeError("V2 verification authorization requires one train config")
+    run_name = str(train.get("run_name") or "")
+    if run_name not in AUTHORIZED_VERIFICATION_RUN_NAMES:
+        raise RuntimeError(
+            f"V2 verification is not authorized for run_name={run_name!r}; "
+            f"authorized={AUTHORIZED_VERIFICATION_RUN_NAMES!r}. Reason: "
+            f"{VERIFICATION_AUTHORIZATION_REASON}."
+        )
+
+
 def _capacity_authorization_from_report(
     train_config_path: str | Path,
     train: Mapping[str, Any],
@@ -1525,6 +1564,7 @@ def run_multires_event_v2_capacity_gated_training(
         train_config_path, repo_root=repo_root
     )
     require_multires_event_v2_training_authorization(train)
+    completed = False
     try:
         report = run_multires_event_v2_capacity_probe(
             train_config_path,
@@ -1540,16 +1580,162 @@ def run_multires_event_v2_capacity_gated_training(
                 f"mode={report['mode']} path={report['report_path']}",
                 flush=True,
             )
+            print(
+                "MULTIRES_EVENT_V2_HOSTED_SMOKE_OK "
+                f"mode={report['mode']} optimizer_steps="
+                f"{CAPACITY_PROBE_OPTIMIZER_STEPS} trajectories="
+                f"{CAPACITY_PROBE_VALIDATION_ANCHORS}x"
+                f"{CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR}",
+                flush=True,
+            )
         authorization = _capacity_authorization_from_report(
             train_config_path, train, report
         )
-        return run_multires_event_v2_training(
+        result = run_multires_event_v2_training(
             train_config_path,
             repo_root=repo_root,
             _capacity_authorization=authorization,
         )
+        completed = True
+        return result
     finally:
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
+        # On failure the worker must exit immediately so torchelastic can kill
+        # a peer blocked in a collective.  A best-effort "graceful" destroy on
+        # the failing rank can itself wait for the peer until the process-group
+        # timeout, which caused the r3 failure to waste an additional 600 s.
+        if (
+            completed
+            and torch.distributed.is_available()
+            and torch.distributed.is_initialized()
+        ):
+            torch.distributed.destroy_process_group()
+
+
+def run_multires_event_v2_rank_artifact_preflight_only(
+    *,
+    output_dir: str | Path,
+    mode: str,
+) -> dict[str, Any]:
+    """Run the exact rank-local writer/hash/gather path before Dataset loading.
+
+    This route accepts no model or data config and performs no Dataset scan. It
+    exists so a hosted attempt can reject deterministic rank-local artifact and
+    collective-propagation defects before spending minutes materializing the
+    50,350-anchor runtime.
+    """
+
+    if mode not in MATCHED_MODES:
+        raise ValueError("early rank artifact preflight mode is invalid")
+    rank = int(os.environ.get("RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    if world_size != 2:
+        raise RuntimeError(
+            "early V2 rank artifact preflight requires torchrun --nproc_per_node=2"
+        )
+    if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
+        raise RuntimeError("early V2 rank artifact preflight requires two visible GPUs")
+    output_root = Path(output_dir).resolve()
+    if output_root.exists() and any(output_root.iterdir()):
+        raise FileExistsError("early rank artifact preflight output is not empty")
+    torch.cuda.set_device(local_rank)
+    device = torch.device("cuda", local_rank)
+    if not torch.distributed.is_initialized():
+        torch.distributed.init_process_group(
+            backend="nccl",
+            init_method="env://",
+            timeout=timedelta(
+                seconds=V2_EARLY_CANARY_PROCESS_GROUP_TIMEOUT_SECONDS
+            ),
+            device_id=device,
+        )
+    completed = False
+    try:
+        result = verify_rank_local_artifact_preflight(
+            output_dir=output_root,
+            mode=mode,
+        )
+        if int(result.get("world_size", -1)) != world_size:
+            raise RuntimeError("early rank artifact preflight world size changed")
+        if is_rank_zero():
+            print(
+                "MULTIRES_EVENT_V2_RANK_ARTIFACT_CANARY_OK "
+                f"phase=predata world_size={world_size} "
+                f"sha256={result['manifest_sha256']}",
+                flush=True,
+            )
+        completed = True
+        return result
+    finally:
+        # Match the formal failure policy: do not enter a graceful destroy after
+        # an asymmetric failure because it can hide the original traceback.
+        if completed and torch.distributed.is_initialized():
+            torch.distributed.destroy_process_group()
+
+
+def run_multires_event_v2_verification_probe(
+    train_config_path: str | Path,
+    *,
+    repo_root: str | Path,
+    output_dir: str | Path,
+    elapsed_before_capacity_seconds: float,
+) -> dict[str, Any]:
+    """Run the full capacity/failure-path probe and stop before formal training."""
+
+    train, _, _, _, _ = load_multires_event_v2_configs(
+        train_config_path,
+        repo_root=repo_root,
+    )
+    require_multires_event_v2_verification_authorization(train)
+    completed = False
+    try:
+        report = run_multires_event_v2_capacity_probe(
+            train_config_path,
+            repo_root=repo_root,
+            output_dir=output_dir,
+            elapsed_before_capacity_seconds=elapsed_before_capacity_seconds,
+            _verification_guard=_VERIFICATION_AUTHORIZATION_GUARD,
+        )
+        if report.get("status") != "PASSED":
+            raise RuntimeError("V2 verification probe did not produce a PASS report")
+        output_root = Path(output_dir).resolve()
+        completion_path = output_root / "verification_complete.json"
+        if is_rank_zero():
+            atomic_write_json(
+                completion_path,
+                {
+                    "schema_version": (
+                        "trauma_predict.multires_event_v2_verification_complete.v1"
+                    ),
+                    "created_at": utc_now(),
+                    "status": "PASSED_STOPPED_BEFORE_FORMAL_TRAINING",
+                    "formal_training_authorized": False,
+                    "formal_optimizer_steps": 0,
+                    "mode": str(train["mode"]),
+                    "run_name": str(train["run_name"]),
+                    "capacity_report_path": str(report["report_path"]),
+                    "capacity_report_sha256": sha256_file(
+                        Path(str(report["report_path"]))
+                    ),
+                },
+            )
+        _barrier()
+        result = {
+            **report,
+            "verification_complete_path": str(completion_path),
+            "verification_complete_sha256": sha256_file(completion_path),
+            "formal_optimizer_steps": 0,
+        }
+        if is_rank_zero():
+            print(
+                "MULTIRES_EVENT_V2_VERIFICATION_ONLY_COMPLETE "
+                f"mode={train['mode']} path={completion_path}",
+                flush=True,
+            )
+        completed = True
+        return result
+    finally:
+        if completed and torch.distributed.is_available() and torch.distributed.is_initialized():
             torch.distributed.destroy_process_group()
 
 
@@ -1559,6 +1745,7 @@ def run_multires_event_v2_capacity_probe(
     repo_root: str | Path,
     output_dir: str | Path,
     elapsed_before_capacity_seconds: float,
+    _verification_guard: object | None = None,
 ) -> dict[str, Any]:
     """Exercise the exact hosted path without writing into the formal run root."""
 
@@ -1567,7 +1754,12 @@ def run_multires_event_v2_capacity_probe(
         train_config_path,
         repo_root=root,
     )
-    require_multires_event_v2_training_authorization(train)
+    if _verification_guard is None:
+        require_multires_event_v2_training_authorization(train)
+    else:
+        if _verification_guard is not _VERIFICATION_AUTHORIZATION_GUARD:
+            raise RuntimeError("invalid V2 verification authorization guard")
+        require_multires_event_v2_verification_authorization(train)
     mode = str(train["mode"])
     if mode not in MATCHED_MODES or str(train.get("run_name")) == "t4x2_multires_event_v2_smoke":
         raise ValueError("capacity probe is defined only for a formal matched mode")
@@ -1587,6 +1779,18 @@ def run_multires_event_v2_capacity_probe(
     if is_rank_zero():
         probe_root.mkdir(parents=True, exist_ok=True)
     _barrier()
+
+    rank_artifact_canary = verify_rank_local_artifact_preflight(
+        output_dir=probe_root / "ddp_rank_artifact_canary",
+        mode=mode,
+    )
+    if is_rank_zero():
+        print(
+            "MULTIRES_EVENT_V2_RANK_ARTIFACT_CANARY_OK "
+            f"world_size={rank_artifact_canary['world_size']} "
+            f"sha256={rank_artifact_canary['manifest_sha256']}",
+            flush=True,
+        )
 
     runtime = build_multires_event_v2_runtime(
         train,
@@ -1611,6 +1815,12 @@ def run_multires_event_v2_capacity_probe(
         rank=rank,
         world_size=world_size,
     )
+    semantic_canary_loader = _capacity_probe_eval_loader(
+        runtime,
+        rank=rank,
+        world_size=world_size,
+        validation_anchors=CAPACITY_SEMANTIC_CANARY_ANCHORS,
+    )
 
     torch.cuda.reset_peak_memory_stats(device)
     model = build_multires_event_v2_model(model_config, mode=mode).to(device)
@@ -1623,6 +1833,89 @@ def run_multires_event_v2_capacity_probe(
             broadcast_buffers=False,
         )
     training = _mapping(train["training"], "train.training")
+    promotion_contract = load_promotion_metric_contract(
+        resolve_repo_path(str(train["promotion_metric_contract"]), root),
+        expected_sha256=str(train["promotion_metric_contract_hash"]),
+        data_contract=runtime.contract,
+    )
+
+    semantic_canary_root = probe_root / "ddp_semantic_canary"
+    _barrier()
+    torch.cuda.synchronize(device)
+    semantic_canary_started = time.monotonic()
+    semantic_canary_result = evaluate_free_running_v2(
+        model=model,
+        loader=semantic_canary_loader,
+        contract=runtime.contract,
+        device=device,
+        mode=mode,
+        expected_samples=CAPACITY_SEMANTIC_CANARY_ANCHORS,
+        step=0,
+        output_dir=semantic_canary_root,
+        expected_lab_scale_artifact_hash=str(train["lab_scale_artifact_hash"]),
+        standardized_primitive_scale_path=resolve_repo_path(
+            str(train["standardized_primitive_scale_artifact"]), root
+        ),
+        expected_standardized_primitive_scale_hash=str(
+            train["standardized_primitive_scale_artifact_hash"]
+        ),
+        input_normalization_sha256=str(runtime.identity["input_normalization_sha256"]),
+        promotion_metric_contract=promotion_contract,
+        trajectories_per_anchor=CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR,
+        trajectory_batch_size=CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR,
+        crn_seed=int(train["evaluation"]["free_running_crn_seed"]),
+        metrics_path=None,
+        precision=str(training["precision"]),
+    )
+    torch.cuda.synchronize(device)
+    _barrier()
+    semantic_canary_seconds = _distributed_max_float(
+        time.monotonic() - semantic_canary_started,
+        device,
+    )
+    semantic_coherence = _mapping(
+        semantic_canary_result.get("coherence"),
+        "semantic canary coherence",
+    )
+    semantic_shards = semantic_canary_result.get("shards")
+    if (
+        int(semantic_canary_result.get("anchors", -1))
+        != CAPACITY_SEMANTIC_CANARY_ANCHORS
+        or int(semantic_canary_result.get("trajectories_per_anchor", -1))
+        != CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR
+        or float(semantic_coherence.get("rate", -1.0)) != 1.0
+        or int(semantic_coherence.get("coherent_trajectories", -1))
+        != CAPACITY_SEMANTIC_CANARY_ANCHORS
+        * CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR
+        or not isinstance(semantic_shards, list)
+        or len(semantic_shards) != world_size
+        or sorted(int(row.get("rank", -1)) for row in semantic_shards) != [0, 1]
+        or any(int(row.get("anchors", -1)) != 1 for row in semantic_shards)
+    ):
+        raise RuntimeError("V2 semantic DDP canary did not close the exact 2x100 path")
+    semantic_canary = {
+        "status": "PASSED",
+        "anchors": CAPACITY_SEMANTIC_CANARY_ANCHORS,
+        "trajectories_per_anchor": (
+            CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR
+        ),
+        "world_size": world_size,
+        "wall_seconds": semantic_canary_seconds,
+        "coherence_rate": float(semantic_coherence["rate"]),
+        "manifest_path": str(
+            (semantic_canary_root / str(semantic_canary_result["manifest_path"])).resolve()
+        ),
+        "manifest_sha256": str(semantic_canary_result["manifest_sha256"]),
+    }
+    if is_rank_zero():
+        print(
+            "MULTIRES_EVENT_V2_SEMANTIC_CANARY_OK "
+            f"anchors={semantic_canary['anchors']} "
+            f"trajectories={semantic_canary['trajectories_per_anchor']} "
+            f"elapsed={semantic_canary_seconds:.3f}s",
+            flush=True,
+        )
+
     optimizer = build_multires_event_v2_optimizer(model, training)
     scheduler = _build_scheduler(optimizer, training)
     scaler = _build_grad_scaler(torch, device, training)
@@ -1636,6 +1929,70 @@ def run_multires_event_v2_capacity_probe(
         device=device,
         world_size=world_size,
     )
+
+    checkpoint_canary_root = probe_root / "checkpoint_canary"
+    checkpoint_identity = {
+        "hosted_smoke_identity": sha256_payload(
+            {
+                "dataset_id": runtime.identity["dataset_id"],
+                "contract_bundle_hash": runtime.identity["contract_bundle_hash"],
+                "mode": mode,
+                "optimizer_steps": CAPACITY_PROBE_OPTIMIZER_STEPS,
+            }
+        )
+    }
+    _save_v2_checkpoint(
+        output_dir=checkpoint_canary_root,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        scaler=scaler,
+        trainer_state={
+            "global_step": CAPACITY_PROBE_OPTIMIZER_STEPS,
+            "epoch": 0,
+            "batches_in_epoch": CAPACITY_PROBE_OPTIMIZER_STEPS,
+            "micro_in_accum": 0,
+            "best_metric": None,
+            "best_step": None,
+            "scaler_skipped_steps": 0,
+        },
+        identity_hashes=checkpoint_identity,
+        runtime=runtime,
+        rank=rank,
+        keep_last=1,
+    )
+    checkpoint_path = (
+        checkpoint_canary_root
+        / "checkpoints"
+        / f"checkpoint-{CAPACITY_PROBE_OPTIMIZER_STEPS:08d}"
+    )
+    checkpoint_manifest = _validate_v2_checkpoint_directory(
+        checkpoint_path,
+        expected_world_size=world_size,
+        expected_step=CAPACITY_PROBE_OPTIMIZER_STEPS,
+    )
+    resume_config = copy.deepcopy(train)
+    resume_config["training"]["resume"] = True
+    resumed_state, _ = _maybe_resume(
+        output_dir=checkpoint_canary_root,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        scaler=scaler,
+        identity_hashes=checkpoint_identity,
+        device=device,
+        rank=rank,
+        config=resume_config,
+        runtime=runtime,
+    )
+    resume_alignment = _validate_resume_optimizer_alignment(
+        optimizer,
+        scheduler,
+        training,
+        global_step=int(resumed_state["global_step"]),
+    )
+    if int(resumed_state["global_step"]) != CAPACITY_PROBE_OPTIMIZER_STEPS:
+        raise RuntimeError("hosted smoke checkpoint did not restore exact optimizer step two")
 
     metrics_path = probe_root / "metrics.jsonl"
     _barrier()
@@ -1659,11 +2016,6 @@ def run_multires_event_v2_capacity_probe(
     _barrier()
     teacher_seconds = _distributed_max_float(time.monotonic() - started, device)
 
-    promotion_contract = load_promotion_metric_contract(
-        resolve_repo_path(str(train["promotion_metric_contract"]), root),
-        expected_sha256=str(train["promotion_metric_contract_hash"]),
-        data_contract=runtime.contract,
-    )
     free_root = probe_root / "free_running"
     _barrier()
     torch.cuda.synchronize(device)
@@ -1813,6 +2165,10 @@ def run_multires_event_v2_capacity_probe(
                 ),
             },
             "hardware": hardware,
+            "distributed_canaries": {
+                "rank_artifact": rank_artifact_canary,
+                "semantic_rollout": semantic_canary,
+            },
             "optimizer": {
                 "optimizer_contract_version": OPTIMIZER_CONTRACT_VERSION,
                 "loss_reduction": RAW_JOINT_NLL_REDUCTION,
@@ -1820,6 +2176,16 @@ def run_multires_event_v2_capacity_probe(
                 "configured_contract": copy.deepcopy(EXPECTED_OPTIMIZER_CONTRACT),
                 "steps": optimizer_rows,
                 "scaler_skipped_steps": 0,
+            },
+            "checkpoint_resume_canary": {
+                "schema_version": V2_CHECKPOINT_SCHEMA,
+                "checkpoint_path": str(checkpoint_path),
+                "checkpoint_manifest_sha256": sha256_file(
+                    checkpoint_path / "checkpoint_manifest.json"
+                ),
+                "manifest_file_count": len(checkpoint_manifest["files"]),
+                "restored_global_step": int(resumed_state["global_step"]),
+                "resume_alignment": resume_alignment,
             },
             "teacher_probe": {
                 "anchors": int(teacher["samples"]),
@@ -1860,7 +2226,15 @@ def run_multires_event_v2_capacity_probe(
     if not isinstance(report, Mapping):
         raise RuntimeError("capacity probe report broadcast failed")
 
-    del probe_loader, optimizer, scheduler, scaler, model, runtime
+    del (
+        probe_loader,
+        semantic_canary_loader,
+        optimizer,
+        scheduler,
+        scaler,
+        model,
+        runtime,
+    )
     gc.collect()
     torch.cuda.empty_cache()
     _barrier()
@@ -1877,14 +2251,18 @@ def _capacity_probe_eval_loader(
     *,
     rank: int,
     world_size: int,
+    validation_anchors: int = CAPACITY_PROBE_VALIDATION_ANCHORS,
 ) -> Any:
     from torch.utils.data import DataLoader
 
     if world_size != 2 or rank not in {0, 1}:
         raise ValueError("capacity probe requires two DDP ranks")
-    indices = tuple(range(rank, CAPACITY_PROBE_VALIDATION_ANCHORS, world_size))
-    if len(indices) != CAPACITY_PROBE_VALIDATION_ANCHORS // world_size:
-        raise AssertionError("capacity probe did not split 100 anchors evenly")
+    validation_anchors = int(validation_anchors)
+    if validation_anchors < world_size or validation_anchors % world_size != 0:
+        raise ValueError("capacity probe anchors must be positive and evenly split")
+    indices = tuple(range(rank, validation_anchors, world_size))
+    if len(indices) != validation_anchors // world_size:
+        raise AssertionError("capacity probe did not split anchors evenly")
     return DataLoader(
         runtime.eval_dataset,
         batch_size=32,
@@ -2071,9 +2449,12 @@ def run_multires_event_v2_training(
     _seed_everything(int(train["seed"]), rank)
     output_dir = resolve_repo_path(str(train["outputs"]["output_dir"]), root)
     metrics_path = resolve_repo_path(str(train["outputs"]["metrics_jsonl"]), root)
-    if is_rank_zero():
-        output_dir.mkdir(parents=True, exist_ok=True)
-    _barrier()
+    _collect_distributed_phase(
+        "formal output-root materialization",
+        lambda: output_dir.mkdir(parents=True, exist_ok=True)
+        if is_rank_zero()
+        else None,
+    )
     runtime = build_multires_event_v2_runtime(
         train,
         dataset,
@@ -2083,8 +2464,9 @@ def run_multires_event_v2_training(
         phase="interval",
     )
     validate_formal_target_field_order(model_config, runtime.contract)
-    if is_rank_zero():
-        _materialize_run_artifacts(
+    _collect_distributed_phase(
+        "formal run-artifact materialization",
+        lambda: _materialize_run_artifacts(
             output_dir,
             runtime=runtime,
             train=train,
@@ -2093,7 +2475,9 @@ def run_multires_event_v2_training(
             dataset_path=dataset_path,
             model_path=model_path,
         )
-    _barrier()
+        if is_rank_zero()
+        else None,
+    )
     runtime = _bind_runtime_to_run_artifacts(output_dir, runtime)
     model = build_multires_event_v2_model(model_config, mode=str(train["mode"])).to(device)
     source_identity = _source_tree_identity(root)
@@ -2111,8 +2495,9 @@ def run_multires_event_v2_training(
         "git_head_tree": str(source_identity.get("git_head_tree") or "unavailable"),
         "matched_design": matched_design_signature(train, dataset, model_config),
     }
-    if is_rank_zero():
-        _write_identity(
+    _collect_distributed_phase(
+        "formal identity materialization",
+        lambda: _write_identity(
             output_dir,
             train=train,
             dataset=dataset,
@@ -2125,7 +2510,9 @@ def run_multires_event_v2_training(
             parameter_count=sum(parameter.numel() for parameter in model.parameters()),
             source_identity=source_identity,
         )
-    _barrier()
+        if is_rank_zero()
+        else None,
+    )
     if world_size > 1:
         model = torch.nn.parallel.DistributedDataParallel(
             model,
@@ -2138,6 +2525,7 @@ def run_multires_event_v2_training(
     optimizer = build_multires_event_v2_optimizer(model, training)
     scheduler = _build_scheduler(optimizer, training)
     scaler = _build_grad_scaler(torch, device, training)
+    _validate_v2_checkpoint_integrity(output_dir, expected_world_size=world_size)
     state, deferred_rng = _maybe_resume(
         output_dir=output_dir,
         model=model,
@@ -2156,8 +2544,9 @@ def run_multires_event_v2_training(
         training,
         global_step=int(state.get("global_step", 0)),
     )
-    if is_rank_zero():
-        append_jsonl(
+    _collect_distributed_phase(
+        "formal resume-alignment logging",
+        lambda: append_jsonl(
             metrics_path,
             {
                 "event": "v2_resume_optimizer_alignment",
@@ -2165,7 +2554,9 @@ def run_multires_event_v2_training(
                 **resume_alignment,
             },
         )
-    _barrier()
+        if is_rank_zero()
+        else None,
+    )
     result = _train_loop(
         model=model,
         runtime=runtime,
@@ -2260,8 +2651,9 @@ def run_multires_event_v2_training(
             metrics_path=metrics_path,
             precision=str(training["precision"]),
         )
-    if is_rank_zero():
-        _export_run(
+    _collect_distributed_phase(
+        "formal final export",
+        lambda: _export_run(
             output_dir,
             model,
             train,
@@ -2271,7 +2663,9 @@ def run_multires_event_v2_training(
             free_running_evaluation,
             selected_model_identity,
         )
-    _barrier()
+        if is_rank_zero()
+        else None,
+    )
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         torch.distributed.destroy_process_group()
     return {
@@ -2479,17 +2873,22 @@ def _train_loop(
             candidate = float(evaluation["joint_nll_subject_macro"])
             if best_metric is None or candidate < float(best_metric):
                 best_metric, best_step = candidate, global_step
-                _save_v2_best_model(
-                    output_dir=output_dir,
-                    model=model,
-                    identity_hashes=identity_hashes,
-                    step=global_step,
-                    metric=candidate,
+                _collect_distributed_phase(
+                    "formal best-checkpoint materialization",
+                    lambda: _save_v2_best_model(
+                        output_dir=output_dir,
+                        model=model,
+                        identity_hashes=identity_hashes,
+                        step=global_step,
+                        metric=candidate,
+                    )
+                    if is_rank_zero()
+                    else None,
                 )
             model.train()
 
         if global_step % int(training["save_steps"]) == 0 or global_step == max_steps:
-            _save_checkpoint(
+            _save_v2_checkpoint(
                 output_dir=output_dir,
                 model=model,
                 optimizer=optimizer,
@@ -2517,6 +2916,189 @@ def _train_loop(
         "max_steps": max_steps,
         "scaler_skipped_steps": scaler_skipped_steps,
     }
+
+
+def _save_v2_checkpoint(
+    *,
+    output_dir: Path,
+    model: Any,
+    optimizer: Any,
+    scheduler: Any,
+    scaler: Any,
+    trainer_state: Mapping[str, Any],
+    identity_hashes: Mapping[str, str],
+    runtime: Any,
+    rank: int,
+    keep_last: int,
+) -> None:
+    """Persist one V2 checkpoint without asymmetric rank/barrier deadlocks."""
+
+    step = int(trainer_state["global_step"])
+    world_size = _world_size()
+    checkpoint_root = output_dir / "checkpoints"
+    checkpoint = checkpoint_root / f"checkpoint-{step:08d}"
+    partial = checkpoint_root / f".checkpoint-{step:08d}.partial"
+
+    def prepare_partial() -> None:
+        if not is_rank_zero():
+            return
+        checkpoint_root.mkdir(parents=True, exist_ok=True)
+        if checkpoint.exists():
+            raise FileExistsError(
+                f"refusing to overwrite completed V2 checkpoint {checkpoint}"
+            )
+        if partial.exists():
+            abandoned_root = checkpoint_root / "incomplete"
+            abandoned_root.mkdir(parents=True, exist_ok=True)
+            timestamp = utc_now().replace(":", "-")
+            partial.rename(
+                abandoned_root / f"{partial.name}-{timestamp}-pid{os.getpid()}"
+            )
+        partial.mkdir(parents=False, exist_ok=False)
+
+    _collect_distributed_phase("V2 checkpoint partial preparation", prepare_partial)
+
+    def save_rank_state() -> dict[str, str]:
+        rng_name = f"rng-rank-{rank:04d}.pt"
+        sampler_name = f"sampler-rank-{rank:04d}.pt"
+        torch.save(_capture_rng_state(), partial / rng_name)
+        sampler_state = (
+            runtime.train_sampler.state_dict()
+            if hasattr(runtime.train_sampler, "state_dict")
+            else None
+        )
+        torch.save(sampler_state, partial / sampler_name)
+        return {
+            rng_name: sha256_file(partial / rng_name),
+            sampler_name: sha256_file(partial / sampler_name),
+        }
+
+    rank_hashes = _collect_distributed_phase(
+        "V2 checkpoint rank-local state",
+        save_rank_state,
+    )
+
+    def finalize_checkpoint() -> None:
+        if not is_rank_zero():
+            return
+        shared_writers = {
+            "model.pt": lambda path: torch.save(
+                _unwrapped_model(model).state_dict(), path
+            ),
+            "optimizer.pt": lambda path: torch.save(optimizer.state_dict(), path),
+            "scheduler.pt": lambda path: torch.save(scheduler.state_dict(), path),
+            "scaler.pt": lambda path: torch.save(scaler.state_dict(), path),
+            "trainer_state.json": lambda path: atomic_write_json(
+                path, dict(trainer_state)
+            ),
+            "identity_hashes.json": lambda path: atomic_write_json(
+                path, dict(identity_hashes)
+            ),
+        }
+        hashes: dict[str, str] = {}
+        for name, writer in shared_writers.items():
+            writer(partial / name)
+            hashes[name] = sha256_file(partial / name)
+        for payload in rank_hashes:
+            hashes.update({str(name): str(digest) for name, digest in payload.items()})
+        files = tuple(sorted(hashes))
+        atomic_write_json(
+            partial / "checkpoint_manifest.json",
+            {
+                "schema_version": V2_CHECKPOINT_SCHEMA,
+                "created_at": utc_now(),
+                "global_step": step,
+                "world_size": world_size,
+                "identity_hashes": dict(identity_hashes),
+                "files": list(files),
+                "sha256": {name: hashes[name] for name in files},
+            },
+        )
+        _validate_v2_checkpoint_directory(
+            partial,
+            expected_world_size=world_size,
+            expected_step=step,
+        )
+        partial.replace(checkpoint)
+
+    _collect_distributed_phase("V2 checkpoint shared finalization", finalize_checkpoint)
+    _collect_distributed_phase(
+        "V2 checkpoint pruning",
+        lambda: _prune_checkpoints(checkpoint_root, keep_last)
+        if is_rank_zero()
+        else None,
+    )
+
+
+def _validate_v2_checkpoint_directory(
+    checkpoint: Path,
+    *,
+    expected_world_size: int,
+    expected_step: int,
+) -> dict[str, Any]:
+    manifest_path = checkpoint / "checkpoint_manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise FileNotFoundError(f"V2 checkpoint manifest is absent: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    files = manifest.get("files")
+    hashes = manifest.get("sha256")
+    expected_rank_files = {
+        *(f"rng-rank-{rank:04d}.pt" for rank in range(expected_world_size)),
+        *(f"sampler-rank-{rank:04d}.pt" for rank in range(expected_world_size)),
+    }
+    expected_files = {
+        "model.pt",
+        "optimizer.pt",
+        "scheduler.pt",
+        "scaler.pt",
+        "trainer_state.json",
+        "identity_hashes.json",
+        *expected_rank_files,
+    }
+    if (
+        manifest.get("schema_version") != V2_CHECKPOINT_SCHEMA
+        or int(manifest.get("global_step", -1)) != expected_step
+        or int(manifest.get("world_size", -1)) != expected_world_size
+        or not isinstance(files, list)
+        or set(str(name) for name in files) != expected_files
+        or not isinstance(hashes, Mapping)
+        or set(str(name) for name in hashes) != expected_files
+    ):
+        raise ValueError(f"V2 checkpoint manifest contract failed: {checkpoint}")
+    for name in sorted(expected_files):
+        path = checkpoint / name
+        digest = str(hashes[name])
+        if (
+            Path(name).name != name
+            or path.is_symlink()
+            or not path.is_file()
+            or not _is_sha256(digest)
+            or sha256_file(path) != digest
+        ):
+            raise ValueError(f"V2 checkpoint file/hash failed: {path}")
+    return manifest
+
+
+def _validate_v2_checkpoint_integrity(
+    output_dir: Path,
+    *,
+    expected_world_size: int,
+) -> None:
+    checkpoint_root = output_dir / "checkpoints"
+    if not checkpoint_root.is_dir():
+        return
+    for checkpoint in sorted(checkpoint_root.glob("checkpoint-*")):
+        if not checkpoint.is_dir():
+            raise ValueError(f"V2 checkpoint entry is not a directory: {checkpoint}")
+        try:
+            step = int(checkpoint.name.removeprefix("checkpoint-"))
+        except ValueError as error:
+            raise ValueError(f"invalid V2 checkpoint directory name: {checkpoint}") from error
+        _validate_v2_checkpoint_directory(
+            checkpoint,
+            expected_world_size=expected_world_size,
+            expected_step=step,
+        )
 
 
 def _audit_unscaled_gradients(
@@ -2989,9 +3571,15 @@ def _initialize_v2_distributed(
             f"found {torch.cuda.device_count()}"
         )
     torch.cuda.set_device(local_rank)
+    device = torch.device("cuda", local_rank)
     if world_size > 1 and not torch.distributed.is_initialized():
-        torch.distributed.init_process_group(backend="nccl", init_method="env://")
-    return rank, world_size, local_rank, torch.device("cuda", local_rank)
+        torch.distributed.init_process_group(
+            backend="nccl",
+            init_method="env://",
+            timeout=timedelta(seconds=V2_DISTRIBUTED_TIMEOUT_SECONDS),
+            device_id=device,
+        )
+    return rank, world_size, local_rank, device
 
 
 def _is_sha256(value: str) -> bool:
@@ -3862,10 +4450,13 @@ __all__ = [
     "CAPACITY_PROBE_SCHEMA",
     "CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR",
     "CAPACITY_PROBE_VALIDATION_ANCHORS",
+    "CAPACITY_SEMANTIC_CANARY_ANCHORS",
+    "CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR",
     "CAPACITY_SESSION_BUDGET_SECONDS",
     "CAPACITY_SESSION_RESERVE_SECONDS",
     "CAPACITY_STRUCTURAL_METRICS",
     "AUTHORIZED_TRAINING_RUN_NAMES",
+    "AUTHORIZED_VERIFICATION_RUN_NAMES",
     "EXPECTED_OPTIMIZER_CONTRACT",
     "MATCHED_MODES",
     "EXPECTED_FORMAL_MODEL_PARAMETER_COUNT",
@@ -3876,6 +4467,11 @@ __all__ = [
     "ROUTE",
     "TRAINING_AUTHORIZED",
     "TRAINING_AUTHORIZATION_REASON",
+    "VERIFICATION_AUTHORIZED",
+    "VERIFICATION_AUTHORIZATION_REASON",
+    "V2_DISTRIBUTED_TIMEOUT_SECONDS",
+    "V2_EARLY_CANARY_PROCESS_GROUP_TIMEOUT_SECONDS",
+    "V2_NCCL_MONITOR_HEARTBEAT_TIMEOUT_SECONDS",
     "build_multires_event_v2_model",
     "build_multires_event_v2_optimizer",
     "build_multires_event_v2_runtime",
@@ -3887,10 +4483,13 @@ __all__ = [
     "require_multires_event_v2_training_authorization",
     "run_multires_event_v2_capacity_gated_training",
     "run_multires_event_v2_capacity_probe",
+    "run_multires_event_v2_rank_artifact_preflight_only",
     "run_multires_event_v2_training",
+    "run_multires_event_v2_verification_probe",
     "validate_formal_model_parameter_count",
     "validate_formal_target_field_order",
     "validate_multires_event_v2_configs",
     "validate_optimizer_health_summary",
+    "require_multires_event_v2_verification_authorization",
     "summarize_optimizer_health_metrics",
 ]

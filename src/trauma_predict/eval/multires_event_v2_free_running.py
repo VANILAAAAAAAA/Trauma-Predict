@@ -10,7 +10,7 @@ import math
 from pathlib import Path
 import random
 import time
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import torch
 
@@ -33,6 +33,7 @@ from trauma_predict.training.multires_event_v2_loss import (
 )
 from trauma_predict.training.observability import (
     append_jsonl,
+    append_rank_local_jsonl,
     sha256_file,
     sha256_payload,
     utc_now,
@@ -44,6 +45,9 @@ CRN_SCHEDULE_SCHEMA = "multires_event_v2_common_random_numbers_sha256_v1"
 PRODUCTION_TRAJECTORIES_PER_ANCHOR = 100
 PRODUCTION_CRN_SEED = 20260713
 RETAINED_AUDIT_TRAJECTORIES_PER_ANCHOR = 1
+RANK_ARTIFACT_PREFLIGHT_SCHEMA = (
+    "trauma_predict.multires_event_v2_rank_artifact_preflight.v1"
+)
 
 
 def evaluate_free_running_v2(
@@ -196,38 +200,37 @@ def evaluate_free_running_v2(
                 )
             identity[key] = value
     schema_path = output_root / "sample_schema.json"
-    if rank == 0:
-        _atomic_json(
-            schema_path,
-            {
-                "schema_version": "trauma_predict.multires_event_v2_sample_export.v2",
-                "created_at": utc_now(),
-                "identity": identity,
-                "crn_contract": crn_contract,
-                "primitive_order": primitive_order,
-                "primitive_flat_component_count": component_cursor,
-                "physical_projection_order": [row.as_dict() for row in physical_schema],
-                "standardized_primitive_coordinates": [
-                    row.as_dict() for row in primitive_schema
-                ],
-                "care_and_procedure": {
-                    "status": "not_applicable",
-                    "reason": "care_and_procedure_joint_objective_off",
-                },
-                "trajectory_retention": {
-                    "scored_trajectories_per_anchor": trajectories_per_anchor,
-                    "retained_audit_trajectories_per_anchor": (
-                        RETAINED_AUDIT_TRAJECTORIES_PER_ANCHOR
-                    ),
-                    "selection": "trajectory_index_zero_for_every_anchor",
-                    "rationale": (
-                        "all_ensemble_members_contribute_to_metrics; one deterministic "
-                        "member_per_anchor_is_retained_for_trace_audit"
-                    ),
-                },
-            },
-        )
-    _barrier()
+    schema_payload = {
+        "schema_version": "trauma_predict.multires_event_v2_sample_export.v2",
+        "created_at": utc_now(),
+        "identity": identity,
+        "crn_contract": crn_contract,
+        "primitive_order": primitive_order,
+        "primitive_flat_component_count": component_cursor,
+        "physical_projection_order": [row.as_dict() for row in physical_schema],
+        "standardized_primitive_coordinates": [
+            row.as_dict() for row in primitive_schema
+        ],
+        "care_and_procedure": {
+            "status": "not_applicable",
+            "reason": "care_and_procedure_joint_objective_off",
+        },
+        "trajectory_retention": {
+            "scored_trajectories_per_anchor": trajectories_per_anchor,
+            "retained_audit_trajectories_per_anchor": (
+                RETAINED_AUDIT_TRAJECTORIES_PER_ANCHOR
+            ),
+            "selection": "trajectory_index_zero_for_every_anchor",
+            "rationale": (
+                "all_ensemble_members_contribute_to_metrics; one deterministic "
+                "member_per_anchor_is_retained_for_trace_audit"
+            ),
+        },
+    }
+    _collect_distributed_phase(
+        "free-running sample-schema materialization",
+        lambda: _atomic_json(schema_path, schema_payload) if rank == 0 else None,
+    )
 
     primitive_path = output_root / f"audit_trajectory_samples.rank{rank:05d}.jsonl.gz"
     anchor_path = output_root / f"per_anchor_scores.rank{rank:05d}.jsonl"
@@ -236,6 +239,13 @@ def evaluate_free_running_v2(
     local_coverage = _empty_coverage_state()
     local_sample_ids: set[str] = set()
     autocast = _autocast_factory(device, precision)
+    _emit_rank_progress(
+        path=rank_progress_path,
+        rank=rank,
+        mode=mode,
+        completed_anchors=0,
+        started_at=rank_started_at,
+    )
     with _atomic_gzip_text(primitive_path) as primitive_handle, _atomic_text(
         anchor_path
     ) as anchor_handle:
@@ -448,23 +458,34 @@ def evaluate_free_running_v2(
             started_at=rank_started_at,
         )
 
-    local_manifest = {
-        "rank": rank,
-        "anchors": local_anchor_count,
-        "audit_trajectory_sample_path": primitive_path.name,
-        "audit_trajectory_sample_sha256": sha256_file(primitive_path),
-        "retained_audit_trajectories": local_anchor_count,
-        "per_anchor_score_path": anchor_path.name,
-        "per_anchor_score_sha256": sha256_file(anchor_path),
-        "progress_metrics_path": rank_progress_path.name,
-        "progress_metrics_sha256": sha256_file(rank_progress_path),
-    }
-    manifests = _gather_objects(local_manifest)
-    calibration_parts = _gather_objects(local_calibration)
-    coverage_parts = _gather_objects(local_coverage)
-    _barrier()
-    result: dict[str, Any] | None = None
-    if rank == 0:
+    def build_rank_payload() -> dict[str, Any]:
+        return {
+            "manifest": {
+                "rank": rank,
+                "anchors": local_anchor_count,
+                "audit_trajectory_sample_path": primitive_path.name,
+                "audit_trajectory_sample_sha256": sha256_file(primitive_path),
+                "retained_audit_trajectories": local_anchor_count,
+                "per_anchor_score_path": anchor_path.name,
+                "per_anchor_score_sha256": sha256_file(anchor_path),
+                "progress_metrics_path": rank_progress_path.name,
+                "progress_metrics_sha256": sha256_file(rank_progress_path),
+            },
+            "calibration": local_calibration,
+            "coverage": local_coverage,
+        }
+
+    rank_payloads = _collect_distributed_phase(
+        "free-running rank artifact finalization",
+        build_rank_payload,
+    )
+    manifests = [payload["manifest"] for payload in rank_payloads]
+    calibration_parts = [payload["calibration"] for payload in rank_payloads]
+    coverage_parts = [payload["coverage"] for payload in rank_payloads]
+
+    def assemble_rank_zero_result() -> dict[str, Any] | None:
+        if rank != 0:
+            return None
         rows: list[dict[str, Any]] = []
         for manifest in sorted(manifests, key=lambda item: int(item["rank"])):
             rows.extend(
@@ -505,9 +526,15 @@ def evaluate_free_running_v2(
         _atomic_json(output_root / "evaluation.json", result)
         if metrics_path is not None:
             append_jsonl(metrics_path, {"event": "v2_free_running_evaluation", **result})
-    result = _broadcast_object(result)
+        return result
+
+    assembled = _collect_distributed_phase(
+        "free-running rank-zero report assembly",
+        assemble_rank_zero_result,
+    )
+    result = assembled[0]
     if not isinstance(result, Mapping):
-        raise RuntimeError("free-running evaluation result broadcast failed")
+        raise RuntimeError("free-running evaluation result assembly failed")
     return dict(result)
 
 
@@ -1043,13 +1070,169 @@ def _emit_rank_progress(
         "elapsed_seconds": elapsed,
         "anchors_per_second": completed_anchors / elapsed,
     }
-    append_jsonl(path, row)
+    append_rank_local_jsonl(path, row, rank_value=rank)
     print(
         "V2_FREE_PROGRESS "
         f"rank={rank} mode={mode} anchors={completed_anchors} "
         f"elapsed={elapsed:.1f}s anchors_per_second={completed_anchors / elapsed:.4f}",
         flush=True,
     )
+
+
+def verify_rank_local_artifact_preflight(
+    *,
+    output_dir: str | Path,
+    mode: str,
+) -> dict[str, Any]:
+    """Exercise rank-local write, hash, gather, and rank-zero assembly.
+
+    The capacity route runs this immediately after DDP initialization so an
+    invalid per-rank artifact contract fails before model construction or any
+    expensive rollout.
+    """
+
+    if mode not in {"block", "trajectory", "relational"}:
+        raise ValueError("rank artifact preflight mode must be block/trajectory/relational")
+    output_root = Path(output_dir).resolve()
+    rank, world_size = _rank_world()
+    _collect_distributed_phase(
+        "rank artifact preflight root materialization",
+        lambda: output_root.mkdir(parents=True, exist_ok=True) if rank == 0 else None,
+    )
+    progress_path = output_root / f"progress.rank{rank:05d}.jsonl"
+    started_at = time.monotonic()
+    _emit_rank_progress(
+        path=progress_path,
+        rank=rank,
+        mode=mode,
+        completed_anchors=0,
+        started_at=started_at,
+    )
+
+    def inspect_local_artifact() -> dict[str, Any]:
+        rows = _read_jsonl(progress_path)
+        if len(rows) != 1:
+            raise RuntimeError(
+                f"rank artifact preflight expected one progress row, got {len(rows)}"
+            )
+        row = rows[0]
+        if (
+            int(row.get("rank", -1)) != rank
+            or int(row.get("completed_anchors", -1)) != 0
+            or str(row.get("mode")) != mode
+        ):
+            raise RuntimeError("rank artifact preflight progress identity mismatch")
+        return {
+            "rank": rank,
+            "path": progress_path.name,
+            "sha256": sha256_file(progress_path),
+            "rows": len(rows),
+        }
+
+    artifacts = _collect_distributed_phase(
+        "rank artifact preflight local verification",
+        inspect_local_artifact,
+    )
+
+    def assemble_preflight() -> dict[str, Any] | None:
+        if rank != 0:
+            return None
+        ranks = [int(row["rank"]) for row in artifacts]
+        if ranks != list(range(world_size)):
+            raise RuntimeError(
+                f"rank artifact preflight expected ranks 0..{world_size - 1}, got {ranks}"
+            )
+        payload = {
+            "schema_version": RANK_ARTIFACT_PREFLIGHT_SCHEMA,
+            "created_at": utc_now(),
+            "status": "PASSED",
+            "mode": mode,
+            "world_size": world_size,
+            "rank_artifacts": artifacts,
+        }
+        manifest_path = output_root / "manifest.json"
+        _atomic_json(manifest_path, payload)
+        return {
+            **payload,
+            "manifest_path": str(manifest_path.resolve()),
+            "manifest_sha256": sha256_file(manifest_path),
+        }
+
+    assembled = _collect_distributed_phase(
+        "rank artifact preflight manifest assembly",
+        assemble_preflight,
+    )
+    result = assembled[0]
+    if not isinstance(result, Mapping):
+        raise RuntimeError("rank artifact preflight result assembly failed")
+    return dict(result)
+
+
+def validate_rank_local_artifact_preflight(
+    output_dir: str | Path,
+    *,
+    expected_mode: str,
+    expected_world_size: int = 2,
+) -> dict[str, Any]:
+    """Re-open every retained rank-local canary byte and validate its contract."""
+
+    if expected_mode not in {"block", "trajectory", "relational"}:
+        raise ValueError("rank artifact validation mode is invalid")
+    if expected_world_size < 1:
+        raise ValueError("rank artifact validation world size must be positive")
+    output_root = Path(output_dir).resolve()
+    manifest_path = output_root / "manifest.json"
+    if (
+        manifest_path.is_symlink()
+        or not manifest_path.is_file()
+        or manifest_path.resolve() != manifest_path
+    ):
+        raise ValueError("rank artifact preflight manifest is missing, linked, or escaped")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("rank artifact preflight manifest is not a mapping")
+    artifacts = manifest.get("rank_artifacts")
+    if (
+        manifest.get("schema_version") != RANK_ARTIFACT_PREFLIGHT_SCHEMA
+        or manifest.get("status") != "PASSED"
+        or manifest.get("mode") != expected_mode
+        or int(manifest.get("world_size", -1)) != expected_world_size
+        or not isinstance(artifacts, list)
+        or len(artifacts) != expected_world_size
+    ):
+        raise ValueError("rank artifact preflight manifest contract failed")
+    for expected_rank, artifact in enumerate(artifacts):
+        if not isinstance(artifact, Mapping):
+            raise ValueError("rank artifact preflight row is not a mapping")
+        expected_name = f"progress.rank{expected_rank:05d}.jsonl"
+        if (
+            int(artifact.get("rank", -1)) != expected_rank
+            or str(artifact.get("path") or "") != expected_name
+            or int(artifact.get("rows", -1)) != 1
+        ):
+            raise ValueError("rank artifact preflight rank/path contract failed")
+        progress_path = output_root / expected_name
+        if (
+            progress_path.is_symlink()
+            or not progress_path.is_file()
+            or progress_path.resolve().parent != output_root
+            or sha256_file(progress_path) != str(artifact.get("sha256") or "")
+        ):
+            raise ValueError("rank artifact preflight retained file/hash failed")
+        rows = _read_jsonl(progress_path)
+        if (
+            len(rows) != 1
+            or rows[0].get("event") != "v2_free_running_rank_progress"
+            or int(rows[0].get("rank", -1)) != expected_rank
+            or rows[0].get("mode") != expected_mode
+            or int(rows[0].get("completed_anchors", -1)) != 0
+        ):
+            raise ValueError("rank artifact preflight retained row contract failed")
+    return {
+        **manifest,
+        "manifest_path": str(manifest_path),
+        "manifest_sha256": sha256_file(manifest_path),
+    }
 
 
 def _empty_calibration_state(*, bins: int = 10) -> dict[str, Any]:
@@ -1889,6 +2072,50 @@ def _gather_objects(value: Any) -> list[Any]:
     return result
 
 
+def _collect_distributed_phase(
+    stage: str,
+    factory: Callable[[], Any],
+) -> list[Any]:
+    """Run rank-local work, then make every rank observe any local failure.
+
+    This boundary prevents one rank from entering the next collective while a
+    peer has already failed during file hashing or rank-zero assembly.
+    """
+
+    rank, world_size = _rank_world()
+    if world_size == 1:
+        return [factory()]
+    try:
+        value = factory()
+        envelope: dict[str, Any] = {
+            "rank": rank,
+            "ok": True,
+            "value": value,
+            "error_type": None,
+            "error_message": None,
+        }
+    except Exception as error:
+        envelope = {
+            "rank": rank,
+            "ok": False,
+            "value": None,
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+        }
+    envelopes = _gather_objects(envelope)
+    failures = [row for row in envelopes if not bool(row.get("ok"))]
+    if failures:
+        details = "; ".join(
+            "rank {rank} {error_type}: {error_message}".format(**row)
+            for row in failures
+        )
+        raise RuntimeError(f"distributed {stage} failed: {details}")
+    ordered = sorted(envelopes, key=lambda row: int(row["rank"]))
+    if [int(row["rank"]) for row in ordered] != list(range(world_size)):
+        raise RuntimeError(f"distributed {stage} returned an invalid rank set")
+    return [row["value"] for row in ordered]
+
+
 def _broadcast_object(value: Any) -> Any:
     rank, world_size = _rank_world()
     if world_size == 1:
@@ -1906,4 +2133,6 @@ __all__ = [
     "common_random_seed",
     "evaluate_free_running_v2",
     "evaluate_multires_event_v2_promotion",
+    "validate_rank_local_artifact_preflight",
+    "verify_rank_local_artifact_preflight",
 ]

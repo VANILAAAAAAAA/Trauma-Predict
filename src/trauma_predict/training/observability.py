@@ -48,8 +48,37 @@ def atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def append_jsonl(path: Path, payload: Mapping[str, Any]) -> None:
+    """Append one row to a process-shared JSONL file from rank zero only."""
+
     if not is_rank_zero():
         return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+        handle.flush()
+
+
+def append_rank_local_jsonl(
+    path: Path,
+    payload: Mapping[str, Any],
+    *,
+    rank_value: int,
+) -> None:
+    """Append one row to a file owned exclusively by one distributed rank.
+
+    Shared metrics must continue to use :func:`append_jsonl`.  This writer is
+    deliberately separate because every rank must materialize its own audit
+    evidence even though nonzero ranks are forbidden from writing shared logs.
+    """
+
+    rank_value = int(rank_value)
+    if rank_value < 0:
+        raise ValueError("rank-local JSONL rank must be nonnegative")
+    rank_token = f".rank{rank_value:05d}."
+    if rank_token not in path.name:
+        raise ValueError(
+            f"rank-local JSONL path {path.name!r} must contain {rank_token!r}"
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")

@@ -15,6 +15,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from torch.distributed.elastic.multiprocessing.errors import record  # noqa: E402
 from trauma_predict.training.multires_event_v2 import (  # noqa: E402
     build_multires_event_v2_model,
     build_multires_event_v2_runtime,
@@ -22,7 +23,9 @@ from trauma_predict.training.multires_event_v2 import (  # noqa: E402
     require_multires_event_v2_training_authorization,
     resolve_repo_path,
     run_multires_event_v2_capacity_gated_training,
+    run_multires_event_v2_rank_artifact_preflight_only,
     run_multires_event_v2_training,
+    run_multires_event_v2_verification_probe,
 )
 from trauma_predict.training.config import load_yaml_config  # noqa: E402
 from trauma_predict.training.observability import (  # noqa: E402
@@ -38,11 +41,41 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="PyTorch/DDP entry point for the six-block M4 V2 matched experiments."
     )
-    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--config", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--capacity-probe-output", type=Path)
     parser.add_argument("--elapsed-before-capacity-seconds", type=float)
+    parser.add_argument("--verification-only", action="store_true")
+    parser.add_argument("--rank-artifact-preflight-output", type=Path)
+    parser.add_argument(
+        "--rank-artifact-preflight-mode",
+        choices=("block", "trajectory", "relational"),
+    )
     args = parser.parse_args()
+    early_preflight = args.rank_artifact_preflight_output is not None or (
+        args.rank_artifact_preflight_mode is not None
+    )
+    if early_preflight:
+        if args.rank_artifact_preflight_output is None or (
+            args.rank_artifact_preflight_mode is None
+        ):
+            parser.error(
+                "--rank-artifact-preflight-output and "
+                "--rank-artifact-preflight-mode must be paired"
+            )
+        if (
+            args.config is not None
+            or args.dry_run
+            or args.capacity_probe_output is not None
+            or args.elapsed_before_capacity_seconds is not None
+            or args.verification_only
+        ):
+            parser.error(
+                "rank artifact preflight is a config-free pre-Dataset action"
+            )
+        return args
+    if args.config is None:
+        parser.error("--config is required outside rank artifact preflight")
     if args.dry_run and args.capacity_probe_output is not None:
         parser.error("--dry-run and --capacity-probe-output are mutually exclusive")
     if (args.capacity_probe_output is None) != (
@@ -51,16 +84,34 @@ def parse_args() -> argparse.Namespace:
         parser.error(
             "--capacity-probe-output and --elapsed-before-capacity-seconds must be paired"
         )
+    if args.verification_only and args.capacity_probe_output is None:
+        parser.error("--verification-only requires the paired capacity-probe arguments")
     return args
 
 
+@record
 def main() -> None:
     args = parse_args()
+    if args.rank_artifact_preflight_output is not None:
+        run_multires_event_v2_rank_artifact_preflight_only(
+            output_dir=args.rank_artifact_preflight_output,
+            mode=str(args.rank_artifact_preflight_mode),
+        )
+        return
+    assert args.config is not None
     config_path = args.config if args.config.is_absolute() else REPO_ROOT / args.config
     if args.dry_run:
         run_dry_preflight(config_path)
         return
     train = load_yaml_config(config_path.resolve())
+    if args.verification_only:
+        run_multires_event_v2_verification_probe(
+            config_path.resolve(),
+            repo_root=REPO_ROOT,
+            output_dir=args.capacity_probe_output,
+            elapsed_before_capacity_seconds=float(args.elapsed_before_capacity_seconds),
+        )
+        return
     require_multires_event_v2_training_authorization(train)
     if args.capacity_probe_output is not None:
         run_multires_event_v2_capacity_gated_training(

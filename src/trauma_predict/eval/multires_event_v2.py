@@ -241,33 +241,64 @@ def evaluate_teacher_forced(
         }
     if evaluation_identity is not None:
         result["identity"] = dict(evaluation_identity)
-    if per_anchor_output_path is not None and is_rank_zero():
-        per_anchor_output_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = per_anchor_output_path.with_suffix(per_anchor_output_path.suffix + ".tmp")
-        with temporary.open("w", encoding="utf-8") as handle:
-            for row in sorted(
-                rows, key=lambda item: (str(item["subject_id"]), str(item["sample_id"]))
-            ):
-                handle.write(json.dumps({
-                    "sample_id": row["sample_id"],
-                    "subject_id": row["subject_id"],
-                    "joint_nll": row["joint_nll"],
-                    "primitive_factors": 414,
-                    "mode": mode,
-                    "step": int(step),
-                    "teacher_nll_decomposition": row["decomposition"],
-                    **(
-                        {"identity": dict(evaluation_identity)}
-                        if evaluation_identity is not None
-                        else {}
+    def persist_rank_zero_result() -> dict[str, Any] | None:
+        if not is_rank_zero():
+            return None
+        persisted = dict(result)
+        if per_anchor_output_path is not None:
+            per_anchor_output_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = per_anchor_output_path.with_suffix(
+                per_anchor_output_path.suffix + ".tmp"
+            )
+            with temporary.open("w", encoding="utf-8") as handle:
+                for row in sorted(
+                    rows,
+                    key=lambda item: (
+                        str(item["subject_id"]),
+                        str(item["sample_id"]),
                     ),
-                }, sort_keys=True, separators=(",", ":")) + "\n")
-        temporary.replace(per_anchor_output_path)
-        result["per_anchor_output_path"] = str(per_anchor_output_path)
-        result["per_anchor_output_sha256"] = sha256_file(per_anchor_output_path)
-    if metrics_path is not None and is_rank_zero():
-        append_jsonl(metrics_path, {"event": f"v2_{phase}_evaluation", **result})
-    return result
+                ):
+                    handle.write(
+                        json.dumps(
+                            {
+                                "sample_id": row["sample_id"],
+                                "subject_id": row["subject_id"],
+                                "joint_nll": row["joint_nll"],
+                                "primitive_factors": 414,
+                                "mode": mode,
+                                "step": int(step),
+                                "teacher_nll_decomposition": row["decomposition"],
+                                **(
+                                    {"identity": dict(evaluation_identity)}
+                                    if evaluation_identity is not None
+                                    else {}
+                                ),
+                            },
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                        + "\n"
+                    )
+            temporary.replace(per_anchor_output_path)
+            persisted["per_anchor_output_path"] = str(per_anchor_output_path)
+            persisted["per_anchor_output_sha256"] = sha256_file(
+                per_anchor_output_path
+            )
+        if metrics_path is not None:
+            append_jsonl(
+                metrics_path,
+                {"event": f"v2_{phase}_evaluation", **persisted},
+            )
+        return persisted
+
+    persisted_results = _collect_distributed_phase(
+        f"V2 {phase} evaluation persistence",
+        persist_rank_zero_result,
+    )
+    persisted_result = persisted_results[0]
+    if not isinstance(persisted_result, Mapping):
+        raise RuntimeError(f"V2 {phase} evaluation result persistence failed")
+    return dict(persisted_result)
 
 
 def _teacher_nll_decomposition_rows(
@@ -538,6 +569,45 @@ def _gather_objects(value: Any) -> list[Any]:
     gathered: list[Any] = [None for _ in range(torch.distributed.get_world_size())]
     torch.distributed.all_gather_object(gathered, value)
     return gathered
+
+
+def _collect_distributed_phase(stage: str, factory: Any) -> list[Any]:
+    """Propagate local evaluation/persistence failures to every active rank."""
+
+    if not torch.distributed.is_available() or not torch.distributed.is_initialized():
+        return [factory()]
+    rank = torch.distributed.get_rank()
+    world_size = torch.distributed.get_world_size()
+    try:
+        value = factory()
+        envelope = {
+            "rank": rank,
+            "ok": True,
+            "value": value,
+            "error_type": None,
+            "error_message": None,
+        }
+    except Exception as error:
+        envelope = {
+            "rank": rank,
+            "ok": False,
+            "value": None,
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+        }
+    envelopes: list[Any] = [None] * world_size
+    torch.distributed.all_gather_object(envelopes, envelope)
+    failures = [row for row in envelopes if not bool(row.get("ok"))]
+    if failures:
+        details = "; ".join(
+            "rank {rank} {error_type}: {error_message}".format(**row)
+            for row in failures
+        )
+        raise RuntimeError(f"distributed {stage} failed: {details}")
+    ordered = sorted(envelopes, key=lambda row: int(row["rank"]))
+    if [int(row["rank"]) for row in ordered] != list(range(world_size)):
+        raise RuntimeError(f"distributed {stage} returned an invalid rank set")
+    return [row["value"] for row in ordered]
 
 
 def _string_batch(value: Any) -> list[str]:

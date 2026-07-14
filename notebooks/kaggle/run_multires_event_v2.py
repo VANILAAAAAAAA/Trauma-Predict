@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 import yaml
+from torch.distributed.elastic.multiprocessing.errors import record
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +29,7 @@ for import_root in (SRC_ROOT, KAGGLE_SCRIPT_ROOT):
 import run_multires_event_v1 as v1_route  # noqa: E402
 from trauma_predict.eval.multires_event_v2_free_running import (  # noqa: E402
     evaluate_multires_event_v2_promotion,
+    validate_rank_local_artifact_preflight,
 )
 from trauma_predict.eval.multires_event_v2_promotion_contract import (  # noqa: E402
     load_promotion_metric_contract,
@@ -35,10 +37,13 @@ from trauma_predict.eval.multires_event_v2_promotion_contract import (  # noqa: 
 from trauma_predict.training.config import load_yaml_config  # noqa: E402
 from trauma_predict.training.multires_event_v2 import (  # noqa: E402
     AUTHORIZED_TRAINING_RUN_NAMES,
+    AUTHORIZED_VERIFICATION_RUN_NAMES,
     CAPACITY_PROBE_OPTIMIZER_STEPS,
     CAPACITY_PROBE_SCHEMA,
     CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR,
     CAPACITY_PROBE_VALIDATION_ANCHORS,
+    CAPACITY_SEMANTIC_CANARY_ANCHORS,
+    CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR,
     CAPACITY_SESSION_BUDGET_SECONDS,
     CAPACITY_SESSION_RESERVE_SECONDS,
     CAPACITY_STRUCTURAL_METRICS,
@@ -47,6 +52,11 @@ from trauma_predict.training.multires_event_v2 import (  # noqa: E402
     RAW_JOINT_NLL_REDUCTION,
     TRAINING_AUTHORIZATION_REASON as CORE_TRAINING_AUTHORIZATION_REASON,
     TRAINING_AUTHORIZED as CORE_TRAINING_AUTHORIZED,
+    VERIFICATION_AUTHORIZATION_REASON as CORE_VERIFICATION_AUTHORIZATION_REASON,
+    VERIFICATION_AUTHORIZED as CORE_VERIFICATION_AUTHORIZED,
+    V2_CHECKPOINT_SCHEMA,
+    V2_DISTRIBUTED_TIMEOUT_SECONDS,
+    V2_NCCL_MONITOR_HEARTBEAT_TIMEOUT_SECONDS,
     validate_multires_event_v2_configs,
     validate_optimizer_health_summary,
 )
@@ -94,6 +104,8 @@ EXPECTED_PROMOTION_METRIC_CONTRACT_SHA256 = (
 )
 TRAINING_AUTHORIZED = CORE_TRAINING_AUTHORIZED
 TRAINING_AUTHORIZATION_REASON = CORE_TRAINING_AUTHORIZATION_REASON
+VERIFICATION_AUTHORIZED = CORE_VERIFICATION_AUTHORIZED
+VERIFICATION_AUTHORIZATION_REASON = CORE_VERIFICATION_AUTHORIZATION_REASON
 
 BASE_DATASET_REF = "vanilaaaa/trauma-predict-multires-event-v1-c4-20260712"
 TARGET_DATASET_REF = "vanilaaaa/trauma-predict-multires-event-v2-c4-r8-20260713"
@@ -115,7 +127,8 @@ STAGE_CONFIGS = {
     "trajectory": "configs/train/t4x2_multires_event_v2_trajectory.yaml",
     "relational": "configs/train/t4x2_multires_event_v2_relational.yaml",
 }
-V2_ACTIONS = (*tuple(STAGE_CONFIGS), "promotion")
+VERIFICATION_ACTIONS = {"verify_block": STAGE_CONFIGS["block"]}
+V2_ACTIONS = (*tuple(STAGE_CONFIGS), *tuple(VERIFICATION_ACTIONS), "promotion")
 PROMOTION_RUN_ROOT_ENV = {
     "block": "TRAUMA_PREDICT_V2_BLOCK_RUN_ROOT",
     "trajectory": "TRAUMA_PREDICT_V2_TRAJECTORY_RUN_ROOT",
@@ -190,12 +203,30 @@ ENV_PLACEHOLDER_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 STREAM_PREFIXES = (
     "V2_TRAIN_NLL ",
     "V2_EVAL_NLL ",
+    "V2_FREE_PROGRESS ",
     "MULTIRES_EVENT_V2_PREFLIGHT_OK",
+    "MULTIRES_EVENT_V2_RANK_ARTIFACT_CANARY_OK",
+    "MULTIRES_EVENT_V2_SEMANTIC_CANARY_OK",
+    "MULTIRES_EVENT_V2_HOSTED_SMOKE_OK",
     "MULTIRES_EVENT_V2_TRAINING_COMPLETE",
     "RESUME_CHECKPOINT ",
 )
+STREAM_ERROR_MARKERS = (
+    "Traceback (most recent call last)",
+    "FileNotFoundError",
+    "ValueError:",
+    "AssertionError:",
+    "FloatingPointError:",
+    "OSError:",
+    "RuntimeError:",
+    "DistBackendError",
+    "ChildFailedError",
+    "ProcessRaisedException",
+)
+HEARTBEAT_SECONDS = 60
 
 
+@record
 def main() -> None:
     session_started = time.monotonic()
     print("repo_root", REPO_ROOT, flush=True)
@@ -230,14 +261,47 @@ def main() -> None:
         print("MULTIRES_EVENT_V2_PROMOTION_ONLY_FINISHED", flush=True)
         return
     require_t4x2_runtime()
-    stage = action
-    config = STAGE_CONFIGS[stage]
+    verification_only = action in VERIFICATION_ACTIONS
+    stage = "block" if action == "verify_block" else action
+    config = (
+        VERIFICATION_ACTIONS[action]
+        if verification_only
+        else STAGE_CONFIGS[stage]
+    )
     attempt_dir = next_attempt_dir(OUTPUT_ROOT / f"t4x2_multires_event_v2_{stage}")
     print("attempt_log_dir", attempt_dir, flush=True)
     print("selected_stage", stage, flush=True)
 
-    base_source = explicit_or_attached_base_root(attempt_dir)
-    target_source = explicit_or_attached_target_root(attempt_dir)
+    train_config = load_yaml_config(REPO_ROOT / config)
+    predata_canary_root = attempt_dir / "predata-ddp-rank-artifact-canary"
+    predata_env = os.environ.copy()
+    predata_env["REQUIRED_GIT_REF"] = source["git_ref"]
+    predata_env["PYTHONPATH"] = str(SRC_ROOT) + os.pathsep + predata_env.get(
+        "PYTHONPATH", ""
+    )
+    predata_env.setdefault("PYTHONUNBUFFERED", "1")
+    run_rank_artifact_preflight_torchrun(
+        mode=str(train_config["mode"]),
+        output_dir=predata_canary_root,
+        log_path=attempt_dir / "predata-ddp-rank-artifact-canary.log",
+        env=predata_env,
+    )
+    predata_canary = validate_rank_local_artifact_preflight(
+        predata_canary_root,
+        expected_mode=str(train_config["mode"]),
+        expected_world_size=2,
+    )
+    print(
+        "MULTIRES_EVENT_V2_PREDATA_RANK_ARTIFACT_CANARY_OK "
+        f"sha256={predata_canary['manifest_sha256']}",
+        flush=True,
+    )
+
+    preflight_dataset_download_access(attempt_dir)
+    install_requirements(attempt_dir)
+    runtime_guard()
+    base_source = explicit_or_download_base_root(attempt_dir)
+    target_source = explicit_or_download_target_root(attempt_dir)
     print("base_dataset_source", base_source, flush=True)
     print("target_dataset_source", target_source, flush=True)
     base_root = v1_route.prepare_dataset_root(base_source, PREPARED_BASE_ROOT, attempt_dir)
@@ -245,8 +309,6 @@ def main() -> None:
     print("prepared_base_root", base_root, flush=True)
     print("prepared_target_root", target_root, flush=True)
 
-    install_requirements(attempt_dir)
-    runtime_guard()
     suite = verify_matched_suite_and_lab_scale()
     atomic_write_json(
         attempt_dir / "attempt_manifest.json",
@@ -262,7 +324,9 @@ def main() -> None:
             "prepared_target_root": str(target_root),
             "action": action,
             "stage": stage,
+            "verification_only": verification_only,
             "stage_config": config,
+            "predata_rank_artifact_canary": predata_canary,
             "base_authority": dict(BASE_AUTHORITY),
             "target_authority": dict(TARGET_AUTHORITY),
             "lab_scale_artifact": suite["lab_scale_artifact"],
@@ -297,8 +361,41 @@ def main() -> None:
         print("MULTIRES_EVENT_V2_DRY_RUN_ONLY_FINISHED", flush=True)
         return
 
+    if verification_only:
+        require_verification_authorization(stage)
+        run_dir = resolve_output_dir(train_config)
+        capacity_root = capacity_probe_output_for_attempt(run_dir, attempt_dir)
+        run_torchrun(
+            config,
+            attempt_dir / "verification-only-block.log",
+            env=env,
+            label="VERIFICATION_ONLY_BLOCK",
+            capacity_output_dir=capacity_root,
+            elapsed_before_capacity_seconds=time.monotonic() - session_started,
+            verification_only=True,
+        )
+        verification = validate_verification_probe(
+            capacity_root,
+            expected_mode=str(train_config["mode"]),
+        )
+        atomic_write_json(
+            attempt_dir / "attempt_verification_complete.json",
+            {
+                "schema_version": (
+                    "trauma_predict.multires_event_v2_kaggle_verification_complete.v1"
+                ),
+                "completed_at": utc_now(),
+                "action": action,
+                "stage": stage,
+                "formal_training_authorized": False,
+                "formal_optimizer_steps": 0,
+                "verification": verification,
+            },
+        )
+        print("MULTIRES_EVENT_V2_KAGGLE_VERIFICATION_ONLY_FINISHED", flush=True)
+        return
+
     require_training_authorization(stage)
-    train_config = load_yaml_config(REPO_ROOT / config)
     run_dir = resolve_output_dir(train_config)
     if stage == "smoke":
         archive_previous_smoke_output()
@@ -404,6 +501,24 @@ def require_training_authorization(stage: str) -> None:
         )
 
 
+def require_verification_authorization(stage: str) -> None:
+    if not VERIFICATION_AUTHORIZED:
+        raise RuntimeError(
+            "V2 agent-owned verification is not authorized. Reason: "
+            f"{VERIFICATION_AUTHORIZATION_REASON}."
+        )
+    config = STAGE_CONFIGS.get(stage)
+    if config is None:
+        raise RuntimeError(f"unknown V2 verification stage: {stage!r}")
+    run_name = str(load_yaml_config(REPO_ROOT / config).get("run_name") or "")
+    if run_name not in AUTHORIZED_VERIFICATION_RUN_NAMES:
+        raise RuntimeError(
+            f"V2 verification is not authorized for run_name={run_name!r}; "
+            f"authorized={AUTHORIZED_VERIFICATION_RUN_NAMES!r}. Reason: "
+            f"{VERIFICATION_AUTHORIZATION_REASON}."
+        )
+
+
 def selected_action(value: str | None = None) -> str:
     legacy = os.environ.get("TRAUMA_PREDICT_V2_STAGES", "").strip()
     if legacy:
@@ -458,11 +573,11 @@ def verify_source_identity() -> dict[str, str]:
     return payload
 
 
-def find_exact_base_attached_dataset(input_root: Path) -> Path:
+def find_exact_base_dataset(input_root: Path) -> Path:
     return _find_one_exact_dataset(input_root, _matches_base_authority, "immutable V1 base")
 
 
-def find_exact_target_attached_dataset(input_root: Path) -> Path:
+def find_exact_target_dataset(input_root: Path) -> Path:
     return _find_one_exact_dataset(input_root, _matches_target_authority, "V2 target sidecar")
 
 
@@ -528,7 +643,7 @@ def _matches_target_authority(root: Path, manifest: Mapping[str, Any]) -> bool:
     )
 
 
-def explicit_or_attached_base_root(log_dir: Path) -> Path:
+def explicit_or_download_base_root(log_dir: Path) -> Path:
     explicit = os.environ.get("TRAUMA_PREDICT_DATA_ROOT")
     if explicit:
         root = Path(explicit).resolve()
@@ -537,20 +652,49 @@ def explicit_or_attached_base_root(log_dir: Path) -> Path:
         ):
             raise ValueError(f"TRAUMA_PREDICT_DATA_ROOT is not the frozen V1 base: {root}")
         return root
-    try:
-        return find_exact_base_attached_dataset(KAGGLE_INPUT)
-    except FileNotFoundError:
-        return download_exact_dataset(
-            dataset_ref=BASE_DATASET_REF,
-            download_root=BASE_DOWNLOAD_ROOT,
-            finder=find_exact_base_attached_dataset,
-            usable=v1_route.has_usable_shard_payload,
-            log_path=log_dir / "base_dataset_download.log",
-            label="BASE_DATASET_DOWNLOAD",
+    return download_exact_dataset(
+        dataset_ref=BASE_DATASET_REF,
+        download_root=BASE_DOWNLOAD_ROOT,
+        finder=find_exact_base_dataset,
+        usable=v1_route.has_usable_shard_payload,
+        log_path=log_dir / "base_dataset_download.log",
+        label="BASE_DATASET_DOWNLOAD",
+    )
+
+
+def preflight_dataset_download_access(log_dir: Path) -> None:
+    """Reject missing private-Dataset credentials before setup or materialization."""
+
+    if os.environ.get("TRAUMA_PREDICT_DATA_ROOT") or os.environ.get(
+        "TRAUMA_PREDICT_V2_TARGET_ROOT"
+    ):
+        raise RuntimeError(
+            "formal zero-Input hosting forbids explicit data roots; both frozen "
+            "Datasets must be downloaded by the Notebook"
         )
+    v1_route.configure_kaggle_credentials()
+    for label, dataset_ref in (
+        ("BASE_DATASET_ACCESS", BASE_DATASET_REF),
+        ("TARGET_DATASET_ACCESS", resolved_target_dataset_ref()),
+    ):
+        run_to_log(
+            [
+                "kaggle",
+                "datasets",
+                "files",
+                "-d",
+                dataset_ref,
+                "--page-size",
+                "1",
+            ],
+            log_dir / f"{label.lower()}.log",
+            env=os.environ.copy(),
+            label=label,
+        )
+    print("MULTIRES_EVENT_V2_DATASET_ACCESS_OK datasets=2", flush=True)
 
 
-def explicit_or_attached_target_root(log_dir: Path) -> Path:
+def explicit_or_download_target_root(log_dir: Path) -> Path:
     dataset_ref = resolved_target_dataset_ref()
     explicit = os.environ.get("TRAUMA_PREDICT_V2_TARGET_ROOT")
     if explicit:
@@ -562,17 +706,14 @@ def explicit_or_attached_target_root(log_dir: Path) -> Path:
                 f"TRAUMA_PREDICT_V2_TARGET_ROOT is not the frozen target sidecar: {root}"
             )
         return root
-    try:
-        return find_exact_target_attached_dataset(KAGGLE_INPUT)
-    except FileNotFoundError:
-        return download_exact_dataset(
-            dataset_ref=dataset_ref,
-            download_root=TARGET_DOWNLOAD_ROOT,
-            finder=find_exact_target_attached_dataset,
-            usable=has_usable_target_payload,
-            log_path=log_dir / "target_dataset_download.log",
-            label="TARGET_DATASET_DOWNLOAD",
-        )
+    return download_exact_dataset(
+        dataset_ref=dataset_ref,
+        download_root=TARGET_DOWNLOAD_ROOT,
+        finder=find_exact_target_dataset,
+        usable=has_usable_target_payload,
+        log_path=log_dir / "target_dataset_download.log",
+        label="TARGET_DATASET_DOWNLOAD",
+    )
 
 
 def resolved_target_dataset_ref() -> str:
@@ -1097,9 +1238,12 @@ def run_torchrun(
     label: str,
     capacity_output_dir: Path | None = None,
     elapsed_before_capacity_seconds: float | None = None,
+    verification_only: bool = False,
 ) -> None:
     if (capacity_output_dir is None) != (elapsed_before_capacity_seconds is None):
         raise ValueError("capacity output and elapsed-session inputs must be paired")
+    env = configured_torchrun_env(env)
+
     command = [
         sys.executable,
         "-m",
@@ -1119,12 +1263,269 @@ def run_torchrun(
                 f"{float(elapsed_before_capacity_seconds):.6f}",
             )
         )
+    if verification_only:
+        if capacity_output_dir is None:
+            raise ValueError("verification-only torchrun requires a capacity output")
+        command.append("--verification-only")
     run_to_log(
         command,
         log_path,
         env=env,
         label=label,
     )
+
+
+def configured_torchrun_env(env: Mapping[str, str]) -> dict[str, str]:
+    """Apply one fail-fast NCCL policy to every hosted two-rank process."""
+
+    configured = dict(env)
+    configured["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "1"
+    configured["TORCH_NCCL_ENABLE_MONITORING"] = "1"
+    configured["TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC"] = str(
+        V2_NCCL_MONITOR_HEARTBEAT_TIMEOUT_SECONDS
+    )
+    configured["TORCH_NCCL_DUMP_ON_TIMEOUT"] = "1"
+    configured["TORCH_NCCL_TRACE_BUFFER_SIZE"] = "4096"
+    return configured
+
+
+def run_rank_artifact_preflight_torchrun(
+    *,
+    mode: str,
+    output_dir: Path,
+    log_path: Path,
+    env: Mapping[str, str],
+) -> None:
+    """Run the config-free DDP writer canary before any Dataset preparation."""
+
+    if mode not in {"block", "trajectory", "relational"}:
+        raise ValueError("predata rank artifact canary mode is invalid")
+    command = [
+        sys.executable,
+        "-m",
+        "torch.distributed.run",
+        "--standalone",
+        "--nproc_per_node=2",
+        TRAIN_ENTRYPOINT,
+        "--rank-artifact-preflight-output",
+        str(output_dir.resolve()),
+        "--rank-artifact-preflight-mode",
+        mode,
+    ]
+    run_to_log(
+        command,
+        log_path,
+        env=configured_torchrun_env(env),
+        label="PREDATA_DDP_RANK_ARTIFACT_CANARY",
+    )
+
+
+def _verified_canary_file(
+    root: Path,
+    relative_path: Any,
+    *,
+    expected_name: str,
+    expected_sha256: Any,
+) -> Path:
+    """Resolve one fixed-name canary artifact and verify its retained bytes."""
+
+    relative = Path(str(relative_path or ""))
+    if relative.is_absolute() or relative.as_posix() != expected_name:
+        raise ValueError(f"canary artifact path changed: {relative_path!r}")
+    expected = root.resolve() / expected_name
+    if expected.is_symlink() or not expected.is_file() or expected.resolve() != expected:
+        raise ValueError(f"canary artifact is missing, linked, or escaped: {expected}")
+    digest = str(expected_sha256 or "")
+    if not SHA256_PATTERN.fullmatch(digest) or sha256_file(expected) != digest:
+        raise ValueError(f"canary artifact hash mismatch: {expected}")
+    return expected
+
+
+def _validate_capacity_canary_artifacts(
+    root: Path,
+    report: Mapping[str, Any],
+    *,
+    expected_mode: str,
+) -> None:
+    """Re-open every DDP canary artifact instead of trusting report summaries."""
+
+    canaries = _mapping(report.get("distributed_canaries"), "distributed canaries")
+    rank_report = _mapping(canaries.get("rank_artifact"), "rank artifact canary")
+    rank_root = (root.resolve() / "ddp_rank_artifact_canary").resolve()
+    rank_manifest_path = rank_root / "manifest.json"
+    if (
+        Path(str(rank_report.get("manifest_path") or "")).resolve()
+        != rank_manifest_path
+        or rank_manifest_path.is_symlink()
+        or not rank_manifest_path.is_file()
+        or sha256_file(rank_manifest_path)
+        != str(rank_report.get("manifest_sha256") or "")
+    ):
+        raise ValueError("rank artifact canary manifest identity failed")
+    rank_manifest = _read_json(rank_manifest_path)
+    rank_artifacts = rank_manifest.get("rank_artifacts")
+    if (
+        rank_manifest.get("schema_version")
+        != "trauma_predict.multires_event_v2_rank_artifact_preflight.v1"
+        or rank_manifest.get("status") != "PASSED"
+        or rank_manifest.get("mode") != expected_mode
+        or int(rank_manifest.get("world_size", -1)) != 2
+        or not isinstance(rank_artifacts, list)
+        or len(rank_artifacts) != 2
+        or {
+            key: value
+            for key, value in rank_report.items()
+            if key not in {"manifest_path", "manifest_sha256"}
+        }
+        != rank_manifest
+    ):
+        raise ValueError("rank artifact canary manifest contract failed")
+    for expected_rank, artifact in enumerate(rank_artifacts):
+        row = _mapping(artifact, "rank artifact")
+        expected_name = f"progress.rank{expected_rank:05d}.jsonl"
+        path = _verified_canary_file(
+            rank_root,
+            row.get("path"),
+            expected_name=expected_name,
+            expected_sha256=row.get("sha256"),
+        )
+        rows = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if (
+            int(row.get("rank", -1)) != expected_rank
+            or int(row.get("rows", -1)) != 1
+            or len(rows) != 1
+            or rows[0].get("event") != "v2_free_running_rank_progress"
+            or int(rows[0].get("rank", -1)) != expected_rank
+            or rows[0].get("mode") != expected_mode
+            or int(rows[0].get("completed_anchors", -1)) != 0
+        ):
+            raise ValueError("rank artifact canary retained row contract failed")
+
+    semantic_report = _mapping(
+        canaries.get("semantic_rollout"), "semantic rollout canary"
+    )
+    semantic_root = (root.resolve() / "ddp_semantic_canary").resolve()
+    semantic_manifest_path = semantic_root / "manifest.json"
+    if (
+        Path(str(semantic_report.get("manifest_path") or "")).resolve()
+        != semantic_manifest_path
+        or semantic_manifest_path.is_symlink()
+        or not semantic_manifest_path.is_file()
+        or sha256_file(semantic_manifest_path)
+        != str(semantic_report.get("manifest_sha256") or "")
+    ):
+        raise ValueError("semantic canary manifest identity failed")
+    semantic_manifest = _read_json(semantic_manifest_path)
+    evaluation = _mapping(semantic_manifest.get("evaluation"), "semantic evaluation")
+    coherence = _mapping(evaluation.get("coherence"), "semantic coherence")
+    shards = semantic_manifest.get("per_anchor_score_shards")
+    expected_trajectories = CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR
+    if (
+        semantic_manifest.get("schema_version")
+        != "trauma_predict.multires_event_v2_free_running_manifest.v1"
+        or evaluation.get("mode") != expected_mode
+        or int(evaluation.get("step", -1)) != 0
+        or int(evaluation.get("anchors", -1)) != CAPACITY_SEMANTIC_CANARY_ANCHORS
+        or int(evaluation.get("trajectories_per_anchor", -1))
+        != expected_trajectories
+        or float(coherence.get("rate", -1.0)) != 1.0
+        or int(coherence.get("coherent_trajectories", -1))
+        != CAPACITY_SEMANTIC_CANARY_ANCHORS * expected_trajectories
+        or int(coherence.get("total_trajectories", -1))
+        != CAPACITY_SEMANTIC_CANARY_ANCHORS * expected_trajectories
+        or not isinstance(shards, list)
+        or len(shards) != 2
+        or int(semantic_report.get("world_size", -1)) != 2
+        or semantic_report.get("status") != "PASSED"
+        or int(semantic_report.get("anchors", -1))
+        != CAPACITY_SEMANTIC_CANARY_ANCHORS
+        or int(semantic_report.get("trajectories_per_anchor", -1))
+        != expected_trajectories
+        or float(semantic_report.get("coherence_rate", -1.0)) != 1.0
+        or not math.isfinite(float(semantic_report.get("wall_seconds", math.nan)))
+        or float(semantic_report.get("wall_seconds", math.nan)) <= 0.0
+    ):
+        raise ValueError("semantic canary summary contract failed")
+    sample_schema = _verified_canary_file(
+        semantic_root,
+        evaluation.get("sample_schema_path"),
+        expected_name="sample_schema.json",
+        expected_sha256=evaluation.get("sample_schema_sha256"),
+    )
+    if _read_json(sample_schema).get("schema_version") != (
+        "trauma_predict.multires_event_v2_sample_export.v2"
+    ):
+        raise ValueError("semantic canary sample schema contract failed")
+    for expected_rank, shard_value in enumerate(
+        sorted(shards, key=lambda value: int(value.get("rank", -1)))
+    ):
+        shard = _mapping(shard_value, "semantic canary shard")
+        if int(shard.get("rank", -1)) != expected_rank or int(
+            shard.get("anchors", -1)
+        ) != 1:
+            raise ValueError("semantic canary shard rank/anchor contract failed")
+        audit_path = _verified_canary_file(
+            semantic_root,
+            shard.get("audit_trajectory_sample_path"),
+            expected_name=f"audit_trajectory_samples.rank{expected_rank:05d}.jsonl.gz",
+            expected_sha256=shard.get("audit_trajectory_sample_sha256"),
+        )
+        with gzip.open(audit_path, "rt", encoding="utf-8") as handle:
+            audit_rows = [json.loads(line) for line in handle if line.strip()]
+        score_path = _verified_canary_file(
+            semantic_root,
+            shard.get("per_anchor_score_path"),
+            expected_name=f"per_anchor_scores.rank{expected_rank:05d}.jsonl",
+            expected_sha256=shard.get("per_anchor_score_sha256"),
+        )
+        score_rows = [
+            json.loads(line)
+            for line in score_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        progress_path = _verified_canary_file(
+            semantic_root,
+            shard.get("progress_metrics_path"),
+            expected_name=f"progress.rank{expected_rank:05d}.jsonl",
+            expected_sha256=shard.get("progress_metrics_sha256"),
+        )
+        progress_rows = [
+            json.loads(line)
+            for line in progress_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if (
+            int(shard.get("retained_audit_trajectories", -1)) != 1
+            or len(audit_rows) != 1
+            or len(score_rows) != 1
+            or not progress_rows
+            or int(progress_rows[-1].get("rank", -1)) != expected_rank
+            or progress_rows[-1].get("mode") != expected_mode
+            or int(progress_rows[-1].get("completed_anchors", -1)) != 1
+        ):
+            raise ValueError("semantic canary retained shard contract failed")
+    evaluation_path = semantic_root / "evaluation.json"
+    if evaluation_path.is_symlink() or not evaluation_path.is_file():
+        raise ValueError("semantic canary evaluation.json is missing")
+    retained_evaluation = _read_json(evaluation_path)
+    if (
+        retained_evaluation.get("manifest_path") != "manifest.json"
+        or retained_evaluation.get("manifest_sha256")
+        != sha256_file(semantic_manifest_path)
+        or {
+            key: retained_evaluation.get(key)
+            for key in ("mode", "step", "anchors", "trajectories_per_anchor", "coherence")
+        }
+        != {
+            key: evaluation.get(key)
+            for key in ("mode", "step", "anchors", "trajectories_per_anchor", "coherence")
+        }
+    ):
+        raise ValueError("semantic canary evaluation/manifest binding failed")
 
 
 def validate_capacity_probe_report(root: Path, *, expected_mode: str) -> dict[str, Any]:
@@ -1172,6 +1573,7 @@ def validate_capacity_probe_report(root: Path, *, expected_mode: str) -> dict[st
         int(row["rank"]) for row in hardware
     } != {0, 1}:
         raise ValueError("capacity report does not prove two valid T4 devices")
+    _validate_capacity_canary_artifacts(root, report, expected_mode=expected_mode)
     optimizer = _mapping(report.get("optimizer"), "capacity optimizer")
     steps = optimizer.get("steps")
     if (
@@ -1199,6 +1601,71 @@ def validate_capacity_probe_report(root: Path, *, expected_mode: str) -> dict[st
         or {int(row["step"]) for row in steps} != {1, 2}
     ):
         raise ValueError("capacity report lacks two successful exact-B64 optimizer steps")
+    checkpoint_canary = _mapping(
+        report.get("checkpoint_resume_canary"),
+        "capacity checkpoint/resume canary",
+    )
+    checkpoint_path = Path(str(checkpoint_canary.get("checkpoint_path") or "")).resolve()
+    expected_checkpoint = (
+        root.resolve()
+        / "checkpoint_canary"
+        / "checkpoints"
+        / f"checkpoint-{CAPACITY_PROBE_OPTIMIZER_STEPS:08d}"
+    )
+    checkpoint_manifest_path = checkpoint_path / "checkpoint_manifest.json"
+    if (
+        checkpoint_canary.get("schema_version") != V2_CHECKPOINT_SCHEMA
+        or checkpoint_path != expected_checkpoint
+        or int(checkpoint_canary.get("restored_global_step", -1))
+        != CAPACITY_PROBE_OPTIMIZER_STEPS
+        or checkpoint_manifest_path.is_symlink()
+        or not checkpoint_manifest_path.is_file()
+        or sha256_file(checkpoint_manifest_path)
+        != str(checkpoint_canary.get("checkpoint_manifest_sha256") or "")
+    ):
+        raise ValueError("capacity checkpoint/resume canary identity failed")
+    checkpoint_manifest = _read_json(checkpoint_manifest_path)
+    checkpoint_files = checkpoint_manifest.get("files")
+    checkpoint_hashes = checkpoint_manifest.get("sha256")
+    if (
+        checkpoint_manifest.get("schema_version") != V2_CHECKPOINT_SCHEMA
+        or int(checkpoint_manifest.get("global_step", -1))
+        != CAPACITY_PROBE_OPTIMIZER_STEPS
+        or int(checkpoint_manifest.get("world_size", -1)) != 2
+        or not isinstance(checkpoint_files, list)
+        or int(checkpoint_canary.get("manifest_file_count", -1))
+        != len(checkpoint_files)
+        or not isinstance(checkpoint_hashes, Mapping)
+        or set(checkpoint_hashes) != set(checkpoint_files)
+    ):
+        raise ValueError("capacity checkpoint manifest contract failed")
+    for name in checkpoint_files:
+        relative = Path(str(name))
+        path = checkpoint_path / relative
+        digest = str(checkpoint_hashes.get(name) or "")
+        if (
+            relative.name != str(name)
+            or path.is_symlink()
+            or not path.is_file()
+            or not SHA256_PATTERN.fullmatch(digest)
+            or sha256_file(path) != digest
+        ):
+            raise ValueError("capacity checkpoint retained file/hash failed")
+    resume_alignment = _mapping(
+        checkpoint_canary.get("resume_alignment"),
+        "capacity resume alignment",
+    )
+    if (
+        int(resume_alignment.get("global_step", -1))
+        != CAPACITY_PROBE_OPTIMIZER_STEPS
+        or int(resume_alignment.get("expected_optimizer_step", -1))
+        != CAPACITY_PROBE_OPTIMIZER_STEPS
+        or float(resume_alignment.get("observed_optimizer_step_min", -1.0))
+        != CAPACITY_PROBE_OPTIMIZER_STEPS
+        or float(resume_alignment.get("observed_optimizer_step_max", -1.0))
+        != CAPACITY_PROBE_OPTIMIZER_STEPS
+    ):
+        raise ValueError("capacity checkpoint optimizer resume alignment failed")
     teacher = _mapping(report.get("teacher_probe"), "capacity teacher probe")
     if (
         int(teacher.get("anchors", -1)) != CAPACITY_PROBE_VALIDATION_ANCHORS
@@ -1323,6 +1790,36 @@ def validate_capacity_probe_report(root: Path, *, expected_mode: str) -> dict[st
             projection["projected_formal_runtime_seconds"]
         ),
         "remaining_headroom_seconds": float(budget["remaining_headroom_seconds"]),
+    }
+
+
+def validate_verification_probe(root: Path, *, expected_mode: str) -> dict[str, Any]:
+    """Require a capacity PASS explicitly closed before formal optimizer step one."""
+
+    capacity = validate_capacity_probe_report(root, expected_mode=expected_mode)
+    completion_path = root.resolve() / "verification_complete.json"
+    if completion_path.is_symlink() or not completion_path.is_file():
+        raise ValueError("verification-only completion artifact is missing")
+    completion = _read_json(completion_path)
+    report_path = Path(capacity["path"])
+    if (
+        completion.get("schema_version")
+        != "trauma_predict.multires_event_v2_verification_complete.v1"
+        or completion.get("status") != "PASSED_STOPPED_BEFORE_FORMAL_TRAINING"
+        or completion.get("formal_training_authorized") is not False
+        or int(completion.get("formal_optimizer_steps", -1)) != 0
+        or completion.get("mode") != expected_mode
+        or Path(str(completion.get("capacity_report_path") or "")).resolve()
+        != report_path.resolve()
+        or completion.get("capacity_report_sha256") != sha256_file(report_path)
+        or list(root.resolve().rglob("SUCCESS"))
+    ):
+        raise ValueError("verification-only completion contract failed")
+    return {
+        **capacity,
+        "verification_complete_path": str(completion_path),
+        "verification_complete_sha256": sha256_file(completion_path),
+        "formal_optimizer_steps": 0,
     }
 
 
@@ -1534,7 +2031,7 @@ def run_to_log(
     log_path.parent.mkdir(parents=True, exist_ok=True)
     print("$", " ".join(command), ">>", log_path, flush=True)
     with log_path.open("a", encoding="utf-8") as log, heartbeat(
-        label, log_path, seconds=300
+        label, log_path, seconds=HEARTBEAT_SECONDS
     ):
         process = subprocess.Popen(
             command,
@@ -1550,7 +2047,9 @@ def run_to_log(
             log.write(line)
             log.flush()
             stripped = line.rstrip()
-            if stripped.startswith(STREAM_PREFIXES):
+            if stripped.startswith(STREAM_PREFIXES) or any(
+                marker in stripped for marker in STREAM_ERROR_MARKERS
+            ):
                 print(stripped, flush=True)
         returncode = process.wait()
     if returncode != 0:

@@ -15,9 +15,11 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `configs/dataset/multires_event_v2_c4_lab_affine_scale.json` | config | Train-subject-only affine scale for V2 laboratory likelihoods. | Aggregate scale metadata only. |
 | `configs/dataset/multires_event_v2_c4_standardized_primitive_scale.json` | config | Frozen standardized primitive scales for the V2 mixed-coordinate likelihood. | Aggregate scale metadata only. |
 | `configs/evaluation/multires_event_v2_promotion_v2.json` | config | Frozen bootstrap, structural-score, marginal-score, and conjunctive promotion contract. | No patient rows. |
+| `configs/evaluation/multires_event_v2_capacity_diagnostic_v1.json` | config | Predeclared paired 30.68M/47.80M trajectory-capacity experiment and decision rule. | No patient rows. |
 | `configs/model/multires_event_v1.yaml` | config | Scratch hierarchical event Transformer and typed-head architecture contract. | No data. |
 | `configs/model/multires_event_v1_supervision.json` | config | Model-side target overlay over the immutable 1,314-row canonical target. | Registry metadata only. |
 | `configs/model/multires_event_v2.yaml` | config | Structured six-block encoder-decoder architecture and 414-factor primitive-head contract. | No data. |
+| `configs/model/multires_event_v2_capacity_48m.yaml` | config | Diagnostic-only width-scaled 47.8M candidate for the predeclared capacity comparison. | No data. |
 | `configs/train/p100_stage_a_hour.yaml` | config | Stage A single-GPU/P100 HOUR values-only training config. | Uses environment-variable paths only. |
 | `configs/train/t4x2_first_run.yaml` | config | Joint-baseline T4 x2 training config; not Stage A. | Uses environment-variable paths only. |
 | `configs/train/t4x2_multires_event_v1_full.yaml` | config | Frozen 4,000-step T4 x2 multires baseline training and evaluation contract. | Uses environment-variable paths only. |
@@ -42,8 +44,9 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
 | `notebooks/kaggle/train_multires_event_v1.ipynb` | kaggle | Two-cell Save & Run notebook pinned to the immutable multires baseline tag. | No embedded data. |
 | `notebooks/kaggle/train_multires_event_v1.py` | kaggle | DDP training entrypoint and dry-run preflight for the multires route. | Reads the frozen private artifact only at runtime. |
-| `notebooks/kaggle/train_multires_event_v2.ipynb` | kaggle | Two-cell block-run Notebook pinned to `multires-event-v2-block-run-20260713-r2`, the accepted private r8 target ref, an attached exact Git bundle, and `TRAUMA_PREDICT_DRY_RUN_ONLY=0`. | No embedded data. |
-| `notebooks/kaggle/train_multires_event_v2.py` | kaggle | V2 CLI entrypoint for exact preflight and block-only formal execution after an internal same-process capacity PASS. | Reads mounted private V1/r8 artifacts only at runtime. |
+| `notebooks/kaggle/train_multires_event_v2.ipynb` | kaggle | Zero-Input two-cell formal block release candidate pinned to the prospective r5 tag; it is not a handoff until hosted verification closes and source authorization is restored. | No embedded data. |
+| `notebooks/kaggle/train_multires_event_v2.py` | kaggle | V2 CLI entrypoint for config-free rank canary, exact preflight, verification-only capacity probe, and source-gated formal routes. | Reads mounted private V1/r8 artifacts only at runtime. |
+| `notebooks/kaggle/verify_multires_event_v2.ipynb` | kaggle | Zero-Input agent-owned T4 x2 verification Notebook pinned to `verify_block`; it must stop with zero formal optimizer steps. | No embedded data. |
 | `notebooks/kaggle/train_full_first_run.ipynb` | kaggle | End-to-end Kaggle notebook for the joint-baseline run; not Stage A. | No data. |
 | `notebooks/kaggle/train_stage_a_hour.ipynb` | kaggle | End-to-end Kaggle notebook for Stage A HOUR-only training. | No data. |
 | `notebooks/kaggle/verify_private_dataset.ipynb` | kaggle | Kaggle notebook that verifies private Dataset mounting or API download before preflight. | No data. |
@@ -109,11 +112,12 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `src/trauma_predict/training/main_route.py` | package | Hugging Face Trainer loop for main-route structured prediction. | No data. |
 | `src/trauma_predict/training/multires_event.py` | package | DDP training, interval/final evaluation, resume identity, and artifact export for the multires route. | No data. |
 | `src/trauma_predict/training/multires_event_loss.py` | package | Typed probabilistic losses and component-field-resolution macro aggregation. | No data. |
-| `src/trauma_predict/training/multires_event_v2.py` | package | Source-gated DDP training, optimizer-health audit, checkpoint identity, evaluation, and capacity runtime. | Reads private data and writes outputs only at runtime. |
+| `src/trauma_predict/training/multires_event_v2.py` | package | Source-gated DDP training, fail-fast canaries, optimizer-health audit, checkpoint identity, evaluation, and capacity runtime. | Reads private data and writes outputs only at runtime. |
 | `src/trauma_predict/training/multires_event_v2_loss.py` | package | Raw 414-factor joint canonical likelihood and primitive feedback contract. | No data. |
-| `src/trauma_predict/training/observability.py` | package | Atomic JSON, append-only metrics, loss signals, and run heartbeat utilities. | No data. |
+| `src/trauma_predict/training/observability.py` | package | Atomic JSON, rank-zero shared metrics, rank-local evidence, loss signals, and run heartbeat utilities. | No data. |
 | `src/trauma_predict/training/runtime.py` | package | Shared training runtime helpers for logging, checkpoints, and snapshots. | No data. |
 | `src/trauma_predict/training/stages.py` | package | Explicit Stage A/B/C and joint-baseline active-loss contracts. | No data. |
+| `tests/helpers/multires_event_v2_rank_artifact_worker.py` | tests | Two-process Gloo worker for rank-local artifact success and failure-path regression. | Synthetic metadata only. |
 | `tests/test_data_preflight.py` | tests | Tests generated artifact preflight checks with synthetic rows. | Synthetic records only. |
 | `tests/test_manifest_contracts.py` | tests | Tests schema and manifest helper behavior. | Synthetic records only. |
 | `tests/test_multires_event_contract.py` | tests | Tests target-overlay counts, semantics, and F24 mappings against the frozen registry. | Registry metadata only. |
@@ -122,6 +126,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `tests/test_multires_event_loss.py` | tests | Tests typed-loss numerical behavior, FP16 promotion, and duration censoring. | Synthetic tensors only. |
 | `tests/test_multires_event_training.py` | tests | Tests training contract, aggregation, resume identity, and complete prediction export. | Synthetic tensors only. |
 | `tests/test_multires_event_v2_checkpoint_identity.py` | tests | Tests checkpoint, optimizer, scheduler, scaler, and resume identity closure. | Synthetic tensors only. |
+| `tests/test_multires_event_v2_capacity_candidates.py` | tests | Tests the width-only 30.68M/47.80M capacity contract, exact component counts, and matched modes. | Config metadata only. |
 | `tests/test_multires_event_v2_contract.py` | tests | Tests r8 dataset, arithmetic-evidence, field-order, and contract identity validation. | Registry metadata and optional mounted manifests only. |
 | `tests/test_multires_event_v2_data.py` | tests | Tests exact V1/r8 joins, collator targets, gates, and subject sampling. | Synthetic records and optional mounted manifests only. |
 | `tests/test_multires_event_v2_emissions.py` | tests | Tests normalized process distributions, support, gates, and sampling. | Synthetic tensors only. |

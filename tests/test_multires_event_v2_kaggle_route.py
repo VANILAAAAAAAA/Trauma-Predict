@@ -28,6 +28,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER_PATH = REPO_ROOT / "notebooks/kaggle/run_multires_event_v2.py"
 ENTRYPOINT_PATH = REPO_ROOT / "notebooks/kaggle/train_multires_event_v2.py"
 NOTEBOOK_PATH = REPO_ROOT / "notebooks/kaggle/train_multires_event_v2.ipynb"
+VERIFICATION_NOTEBOOK_PATH = (
+    REPO_ROOT / "notebooks/kaggle/verify_multires_event_v2.ipynb"
+)
 
 
 def load_launcher():
@@ -664,6 +667,128 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
 
     def capacity_report_fixture(self, root: Path, launcher, mode: str = "block") -> dict:
         root.mkdir(parents=True, exist_ok=True)
+        rank_canary_root = root / "ddp_rank_artifact_canary"
+        rank_canary_root.mkdir()
+        rank_artifacts = []
+        for rank in (0, 1):
+            progress_path = rank_canary_root / f"progress.rank{rank:05d}.jsonl"
+            progress_path.write_text(
+                json.dumps(
+                    {
+                        "event": "v2_free_running_rank_progress",
+                        "rank": rank,
+                        "mode": mode,
+                        "completed_anchors": 0,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            rank_artifacts.append(
+                {
+                    "rank": rank,
+                    "path": progress_path.name,
+                    "sha256": sha256(progress_path),
+                    "rows": 1,
+                }
+            )
+        rank_canary_manifest = rank_canary_root / "manifest.json"
+        rank_canary_payload = {
+            "schema_version": (
+                "trauma_predict.multires_event_v2_rank_artifact_preflight.v1"
+            ),
+            "created_at": "2026-07-13T00:00:00Z",
+            "status": "PASSED",
+            "mode": mode,
+            "world_size": 2,
+            "rank_artifacts": rank_artifacts,
+        }
+        write_json(rank_canary_manifest, rank_canary_payload)
+        semantic_canary_root = root / "ddp_semantic_canary"
+        semantic_canary_root.mkdir()
+        sample_schema = semantic_canary_root / "sample_schema.json"
+        write_json(
+            sample_schema,
+            {"schema_version": "trauma_predict.multires_event_v2_sample_export.v2"},
+        )
+        semantic_shards = []
+        for rank in (0, 1):
+            audit_path = (
+                semantic_canary_root
+                / f"audit_trajectory_samples.rank{rank:05d}.jsonl.gz"
+            )
+            with gzip.open(audit_path, "wt", encoding="utf-8") as handle:
+                handle.write(json.dumps({"rank": rank, "trajectory_index": 0}) + "\n")
+            score_path = semantic_canary_root / f"per_anchor_scores.rank{rank:05d}.jsonl"
+            score_path.write_text(
+                json.dumps({"sample_id": f"sample-{rank}", "mode": mode}) + "\n",
+                encoding="utf-8",
+            )
+            progress_path = semantic_canary_root / f"progress.rank{rank:05d}.jsonl"
+            progress_path.write_text(
+                "".join(
+                    json.dumps(
+                        {
+                            "event": "v2_free_running_rank_progress",
+                            "rank": rank,
+                            "mode": mode,
+                            "completed_anchors": completed,
+                        }
+                    )
+                    + "\n"
+                    for completed in (0, 1)
+                ),
+                encoding="utf-8",
+            )
+            semantic_shards.append(
+                {
+                    "rank": rank,
+                    "anchors": 1,
+                    "audit_trajectory_sample_path": audit_path.name,
+                    "audit_trajectory_sample_sha256": sha256(audit_path),
+                    "retained_audit_trajectories": 1,
+                    "per_anchor_score_path": score_path.name,
+                    "per_anchor_score_sha256": sha256(score_path),
+                    "progress_metrics_path": progress_path.name,
+                    "progress_metrics_sha256": sha256(progress_path),
+                }
+            )
+        semantic_evaluation = {
+            "mode": mode,
+            "step": 0,
+            "anchors": 2,
+            "trajectories_per_anchor": (
+                launcher.CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR
+            ),
+            "coherence": {
+                "rate": 1.0,
+                "coherent_trajectories": 200,
+                "total_trajectories": 200,
+            },
+            "sample_schema_path": sample_schema.name,
+            "sample_schema_sha256": sha256(sample_schema),
+            "shards": semantic_shards,
+        }
+        semantic_canary_manifest = semantic_canary_root / "manifest.json"
+        write_json(
+            semantic_canary_manifest,
+            {
+                "schema_version": (
+                    "trauma_predict.multires_event_v2_free_running_manifest.v1"
+                ),
+                "created_at": "2026-07-13T00:00:00Z",
+                "evaluation": semantic_evaluation,
+                "per_anchor_score_shards": semantic_shards,
+            },
+        )
+        write_json(
+            semantic_canary_root / "evaluation.json",
+            {
+                **semantic_evaluation,
+                "manifest_path": semantic_canary_manifest.name,
+                "manifest_sha256": sha256(semantic_canary_manifest),
+            },
+        )
         optimizer_seconds = 1.0
         teacher_seconds_per_anchor = 0.1
         free_seconds_per_anchor = 0.2
@@ -675,6 +800,40 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         projected = sum(components.values())
         required = 10.0 + 30.0 + projected + launcher.CAPACITY_SESSION_RESERVE_SECONDS
         sample_set_sha = "7" * 64
+        checkpoint_path = (
+            root
+            / "checkpoint_canary"
+            / "checkpoints"
+            / "checkpoint-00000002"
+        )
+        checkpoint_path.mkdir(parents=True)
+        checkpoint_files = (
+            "identity_hashes.json",
+            "model.pt",
+            "optimizer.pt",
+            "rng-rank-0000.pt",
+            "rng-rank-0001.pt",
+            "sampler-rank-0000.pt",
+            "sampler-rank-0001.pt",
+            "scaler.pt",
+            "scheduler.pt",
+            "trainer_state.json",
+        )
+        for name in checkpoint_files:
+            (checkpoint_path / name).write_bytes(f"fixture:{name}\n".encode("utf-8"))
+        checkpoint_manifest = {
+            "schema_version": launcher.V2_CHECKPOINT_SCHEMA,
+            "created_at": "2026-07-13T00:00:00Z",
+            "global_step": 2,
+            "world_size": 2,
+            "identity_hashes": {"fixture": "9" * 64},
+            "files": list(checkpoint_files),
+            "sha256": {
+                name: sha256(checkpoint_path / name) for name in checkpoint_files
+            },
+        }
+        checkpoint_manifest_path = checkpoint_path / "checkpoint_manifest.json"
+        write_json(checkpoint_manifest_path, checkpoint_manifest)
         report = {
             "schema_version": launcher.CAPACITY_PROBE_SCHEMA,
             "created_at": "2026-07-13T00:00:00Z",
@@ -722,6 +881,25 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                 }
                 for rank in (0, 1)
             ],
+            "distributed_canaries": {
+                "rank_artifact": {
+                    **rank_canary_payload,
+                    "manifest_path": str(rank_canary_manifest.resolve()),
+                    "manifest_sha256": sha256(rank_canary_manifest),
+                },
+                "semantic_rollout": {
+                    "status": "PASSED",
+                    "anchors": 2,
+                    "trajectories_per_anchor": (
+                        launcher.CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR
+                    ),
+                    "world_size": 2,
+                    "wall_seconds": 1.0,
+                    "coherence_rate": 1.0,
+                    "manifest_path": str(semantic_canary_manifest.resolve()),
+                    "manifest_sha256": sha256(semantic_canary_manifest),
+                },
+            },
             "optimizer": {
                 "optimizer_contract_version": launcher.OPTIMIZER_CONTRACT_VERSION,
                 "loss_reduction": launcher.RAW_JOINT_NLL_REDUCTION,
@@ -802,6 +980,19 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                     for step in (1, 2)
                 ],
                 "scaler_skipped_steps": 0,
+            },
+            "checkpoint_resume_canary": {
+                "schema_version": launcher.V2_CHECKPOINT_SCHEMA,
+                "checkpoint_path": str(checkpoint_path.resolve()),
+                "checkpoint_manifest_sha256": sha256(checkpoint_manifest_path),
+                "manifest_file_count": len(checkpoint_files),
+                "restored_global_step": 2,
+                "resume_alignment": {
+                    "global_step": 2,
+                    "expected_optimizer_step": 2,
+                    "observed_optimizer_step_min": 2.0,
+                    "observed_optimizer_step_max": 2.0,
+                },
             },
             "teacher_probe": {
                 "anchors": 100,
@@ -940,13 +1131,13 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             authority = self.target_fixture(first, launcher)
             with patch.object(launcher, "TARGET_AUTHORITY", authority):
                 self.assertEqual(
-                    launcher.find_exact_target_attached_dataset(root), first.resolve()
+                    launcher.find_exact_target_dataset(root), first.resolve()
                 )
                 second = root / "target-b"
                 second.mkdir()
                 self.target_fixture(second, launcher)
                 with self.assertRaisesRegex(RuntimeError, "multiple exact"):
-                    launcher.find_exact_target_attached_dataset(root)
+                    launcher.find_exact_target_dataset(root)
 
     def test_target_authority_rejects_relation_or_sidecar_schema_hash_drift(self) -> None:
         launcher = load_launcher()
@@ -1003,7 +1194,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                 launcher, "download_exact_dataset", return_value=downloaded
             ) as download, patch.dict(os.environ, {}, clear=True):
                 self.assertEqual(
-                    launcher.explicit_or_attached_target_root(log_root), downloaded
+                    launcher.explicit_or_download_target_root(log_root), downloaded
                 )
                 self.assertEqual(download.call_args.kwargs["dataset_ref"], expected)
 
@@ -1013,7 +1204,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                 os.environ, {"TRAUMA_PREDICT_V2_DATASET_REF": expected}, clear=True
             ):
                 self.assertEqual(
-                    launcher.explicit_or_attached_target_root(log_root), downloaded
+                    launcher.explicit_or_download_target_root(log_root), downloaded
                 )
                 self.assertEqual(download.call_args.kwargs["dataset_ref"], expected)
 
@@ -1024,8 +1215,41 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                     os.environ, {"TRAUMA_PREDICT_V2_DATASET_REF": invalid}, clear=True
                 ):
                     with self.assertRaisesRegex(ValueError, "must exactly equal"):
-                        launcher.explicit_or_attached_target_root(log_root)
+                        launcher.explicit_or_download_target_root(log_root)
                     download.assert_not_called()
+
+    def test_zero_input_dataset_access_is_checked_before_download(self) -> None:
+        launcher = load_launcher()
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            launcher.v1_route, "configure_kaggle_credentials"
+        ) as credentials, patch.object(launcher, "run_to_log") as run, patch.dict(
+            os.environ,
+            {
+                "TRAUMA_PREDICT_DATA_ROOT": "",
+                "TRAUMA_PREDICT_V2_TARGET_ROOT": "",
+                "TRAUMA_PREDICT_V2_DATASET_REF": launcher.TARGET_DATASET_REF,
+            },
+            clear=False,
+        ):
+            launcher.preflight_dataset_download_access(Path(directory))
+        credentials.assert_called_once_with()
+        self.assertEqual(run.call_count, 2)
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(
+            [command[4] for command in commands],
+            [launcher.BASE_DATASET_REF, launcher.TARGET_DATASET_REF],
+        )
+        self.assertTrue(all(command[-2:] == ["--page-size", "1"] for command in commands))
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            launcher, "run_to_log"
+        ) as run, patch.dict(
+            os.environ,
+            {"TRAUMA_PREDICT_DATA_ROOT": "/manual/input"},
+            clear=False,
+        ), self.assertRaisesRegex(RuntimeError, "zero-Input"):
+            launcher.preflight_dataset_download_access(Path(directory))
+        run.assert_not_called()
 
     def test_action_selector_accepts_exactly_one_action_and_defaults_to_smoke(self) -> None:
         launcher = load_launcher()
@@ -1035,7 +1259,14 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             clear=False,
         ):
             self.assertEqual(launcher.selected_action(), "smoke")
-        for action in ("smoke", "block", "trajectory", "relational", "promotion"):
+        for action in (
+            "smoke",
+            "block",
+            "trajectory",
+            "relational",
+            "verify_block",
+            "promotion",
+        ):
             self.assertEqual(launcher.selected_action(action), action)
         with self.assertRaisesRegex(ValueError, "exactly one action"):
             launcher.selected_action("block,trajectory")
@@ -1068,13 +1299,19 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
 
     def test_hosted_training_has_a_source_level_authorization_gate(self) -> None:
         launcher = load_launcher()
-        self.assertTrue(launcher.TRAINING_AUTHORIZED)
-        launcher.require_training_authorization("block")
-        for action in ("smoke", "trajectory", "relational"):
+        self.assertFalse(launcher.TRAINING_AUTHORIZED)
+        for action in ("smoke", "block", "trajectory", "relational"):
             with self.subTest(action=action), self.assertRaisesRegex(
                 RuntimeError, "not authorized"
             ):
                 launcher.require_training_authorization(action)
+        self.assertTrue(launcher.VERIFICATION_AUTHORIZED)
+        launcher.require_verification_authorization("block")
+        for action in ("smoke", "trajectory", "relational"):
+            with self.subTest(verification_action=action), self.assertRaisesRegex(
+                RuntimeError, "not authorized"
+            ):
+                launcher.require_verification_authorization(action)
         with patch.dict(os.environ, {"TRAUMA_PREDICT_V2_TRAINING_AUTHORIZED": "1"}):
             with self.assertRaisesRegex(RuntimeError, "not authorized"):
                 launcher.require_training_authorization("trajectory")
@@ -1086,10 +1323,13 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             dry_run=False,
             capacity_probe_output=None,
             elapsed_before_capacity_seconds=None,
+            rank_artifact_preflight_output=None,
+            rank_artifact_preflight_mode=None,
+            verification_only=False,
         )
         with patch.object(entrypoint, "parse_args", return_value=args), patch.object(
             entrypoint, "run_multires_event_v2_training"
-        ) as training, self.assertRaisesRegex(RuntimeError, "capacity-gated"):
+        ) as training, self.assertRaisesRegex(RuntimeError, "source-gated"):
             entrypoint.main()
         training.assert_not_called()
 
@@ -1101,7 +1341,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         )
         with patch.object(
             entrypoint, "parse_args", return_value=unauthorized_args
-        ), self.assertRaisesRegex(RuntimeError, "not authorized for run_name"):
+        ), self.assertRaisesRegex(RuntimeError, "source-gated"):
             entrypoint.main()
 
         dry_args = SimpleNamespace(
@@ -1116,6 +1356,55 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         ) as dry:
             entrypoint.main()
         dry.assert_called_once()
+
+        with tempfile.TemporaryDirectory() as directory:
+            early_args = SimpleNamespace(
+                config=None,
+                dry_run=False,
+                capacity_probe_output=None,
+                elapsed_before_capacity_seconds=None,
+                rank_artifact_preflight_output=Path(directory) / "canary",
+                rank_artifact_preflight_mode="trajectory",
+                verification_only=False,
+            )
+            with patch.object(
+                entrypoint, "parse_args", return_value=early_args
+            ), patch.object(
+                entrypoint, "run_multires_event_v2_rank_artifact_preflight_only"
+            ) as early, patch.object(
+                entrypoint, "require_multires_event_v2_training_authorization"
+            ) as authorization:
+                entrypoint.main()
+            early.assert_called_once_with(
+                output_dir=early_args.rank_artifact_preflight_output,
+                mode="trajectory",
+            )
+            authorization.assert_not_called()
+
+            verification_args = SimpleNamespace(
+                config=Path("configs/train/t4x2_multires_event_v2_block.yaml"),
+                dry_run=False,
+                capacity_probe_output=Path(directory) / "verification",
+                elapsed_before_capacity_seconds=1.25,
+                rank_artifact_preflight_output=None,
+                rank_artifact_preflight_mode=None,
+                verification_only=True,
+            )
+            with patch.object(
+                entrypoint, "parse_args", return_value=verification_args
+            ), patch.object(
+                entrypoint, "run_multires_event_v2_verification_probe"
+            ) as verification, patch.object(
+                entrypoint, "require_multires_event_v2_training_authorization"
+            ) as authorization:
+                entrypoint.main()
+            verification.assert_called_once_with(
+                (entrypoint.REPO_ROOT / verification_args.config).resolve(),
+                repo_root=entrypoint.REPO_ROOT,
+                output_dir=verification_args.capacity_probe_output,
+                elapsed_before_capacity_seconds=1.25,
+            )
+            authorization.assert_not_called()
 
     def test_entrypoint_requires_repo_train_only_lab_scale_content_hash(self) -> None:
         entrypoint = load_entrypoint()
@@ -1145,29 +1434,48 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "hash mismatch"):
                     entrypoint.verify_repo_lab_scale_artifact(invalid)
 
-    def test_notebook_is_two_cells_and_pins_authorized_block_run(self) -> None:
+    def test_notebook_is_zero_input_two_cell_formal_block_bootstrap(self) -> None:
         notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
         self.assertEqual(len(notebook["cells"]), 2)
         code = "".join(notebook["cells"][1]["source"])
-        self.assertIn("multires-event-v2-block-run-20260713-r3", code)
+        markdown = "".join(notebook["cells"][0]["source"])
+        self.assertIn("multires-event-v2-block-run-20260714-r5", code)
         self.assertIn("refs/tags/", code)
         self.assertIn("run_multires_event_v2.py", code)
-        self.assertIn('REQUIRED_GIT_REF = "multires-event-v2-block-run-20260713-r3"', code)
+        self.assertIn('REQUIRED_GIT_REF = "multires-event-v2-block-run-20260714-r5"', code)
         self.assertIn('V2_ACTION = "block"', code)
-        self.assertIn('SOURCE_BUNDLE_DATASET_SLUG = "trauma-v2-block-source-r2-20260714"', code)
-        self.assertIn('SOURCE_BUNDLE_NAME = "trauma-predict-multires-event-v2-block-r3.bundle"', code)
-        self.assertIn('["git", "bundle", "list-heads", source_bundle]', code)
-        self.assertIn('["git", "bundle", "verify", source_bundle], cwd=REPO_DIR', code)
-        self.assertIn('["git", "clone", source_bundle, REPO_DIR]', code)
+        self.assertIn("Do not attach any Kaggle Input", markdown)
+        self.assertIn("MULTIRES_EVENT_V2_HOSTED_SMOKE_OK", markdown)
+        self.assertNotIn("KAGGLE_INPUT", code)
+        self.assertNotIn("SOURCE_BUNDLE", code)
+        self.assertNotIn("git\", \"bundle", code)
         self.assertIn('FROZEN_ENV = {', code)
         self.assertIn("remove the conflicting environment override", code)
         self.assertIn("trauma-predict-multires-event-v2-c4-r8-20260713", code)
         self.assertIn('env["TRAUMA_PREDICT_V2_ACTION"] = V2_ACTION', code)
         self.assertIn('env["TRAUMA_PREDICT_DRY_RUN_ONLY"] = "0"', code)
         self.assertNotIn('env["TRAUMA_PREDICT_DRY_RUN_ONLY"] = "1"', code)
+        self.assertIn('["git", "clone", REPO_URL, str(REPO_DIR)]', code)
+        self.assertIn('["git", "fetch", "--force", "origin", "--tags"]', code)
         entrypoint_source = ENTRYPOINT_PATH.read_text(encoding="utf-8")
         self.assertIn('"relation_contract_sha256"', entrypoint_source)
         self.assertIn('"sidecar_schema_sha256"', entrypoint_source)
+
+    def test_verification_notebook_is_zero_input_and_formal_step_zero(self) -> None:
+        notebook = json.loads(VERIFICATION_NOTEBOOK_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(len(notebook["cells"]), 2)
+        markdown = "".join(notebook["cells"][0]["source"])
+        code = "".join(notebook["cells"][1]["source"])
+        self.assertIn("formal_optimizer_steps=0", markdown)
+        self.assertIn(
+            'REQUIRED_GIT_REF = "multires-event-v2-block-verify-20260714-r4"',
+            code,
+        )
+        self.assertIn('V2_ACTION = "verify_block"', code)
+        self.assertNotIn("KAGGLE_INPUT", code)
+        self.assertNotIn("SOURCE_BUNDLE", code)
+        self.assertIn('["git", "clone", REPO_URL, str(REPO_DIR)]', code)
+        self.assertIn('env["TRAUMA_PREDICT_DRY_RUN_ONLY"] = "0"', code)
 
     def test_route_is_single_action_single_torchrun_without_inline_promotion(self) -> None:
         launcher = load_launcher()
@@ -1178,7 +1486,9 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             tuple(load_launcher().STAGE_CONFIGS),
             ("smoke", "block", "trajectory", "relational"),
         )
-        self.assertIn("heartbeat(\n        label, log_path, seconds=300", source)
+        self.assertIn("heartbeat(\n        label, log_path, seconds=HEARTBEAT_SECONDS", source)
+        self.assertEqual(launcher.HEARTBEAT_SECONDS, 60)
+        self.assertIn("STREAM_ERROR_MARKERS", source)
         self.assertNotIn("PENDING_FINAL", source)
         self.assertIn("require_frozen_authority_constants", source)
         self.assertNotIn("selected_stage_names", source)
@@ -1208,6 +1518,57 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             self.assertEqual(command.count("torch.distributed.run"), 1)
             self.assertEqual(command.count("--capacity-probe-output"), 1)
             self.assertEqual(command.count("--elapsed-before-capacity-seconds"), 1)
+            torchrun_env = run.call_args.kwargs["env"]
+            self.assertEqual(torchrun_env["TORCH_NCCL_ASYNC_ERROR_HANDLING"], "1")
+            self.assertEqual(torchrun_env["TORCH_NCCL_ENABLE_MONITORING"], "1")
+            self.assertEqual(
+                torchrun_env["TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC"],
+                str(launcher.V2_NCCL_MONITOR_HEARTBEAT_TIMEOUT_SECONDS),
+            )
+
+    def test_predata_rank_canary_is_config_free_and_precedes_dataset_resolution(self) -> None:
+        launcher = load_launcher()
+        source = inspect.getsource(launcher.main)
+        self.assertLess(
+            source.index("run_rank_artifact_preflight_torchrun("),
+            source.index("explicit_or_download_base_root("),
+        )
+        self.assertLess(
+            source.index("preflight_dataset_download_access("),
+            source.index("install_requirements("),
+        )
+        self.assertLess(
+            source.index("runtime_guard("),
+            source.index("explicit_or_download_base_root("),
+        )
+        self.assertLess(
+            source.index("run_rank_artifact_preflight_torchrun("),
+            source.index("prepare_target_root("),
+        )
+        self.assertLess(
+            source.index("run_rank_artifact_preflight_torchrun("),
+            source.index("install_requirements("),
+        )
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            launcher, "run_to_log"
+        ) as run:
+            root = Path(directory)
+            launcher.run_rank_artifact_preflight_torchrun(
+                mode="trajectory",
+                output_dir=root / "canary",
+                log_path=root / "canary.log",
+                env={"PYTHONPATH": "fixture"},
+            )
+            run.assert_called_once()
+            command = run.call_args.args[0]
+            self.assertNotIn("--config", command)
+            self.assertIn("--rank-artifact-preflight-output", command)
+            self.assertIn("--rank-artifact-preflight-mode", command)
+            self.assertEqual(command[-1], "trajectory")
+            self.assertEqual(
+                run.call_args.kwargs["env"]["TORCH_NCCL_ASYNC_ERROR_HANDLING"],
+                "1",
+            )
 
     def test_capacity_probe_output_is_attempt_specific_and_disjoint(self) -> None:
         launcher = load_launcher()
@@ -1255,6 +1616,39 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                 valid_root, expected_mode="block"
             )
             self.assertEqual(validation["status"], "PASSED")
+            completion_path = valid_root / "verification_complete.json"
+            write_json(
+                completion_path,
+                {
+                    "schema_version": (
+                        "trauma_predict.multires_event_v2_verification_complete.v1"
+                    ),
+                    "status": "PASSED_STOPPED_BEFORE_FORMAL_TRAINING",
+                    "formal_training_authorized": False,
+                    "formal_optimizer_steps": 0,
+                    "mode": "block",
+                    "run_name": "t4x2_multires_event_v2_block",
+                    "capacity_report_path": valid_report["report_path"],
+                    "capacity_report_sha256": sha256(
+                        Path(valid_report["report_path"])
+                    ),
+                },
+            )
+            verification = launcher.validate_verification_probe(
+                valid_root,
+                expected_mode="block",
+            )
+            self.assertEqual(verification["formal_optimizer_steps"], 0)
+            completion = json.loads(completion_path.read_text(encoding="utf-8"))
+            completion["formal_optimizer_steps"] = 1
+            write_json(completion_path, completion)
+            with self.assertRaisesRegex(ValueError, "completion contract"):
+                launcher.validate_verification_probe(
+                    valid_root,
+                    expected_mode="block",
+                )
+            completion["formal_optimizer_steps"] = 0
+            write_json(completion_path, completion)
 
             mutations = {
                 "optimizer update": lambda row: row["optimizer"]["steps"][0].__setitem__(
@@ -1284,6 +1678,18 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                 "T4 hardware": lambda row: row["hardware"][0].__setitem__(
                     "device_name", "RTX 5070"
                 ),
+                "rank artifact canary": lambda row: row["distributed_canaries"][
+                    "rank_artifact"
+                ].__setitem__("status", "FAILED"),
+                "semantic canary": lambda row: row["distributed_canaries"][
+                    "semantic_rollout"
+                ].__setitem__("coherence_rate", 0.5),
+                "checkpoint identity": lambda row: row[
+                    "checkpoint_resume_canary"
+                ].__setitem__("checkpoint_manifest_sha256", "0" * 64),
+                "checkpoint resume alignment": lambda row: row[
+                    "checkpoint_resume_canary"
+                ]["resume_alignment"].__setitem__("observed_optimizer_step_max", 1.0),
                 "first 100 anchors": lambda row: row["free_running_probe"].__setitem__(
                     "selection_verified", False
                 ),
@@ -1360,7 +1766,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             ), patch.object(
                 launcher, "require_t4x2_runtime"
             ) as cuda, patch.object(
-                launcher, "explicit_or_attached_base_root"
+                launcher, "explicit_or_download_base_root"
             ) as data, patch.object(
                 launcher, "install_requirements"
             ) as install, patch.object(

@@ -1,0 +1,101 @@
+{
+  "schema_version": "trauma_predict.multires_event_v2_capacity_diagnostic.v1",
+  "status": "frozen_before_execution",
+  "purpose": "Test whether model width is an active bottleneck for the intended causal six-M4 trajectory task without changing the data or probability contract.",
+  "formal_training_authorized": false,
+  "mode": "trajectory",
+  "capacities": [
+    {
+      "id": "control_30m",
+      "model_config": "configs/model/multires_event_v2.yaml",
+      "hidden_size": 384,
+      "parameter_count": 30684479
+    },
+    {
+      "id": "candidate_48m",
+      "model_config": "configs/model/multires_event_v2_capacity_48m.yaml",
+      "hidden_size": 480,
+      "parameter_count": 47801855
+    }
+  ],
+  "matched_factors": {
+    "input": "immutable V1 three-resolution history",
+    "target": "full_r8 six-M4 sidecar",
+    "registered_fields": 29,
+    "stochastic_factors": 414,
+    "loss": "raw_414_factor_joint_nll_batch_mean",
+    "trajectory_encoder_layers": 6,
+    "target_decoder_layers": 6,
+    "block_compressor_layers": 1,
+    "block_latent_count": 8,
+    "attention_heads": 8,
+    "dropout": 0.1,
+    "optimizer": "one-group AdamW",
+    "learning_rate": 0.0002,
+    "warmup_steps": 400,
+    "schedule_total_steps": 4000,
+    "weight_decay": 0.01,
+    "gradient_clipping": false,
+    "precision": "fp16",
+    "world_size": 2,
+    "per_rank_batch": 32,
+    "effective_batch": 64
+  },
+  "subset": {
+    "selection_unit": "subject_id",
+    "selection_rule": "ascending_sha256_of_selection_seed_colon_subject_id",
+    "selection_seed": 20260714,
+    "train_subjects": 512,
+    "validation_subjects": 128,
+    "retain_all_validation_anchors_for_selected_subjects": true,
+    "split_authority": "persisted V1 subject split",
+    "sample_and_subject_lists_must_be_hashed_before_training": true
+  },
+  "replication": {
+    "model_and_sampler_seeds": [20260714, 20260715, 20260716],
+    "paired_capacity_order_within_each_seed": ["control_30m", "candidate_48m"],
+    "optimizer_steps": 500,
+    "anchor_exposures_per_run": 32000,
+    "evaluation_steps": [0, 100, 250, 500],
+    "checkpoint_selection": "none_fixed_step_comparison"
+  },
+  "staged_execution": {
+    "stage_0": "Static count, contract, and mode identity; no CUDA.",
+    "stage_1": "Two real T4x2 optimizer updates per capacity; stop on OOM, nonfinite loss/gradient, scaler skip, missing gradient, or Adam-state drift.",
+    "stage_2": "Run all six fixed 500-step trajectories only if both capacities pass stage_1.",
+    "stage_3": "Re-open all per-anchor rows and calculate the predeclared paired decision outside the hosted process."
+  },
+  "primary_estimand": {
+    "quantity": "candidate_48m_minus_control_30m_validation_subject_macro_joint_nll_at_step_500",
+    "pairing": "same subject, same anchors, same seed",
+    "seed_aggregation": "mean within subject across the three paired seeds",
+    "bootstrap_unit": "subject_id",
+    "bootstrap_repetitions": 2000,
+    "bootstrap_seed": 20260714
+  },
+  "decision_rule": {
+    "capacity_bottleneck_supported": [
+      "upper endpoint of the paired subject-bootstrap 95% interval is below zero",
+      "candidate_48m has lower subject-macro NLL in at least two of three seeds",
+      "all candidate runs complete with no OOM, nonfinite value, scaler skip, missing gradient, or optimizer-state violation"
+    ],
+    "capacity_bottleneck_not_supported": [
+      "lower endpoint of the paired subject-bootstrap 95% interval is at or above zero"
+    ],
+    "otherwise": "inconclusive_do_not_choose_size_from_parameter_count_alone"
+  },
+  "secondary_reports": [
+    "step-0/100/250/500 subject-macro joint NLL learning curves",
+    "paired per-family NLL decomposition",
+    "peak allocated and reserved memory",
+    "optimizer-step wall time",
+    "gradient and Adam-state health"
+  ],
+  "prohibitions": [
+    "No block-mode result may choose the trajectory model size.",
+    "No wall-time-normalized training budget may replace the fixed anchor-exposure budget.",
+    "No test split may be read.",
+    "No post-hoc subject, seed, step, likelihood-family, or learning-rate selection is allowed.",
+    "The diagnostic cannot authorize a formal run by itself."
+  ]
+}

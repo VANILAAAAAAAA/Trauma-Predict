@@ -4,9 +4,13 @@ import gzip
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -23,9 +27,11 @@ from tests.test_multires_event_v2_loss import (
 from trauma_predict.eval.multires_event_v2 import _teacher_nll_decomposition_rows
 from trauma_predict.eval.multires_event_v2_free_running import (
     MODEL_INPUT_KEYS,
+    _emit_rank_progress,
     common_random_seed,
     evaluate_free_running_v2,
     evaluate_multires_event_v2_promotion,
+    validate_rank_local_artifact_preflight,
 )
 from trauma_predict.eval.multires_event_v2_projections import (
     PhysicalProjectionSpec,
@@ -56,6 +62,7 @@ from trauma_predict.training.multires_event_v2_loss import (
     V2_PRIMITIVE_HEAD_DIMS,
     expand_enabled_core_primitives,
 )
+from trauma_predict.training.observability import append_jsonl, sha256_file
 
 
 RESPIRATORY_MODALITIES = (
@@ -78,6 +85,188 @@ PROMOTION_CONTRACT = json.loads(
         / "configs/evaluation/multires_event_v2_promotion_v2.json"
     ).read_text(encoding="utf-8")
 )
+
+
+class MultiresEventV2RankArtifactTest(unittest.TestCase):
+    def test_rank_one_progress_is_written_but_shared_metrics_remain_rank_zero_only(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ,
+            {"RANK": "1"},
+        ):
+            root = Path(directory)
+            progress_path = root / "progress.rank00001.jsonl"
+            _emit_rank_progress(
+                path=progress_path,
+                rank=1,
+                mode="block",
+                completed_anchors=0,
+                started_at=time.monotonic(),
+            )
+            rows = [
+                json.loads(line)
+                for line in progress_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["rank"], 1)
+            self.assertEqual(rows[0]["completed_anchors"], 0)
+            self.assertRegex(sha256_file(progress_path), r"^[0-9a-f]{64}$")
+
+            shared_path = root / "metrics.jsonl"
+            append_jsonl(shared_path, {"event": "must_not_be_written"})
+            self.assertFalse(shared_path.exists())
+
+    def test_two_rank_gloo_preflight_writes_hashes_gathers_and_assembles(self) -> None:
+        worker = (
+            Path(__file__).resolve().parent
+            / "helpers/multires_event_v2_rank_artifact_worker.py"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_root = Path(directory) / "rank-artifacts"
+            started = time.monotonic()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "torch.distributed.run",
+                    "--standalone",
+                    "--nproc_per_node=2",
+                    str(worker),
+                    str(output_root),
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                text=True,
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+            elapsed = time.monotonic() - started
+            self.assertEqual(
+                completed.returncode,
+                0,
+                msg=f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+            )
+            self.assertLess(elapsed, 30.0)
+            manifest_path = output_root / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["status"], "PASSED")
+            self.assertEqual(manifest["world_size"], 2)
+            self.assertEqual(
+                [row["rank"] for row in manifest["rank_artifacts"]],
+                [0, 1],
+            )
+            for rank in (0, 1):
+                path = output_root / f"progress.rank{rank:05d}.jsonl"
+                self.assertTrue(path.is_file())
+                self.assertEqual(
+                    manifest["rank_artifacts"][rank]["sha256"],
+                    sha256_file(path),
+                )
+            reopened = validate_rank_local_artifact_preflight(
+                output_root,
+                expected_mode="block",
+                expected_world_size=2,
+            )
+            self.assertEqual(reopened["manifest_sha256"], sha256_file(manifest_path))
+            tampered = output_root / "progress.rank00001.jsonl"
+            tampered.write_text(
+                tampered.read_text(encoding="utf-8")
+                + json.dumps({"event": "tampered"})
+                + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "file/hash"):
+                validate_rank_local_artifact_preflight(
+                    output_root,
+                    expected_mode="block",
+                    expected_world_size=2,
+                )
+
+    def test_two_rank_gloo_preflight_reports_rank_one_failure_without_timeout(self) -> None:
+        worker = (
+            Path(__file__).resolve().parent
+            / "helpers/multires_event_v2_rank_artifact_worker.py"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            started = time.monotonic()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "torch.distributed.run",
+                    "--standalone",
+                    "--nproc_per_node=2",
+                    str(worker),
+                    str(Path(directory) / "rank-artifacts"),
+                    "--inject-rank-one-writer-noop",
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                text=True,
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+            elapsed = time.monotonic() - started
+            combined = completed.stdout + completed.stderr
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertLess(elapsed, 20.0)
+            self.assertIn("rank 1 FileNotFoundError", combined)
+            self.assertNotIn("Timeout(ms)=600000", combined)
+
+    def test_two_rank_failure_matrix_never_waits_for_the_formal_timeout(self) -> None:
+        worker = (
+            Path(__file__).resolve().parent
+            / "helpers/multires_event_v2_rank_artifact_worker.py"
+        )
+        cases = (
+            ("write", 0, "FileNotFoundError"),
+            ("write", 1, "FileNotFoundError"),
+            ("hash", 0, "injected hash failure"),
+            ("hash", 1, "injected hash failure"),
+            ("gather", 0, "injected gather failure"),
+            ("gather", 1, "injected gather failure"),
+            ("scoring", 0, "injected scoring failure"),
+            ("scoring", 1, "injected scoring failure"),
+            ("report", 0, "injected report failure"),
+            ("report", 1, "injected report failure"),
+            ("optimizer", 0, "injected optimizer failure"),
+            ("optimizer", 1, "injected optimizer failure"),
+            ("checkpoint", 0, "injected checkpoint failure"),
+            ("checkpoint", 1, "injected checkpoint failure"),
+            ("finalization", 0, "injected finalization failure"),
+            ("finalization", 1, "injected finalization failure"),
+        )
+        for stage, rank, marker in cases:
+            with self.subTest(stage=stage, rank=rank), tempfile.TemporaryDirectory() as directory:
+                started = time.monotonic()
+                completed = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "torch.distributed.run",
+                        "--standalone",
+                        "--nproc_per_node=2",
+                        str(worker),
+                        str(Path(directory) / "rank-artifacts"),
+                        "--inject-stage",
+                        stage,
+                        "--inject-rank",
+                        str(rank),
+                    ],
+                    cwd=Path(__file__).resolve().parents[1],
+                    text=True,
+                    capture_output=True,
+                    timeout=25,
+                    check=False,
+                )
+                elapsed = time.monotonic() - started
+                combined = completed.stdout + completed.stderr
+                self.assertNotEqual(completed.returncode, 0, msg=combined)
+                self.assertLess(elapsed, 20.0, msg=combined)
+                self.assertIn(marker, combined)
+                self.assertNotIn("Timeout(ms)=600000", combined)
 
 
 class _Contract(SimpleNamespace):
