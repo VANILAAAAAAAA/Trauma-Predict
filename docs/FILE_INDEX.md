@@ -11,15 +11,18 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `configs/accelerate/t4x2.yaml` | config | Kaggle T4 x2 accelerator config. | No data. |
 | `configs/dataset/first_train.yaml` | config | First training dataset artifact paths and required sample fields. | Uses environment-variable paths only. |
 | `configs/dataset/multires_event_v1_c4.yaml` | config | Frozen C4 multires event dataset identity, inventory, loader, and split contract. | Uses environment-variable paths only. |
-| `configs/dataset/multires_event_v2_c4.yaml` | config | Joins the immutable V1 input base to the accepted r8 six-M4 target sidecar with exact identity guards. | Uses environment-variable paths only. |
+| `configs/dataset/multires_event_v2_c4.yaml` | config | Joins the immutable V1 input base to the accepted r9 six-M4 target sidecar with exact identity guards. | Uses environment-variable paths only. |
 | `configs/dataset/multires_event_v2_c4_lab_affine_scale.json` | config | Train-subject-only affine scale for V2 laboratory likelihoods. | Aggregate scale metadata only. |
+| `configs/dataset/multires_event_v2_c4_lab_affine_scale_r9.json` | config | Train-subject-only affine scale refit against the accepted r9 target authority. | Aggregate scale metadata only. |
 | `configs/dataset/multires_event_v2_c4_standardized_primitive_scale.json` | config | Frozen standardized primitive scales for the V2 mixed-coordinate likelihood. | Aggregate scale metadata only. |
+| `configs/dataset/multires_event_v2_c4_standardized_primitive_scale_r9.json` | config | Frozen r9 standardized primitive scales for the V2 mixed-coordinate likelihood. | Aggregate scale metadata only. |
 | `configs/evaluation/multires_event_v2_promotion_v2.json` | config | Frozen bootstrap, structural-score, marginal-score, and conjunctive promotion contract. | No patient rows. |
 | `configs/evaluation/multires_event_v2_capacity_diagnostic_v1.json` | config | Predeclared paired 30.68M/47.80M trajectory-capacity experiment and decision rule. | No patient rows. |
 | `configs/model/multires_event_v1.yaml` | config | Scratch hierarchical event Transformer and typed-head architecture contract. | No data. |
 | `configs/model/multires_event_v1_supervision.json` | config | Model-side target overlay over the immutable 1,314-row canonical target. | Registry metadata only. |
 | `configs/model/multires_event_v2.yaml` | config | Structured six-block encoder-decoder architecture and 414-factor primitive-head contract. | No data. |
 | `configs/model/multires_event_v2_capacity_48m.yaml` | config | Diagnostic-only width-scaled 47.8M candidate for the predeclared capacity comparison. | No data. |
+| `configs/model/multires_event_v2_relational_primary.yaml` | config | Frozen 47.8M from-scratch relational six-M4 primary architecture. | No data. |
 | `configs/train/p100_stage_a_hour.yaml` | config | Stage A single-GPU/P100 HOUR values-only training config. | Uses environment-variable paths only. |
 | `configs/train/t4x2_first_run.yaml` | config | Joint-baseline T4 x2 training config; not Stage A. | Uses environment-variable paths only. |
 | `configs/train/t4x2_multires_event_v1_full.yaml` | config | Frozen 4,000-step T4 x2 multires baseline training and evaluation contract. | Uses environment-variable paths only. |
@@ -39,13 +42,16 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `notebooks/kaggle/README.md` | kaggle | Explains Kaggle launcher folder boundary. | No data. |
 | `notebooks/kaggle/run_multires_event_v1.py` | kaggle | Pinned Kaggle launcher for data acquisition, preflight, DDP smoke, full training, and output verification. | Downloads or reads the private frozen artifact only at runtime. |
 | `notebooks/kaggle/run_multires_event_v2.py` | kaggle | Block-authorized V2 launcher with immutable tag/data checks, builder-equivalent plain-JSONL gzip reconstruction, per-shard hashes, same-process capacity, and promotion gates. | Reads verified private datasets and attached run outputs only at runtime. |
+| `notebooks/kaggle/run_relational_primary_bundle.py` | kaggle | Active one-bundle launcher that verifies mounted source/V1/r9 identities and starts the exact relational formal run without network or patient-data extraction. | Reads one mounted private bundle only at runtime. |
 | `notebooks/kaggle/run_stage_a_hour.py` | kaggle | Automated Stage A Kaggle launcher for preferred-encoder HOUR-only training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/scan_token_lengths.py` | kaggle | Scans shard input token lengths against the configured encoder window before training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
 | `notebooks/kaggle/train_multires_event_v1.ipynb` | kaggle | Two-cell Save & Run notebook pinned to the immutable multires baseline tag. | No embedded data. |
 | `notebooks/kaggle/train_multires_event_v1.py` | kaggle | DDP training entrypoint and dry-run preflight for the multires route. | Reads the frozen private artifact only at runtime. |
+| `notebooks/kaggle/train_relational_primary.py` | kaggle | Dedicated no-argument entrypoint for only the frozen 47.8M relational formal configuration. | Reads mounted private V1/r9 artifacts only at runtime. |
 | `notebooks/kaggle/train_multires_event_v2.ipynb` | kaggle | Released zero-Input two-cell formal block Notebook pinned to immutable r8; the in-process capacity gate precedes formal optimizer step one. | No embedded data. |
-| `notebooks/kaggle/train_multires_event_v2.py` | kaggle | V2 CLI entrypoint for config-free rank canary, exact preflight, verification-only capacity probe, and source-gated formal routes. | Reads mounted private V1/r8 artifacts only at runtime. |
+| `notebooks/kaggle/train_multires_event_v2.py` | kaggle | V2 CLI entrypoint for the exact r9 relational formal route plus retained diagnostic actions. | Reads mounted private V1/r9 artifacts only at runtime. |
+| `notebooks/kaggle/train_multires_event_v2_relational_primary.ipynb` | kaggle | Active two-cell Save & Run Notebook for the 47.8M relational primary and formal step-2 readiness marker. | No embedded patient data. |
 | `notebooks/kaggle/verify_multires_event_v2.ipynb` | kaggle | Zero-Input agent-owned T4 x2 verification Notebook pinned to `verify_block`; it must stop with zero formal optimizer steps. | No embedded data. |
 | `notebooks/kaggle/train_full_first_run.ipynb` | kaggle | End-to-end Kaggle notebook for the joint-baseline run; not Stage A. | No data. |
 | `notebooks/kaggle/train_stage_a_hour.ipynb` | kaggle | End-to-end Kaggle notebook for Stage A HOUR-only training. | No data. |
@@ -138,7 +144,9 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `tests/test_multires_event_v2_relations.py` | tests | Tests relation matrices, bias symmetry, initialization, and gradients. | Registry metadata and synthetic tensors only. |
 | `tests/test_multires_event_v2_training.py` | tests | Tests optimizer, health sequence, DDP batch, scheduler, authorization, and runtime contracts. | Synthetic tensors only. |
 | `tests/test_multires_event_v2_trajectory.py` | tests | Tests block, trajectory, and relational access rules. | Synthetic tensors only. |
+| `tests/test_relational_primary_bundle.py` | tests | Tests mounted bundle discovery, no-copy dataset views, and source-extraction safety. | Synthetic files only. |
 | `tests/test_repo_hygiene.py` | tests | Tests file index and forbidden repository paths. | No data. |
 | `tests/test_training_main_route.py` | tests | Tests main-route config, label encoding, collator alignment, adapter shape, and checkpoint helpers. | Synthetic records only. |
+| `tools/build_relational_primary_bundle.py` | tools | Builds the immutable flat private Kaggle run bundle with per-file inventories and identities. | Writes restricted data only outside Git. |
 | `tools/update_file_index.py` | tools | Validates that all tracked files appear in this index. | No data. |
 | `uv.lock` | packaging | Exact dependency resolution used in semantic runtime identity. | No data. |

@@ -17,6 +17,7 @@ from trauma_predict.training.multires_event_v2_loss import (
 ROOT = Path(__file__).resolve().parents[1]
 CONTROL_PATH = ROOT / "configs/model/multires_event_v2.yaml"
 CANDIDATE_PATH = ROOT / "configs/model/multires_event_v2_capacity_48m.yaml"
+PRIMARY_PATH = ROOT / "configs/model/multires_event_v2_relational_primary.yaml"
 DIAGNOSTIC_PATH = (
     ROOT / "configs/evaluation/multires_event_v2_capacity_diagnostic_v1.json"
 )
@@ -76,6 +77,18 @@ def _build(value: dict, mode: str) -> MultiResolutionEventV2Model:
 
 
 class MultiResolutionEventV2CapacityCandidateTests(unittest.TestCase):
+    def test_48m_relational_primary_is_distinct_from_historical_diagnostic(self) -> None:
+        primary = _read(PRIMARY_PATH)
+        diagnostic = _read(CANDIDATE_PATH)
+        self.assertEqual(primary["role"], "primary")
+        self.assertEqual(primary["route"], "multires_event_v2_m4_relational_primary")
+        self.assertEqual(primary["primary_contract"]["mode"], "relational")
+        self.assertIs(primary["primary_contract"]["causal_cross_block_attention"], True)
+        self.assertIs(primary["primary_contract"]["typed_relation_attention_bias"], True)
+        self.assertEqual(primary["architecture"], diagnostic["architecture"])
+        model = _build(primary, "relational")
+        self.assertEqual(sum(parameter.numel() for parameter in model.parameters()), 47_801_855)
+
     def test_capacity_diagnostic_is_predeclared_and_not_formal_authority(self) -> None:
         diagnostic = json.loads(DIAGNOSTIC_PATH.read_text(encoding="utf-8"))
         self.assertEqual(diagnostic["status"], "frozen_before_execution")

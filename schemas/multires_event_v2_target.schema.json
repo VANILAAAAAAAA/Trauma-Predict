@@ -87,9 +87,9 @@
       "additionalProperties": false,
       "required": ["schema", "policy", "count", "by_type", "records"],
       "properties": {
-        "schema": {"const": "multires_event_m4_target_arithmetic_canonicalization_v1"},
-        "policy": {"const": "dense_mean_exact_support_r8"},
-        "count": {"type": "integer", "minimum": 0, "maximum": 54},
+        "schema": {"const": "multires_event_m4_target_arithmetic_canonicalization_v2"},
+        "policy": {"const": "exact_support_arithmetic_r9"},
+        "count": {"type": "integer", "minimum": 0, "maximum": 60},
         "by_type": {
           "type": "object",
           "additionalProperties": false,
@@ -98,17 +98,23 @@
             "dense_positive_range_mean_lower_outside_one_ulp": {"type": "integer", "minimum": 1},
             "dense_positive_range_mean_lower_inside_one_ulp": {"type": "integer", "minimum": 1},
             "dense_positive_range_mean_upper_inside_one_ulp": {"type": "integer", "minimum": 1},
-            "dense_positive_range_mean_upper_outside_one_ulp": {"type": "integer", "minimum": 1}
+            "dense_positive_range_mean_upper_outside_one_ulp": {"type": "integer", "minimum": 1},
+            "respiratory_negative_uncovered_roundoff_to_zero": {"type": "integer", "minimum": 1}
           }
         },
         "records": {
           "type": "array",
-          "maxItems": 54,
-          "items": {"$ref": "#/$defs/arithmeticCanonicalizationRecord"}
+          "maxItems": 60,
+          "items": {
+            "oneOf": [
+              {"$ref": "#/$defs/denseArithmeticCanonicalizationRecord"},
+              {"$ref": "#/$defs/respiratoryArithmeticCanonicalizationRecord"}
+            ]
+          }
         }
       }
     },
-    "arithmeticCanonicalizationRecord": {
+    "denseArithmeticCanonicalizationRecord": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -147,6 +153,35 @@
             "original_MEAN_equals_nextafter(upper,+infinity)"
           ]
         }
+      }
+    },
+    "respiratoryArithmeticCanonicalizationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_id", "field", "type", "adjusted_component",
+        "original_component_duration", "canonical_component_duration",
+        "original_uncovered", "canonical_uncovered", "block_span_hours",
+        "original_documented_duration_sum", "canonical_documented_duration_sum",
+        "ulp_at_block_span", "max_negative_roundoff_ulps", "rule"
+      ],
+      "properties": {
+        "block_id": {"pattern": "^M4_0[1-6]$"},
+        "field": {"const": "respiratory_support"},
+        "type": {"const": "respiratory_negative_uncovered_roundoff_to_zero"},
+        "adjusted_component": {
+          "enum": ["RESP_INVASIVE", "RESP_NONINVASIVE", "RESP_HIGH_FLOW", "RESP_OTHER_OXYGEN"]
+        },
+        "original_component_duration": {"type": "number", "minimum": 0, "maximum": 4},
+        "canonical_component_duration": {"type": "number", "minimum": 0, "maximum": 4},
+        "original_uncovered": {"type": "number", "exclusiveMaximum": 0},
+        "canonical_uncovered": {"const": 0},
+        "block_span_hours": {"const": 4},
+        "original_documented_duration_sum": {"type": "number", "exclusiveMinimum": 4},
+        "canonical_documented_duration_sum": {"const": 4},
+        "ulp_at_block_span": {"type": "number", "exclusiveMinimum": 0},
+        "max_negative_roundoff_ulps": {"const": 32},
+        "rule": {"const": "negative_residual_within_registered_binary64_ulp_bound_to_zero"}
       }
     },
     "valueState4": {

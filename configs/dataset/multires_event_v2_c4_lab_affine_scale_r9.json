@@ -1,0 +1,213 @@
+{
+  "content_sha256": "cae827b1f8b1c6a156da4bad340af1b9b0411ca2f5fbe0b9aa8d36ed06cb87bb",
+  "coordinate_contract": "lab_shared_affine_canonical_v1",
+  "field_order": [
+    "lactate",
+    "base_excess",
+    "bicarbonate",
+    "creatinine",
+    "bun",
+    "wbc",
+    "hemoglobin",
+    "platelet_count",
+    "inr",
+    "sodium",
+    "potassium",
+    "chloride",
+    "glucose"
+  ],
+  "fields": {
+    "base_excess": {
+      "center": 1.0,
+      "coordinate_count": 51021,
+      "field": "base_excess",
+      "field_id": 15,
+      "q25": -1.0,
+      "q75": 4.0,
+      "scale": 5.0,
+      "unique_window_count": 17007,
+      "unit": "mEq/L"
+    },
+    "bicarbonate": {
+      "center": 25.0,
+      "coordinate_count": 70995,
+      "field": "bicarbonate",
+      "field_id": 16,
+      "q25": 22.0,
+      "q75": 28.0,
+      "scale": 6.0,
+      "unique_window_count": 23665,
+      "unit": "mEq/L"
+    },
+    "bun": {
+      "center": 20.0,
+      "coordinate_count": 70257,
+      "field": "bun",
+      "field_id": 18,
+      "q25": 13.0,
+      "q75": 34.0,
+      "scale": 21.0,
+      "unique_window_count": 23419,
+      "unit": "mg/dL"
+    },
+    "chloride": {
+      "center": 104.0,
+      "coordinate_count": 76197,
+      "field": "chloride",
+      "field_id": 25,
+      "q25": 100.0,
+      "q75": 109.0,
+      "scale": 9.0,
+      "unique_window_count": 25399,
+      "unit": "mEq/L"
+    },
+    "creatinine": {
+      "center": 0.9,
+      "coordinate_count": 70491,
+      "field": "creatinine",
+      "field_id": 17,
+      "q25": 0.6,
+      "q75": 1.4,
+      "scale": 0.7999999999999999,
+      "unique_window_count": 23497,
+      "unit": "mg/dL"
+    },
+    "glucose": {
+      "center": 126.0,
+      "coordinate_count": 76866,
+      "field": "glucose",
+      "field_id": 26,
+      "q25": 106.25,
+      "q75": 153.0,
+      "scale": 46.75,
+      "unique_window_count": 25622,
+      "unit": "mg/dL"
+    },
+    "hemoglobin": {
+      "center": 9.2,
+      "coordinate_count": 64131,
+      "field": "hemoglobin",
+      "field_id": 20,
+      "q25": 8.2,
+      "q75": 10.5,
+      "scale": 2.3000000000000007,
+      "unique_window_count": 21377,
+      "unit": "g/dL"
+    },
+    "inr": {
+      "center": 1.2,
+      "coordinate_count": 36381,
+      "field": "inr",
+      "field_id": 22,
+      "q25": 1.1,
+      "q75": 1.5,
+      "scale": 0.3999999999999999,
+      "unique_window_count": 12127,
+      "unit": "ratio"
+    },
+    "lactate": {
+      "center": 1.4,
+      "coordinate_count": 26424,
+      "field": "lactate",
+      "field_id": 14,
+      "q25": 1.1,
+      "q75": 2.1,
+      "scale": 1.0,
+      "unique_window_count": 8808,
+      "unit": "mmol/L"
+    },
+    "platelet_count": {
+      "center": 182.0,
+      "coordinate_count": 62508,
+      "field": "platelet_count",
+      "field_id": 21,
+      "q25": 116.0,
+      "q75": 267.0,
+      "scale": 151.0,
+      "unique_window_count": 20836,
+      "unit": "K/uL"
+    },
+    "potassium": {
+      "center": 3.9,
+      "coordinate_count": 82125,
+      "field": "potassium",
+      "field_id": 24,
+      "q25": 3.7,
+      "q75": 4.3,
+      "scale": 0.5999999999999996,
+      "unique_window_count": 27375,
+      "unit": "mEq/L"
+    },
+    "sodium": {
+      "center": 140.0,
+      "coordinate_count": 80547,
+      "field": "sodium",
+      "field_id": 23,
+      "q25": 136.0,
+      "q75": 144.0,
+      "scale": 8.0,
+      "unique_window_count": 26849,
+      "unit": "mEq/L"
+    },
+    "wbc": {
+      "center": 10.4,
+      "coordinate_count": 61752,
+      "field": "wbc",
+      "field_id": 19,
+      "q25": 7.8,
+      "q75": 14.0,
+      "scale": 6.2,
+      "unique_window_count": 20584,
+      "unit": "K/uL"
+    }
+  },
+  "fit_population": {
+    "authority": "persisted_full_sidecar_train_target_shards",
+    "collapsed_duplicate_field_windows": 1698788,
+    "coordinate_multiset_per_active_unique_window": [
+      "last",
+      "min",
+      "max"
+    ],
+    "duplicate_truth_policy": "require_exact_canonical_json_then_count_once",
+    "physical_window_key": [
+      "subject_id",
+      "stay_id",
+      "absolute_start_hour",
+      "absolute_end_hour",
+      "field"
+    ],
+    "train_samples": 37734,
+    "train_subject_ids_sha256": "187a840331eeb4a12a90f8840b37b8ebc8f910eb031381249126e7e837d67a88",
+    "train_subjects": 3022,
+    "unique_physical_field_windows": 1244464,
+    "window_truth_ledger_sha256": "e931c4b053898343bf2cb87a3577ff664627f06d2d31436d62bbb81f94f81dc1"
+  },
+  "fit_split": "train",
+  "schema": "multires_event_v2_lab_affine_scale_v1",
+  "source": {
+    "process_registry_sha256": "2cd5fd86e42f2dc582080a1d147495a24ac6eebb5c9b007f9575918a79f2b33b",
+    "sidecar_contract_bundle_hash": "ee4786d5141c5e0a4abfd1780bbca93244c3b2c8323f3ef59a62e09123d11c05",
+    "sidecar_dataset_id": "multires_event_m4_target_v2_c4_full_20260714_r9",
+    "sidecar_dataset_manifest_sha256": "6c4e1e300686195fb2c58bfcbd74df6c7cb905d7031985cb7a7624d5c7061f1e",
+    "sidecar_emission_contract_sha256": "d41a0965e0ba2170c28c35c0320fc5c78247982548ba354cb8c137113ae6f48c",
+    "sidecar_process_contract_sha256": "2cd5fd86e42f2dc582080a1d147495a24ac6eebb5c9b007f9575918a79f2b33b",
+    "sidecar_sample_manifest_sha256": "df5eedcee0abf7d09fea86572db471047bdaa82dc28b14dc8bbf0dac0e32dd0e",
+    "v1_element_registry_sha256": "34d44df3d7d40a15bb693d3472f79e292f22a2bd8b4930acd31810923bfaf47d"
+  },
+  "status": "frozen_train_only_fit",
+  "transform": {
+    "center": "linear_interpolation_median_of_fit_multiset",
+    "clipping": "forbidden",
+    "forward": "z=(x-center)/scale",
+    "inverse": "x=center+scale*z",
+    "scale": "q75_minus_q25_of_fit_multiset",
+    "scale_fallback": "none_fail_if_nonpositive",
+    "shared_coordinates": [
+      "last",
+      "min",
+      "max"
+    ]
+  },
+  "version": "2026-07-13-train-target-windows-v1"
+}

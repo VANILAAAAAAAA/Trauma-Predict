@@ -231,7 +231,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             "metrics_sha256": "f" * 64,
         }
 
-    def completed_run_fixture(self, root: Path, launcher, mode: str = "block") -> Path:
+    def completed_run_fixture(self, root: Path, launcher, mode: str = "relational") -> Path:
         run_dir = root / f"t4x2_multires_event_v2_{mode}"
         run_dir.mkdir(parents=True)
         train_config = yaml.safe_load(
@@ -245,7 +245,10 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             (REPO_ROOT / "configs/dataset/multires_event_v2_c4.yaml").read_text()
         )
         model_config = yaml.safe_load(
-            (REPO_ROOT / "configs/model/multires_event_v2.yaml").read_text()
+            (
+                REPO_ROOT
+                / "configs/model/multires_event_v2_relational_primary.yaml"
+            ).read_text()
         )
         semantic_runtime = {
             "schema_version": "trauma_predict.multires_event_v2_semantic_runtime.v1",
@@ -632,7 +635,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         run_manifest = {
             "schema_version": "trauma_predict.multires_event_v2_run_manifest.v1",
             "status": "SUCCEEDED",
-            "route": "multires_event_v2_m4_trajectory",
+            "route": "multires_event_v2_m4_relational_primary",
             "run_name": train_config["run_name"],
             "mode": mode,
             "training": completed_training,
@@ -1298,15 +1301,15 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
     def test_hosted_training_has_a_source_level_authorization_gate(self) -> None:
         launcher = load_launcher()
         self.assertTrue(launcher.TRAINING_AUTHORIZED)
-        launcher.require_training_authorization("block")
-        for action in ("smoke", "trajectory", "relational"):
+        launcher.require_training_authorization("relational")
+        for action in ("smoke", "trajectory", "block"):
             with self.subTest(action=action), self.assertRaisesRegex(
                 RuntimeError, "not authorized"
             ):
                 launcher.require_training_authorization(action)
         self.assertTrue(launcher.VERIFICATION_AUTHORIZED)
-        launcher.require_verification_authorization("block")
-        for action in ("smoke", "trajectory", "relational"):
+        launcher.require_verification_authorization("relational")
+        for action in ("smoke", "trajectory", "block"):
             with self.subTest(verification_action=action), self.assertRaisesRegex(
                 RuntimeError, "not authorized"
             ):
@@ -1315,10 +1318,10 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "not authorized"):
                 launcher.require_training_authorization("trajectory")
 
-    def test_direct_cli_cannot_bypass_core_gate_but_dry_preflight_remains_available(self) -> None:
+    def test_direct_cli_runs_only_relational_primary_but_dry_preflight_remains_available(self) -> None:
         entrypoint = load_entrypoint()
         args = SimpleNamespace(
-            config=Path("configs/train/t4x2_multires_event_v2_block.yaml"),
+            config=Path("configs/train/t4x2_multires_event_v2_relational.yaml"),
             dry_run=False,
             capacity_probe_output=None,
             elapsed_before_capacity_seconds=None,
@@ -1328,20 +1331,23 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         )
         with patch.object(entrypoint, "parse_args", return_value=args), patch.object(
             entrypoint, "run_multires_event_v2_training"
-        ) as training, self.assertRaisesRegex(RuntimeError, "capacity-gated single-torchrun"):
+        ) as training:
             entrypoint.main()
-        training.assert_not_called()
-
-        unauthorized_args = SimpleNamespace(
-            **{
-                **vars(args),
-                "config": Path("configs/train/t4x2_multires_event_v2_trajectory.yaml"),
-            }
+        training.assert_called_once_with(
+            (REPO_ROOT / args.config).resolve(), repo_root=REPO_ROOT
         )
-        with patch.object(
-            entrypoint, "parse_args", return_value=unauthorized_args
-        ), self.assertRaisesRegex(RuntimeError, "not authorized for run_name"):
-            entrypoint.main()
+
+        for config_name in (
+            "configs/train/t4x2_multires_event_v2_block.yaml",
+            "configs/train/t4x2_multires_event_v2_trajectory.yaml",
+        ):
+            unauthorized_args = SimpleNamespace(
+                **{**vars(args), "config": Path(config_name)}
+            )
+            with self.subTest(config=config_name), patch.object(
+                entrypoint, "parse_args", return_value=unauthorized_args
+            ), self.assertRaisesRegex(RuntimeError, "not authorized for run_name"):
+                entrypoint.main()
 
         dry_args = SimpleNamespace(
             **{
@@ -1835,7 +1841,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             valid = self.completed_run_fixture(root / "valid", launcher)
             validation = launcher.validate_completed_run(
                 valid,
-                expected_mode="block",
+                expected_mode="relational",
                 require_free_running=True,
             )
             self.assertEqual(validation["parameter_count"], 123456)
@@ -2045,7 +2051,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                 ):
                     launcher.validate_completed_run(
                         run_dir,
-                        expected_mode="block",
+                        expected_mode="relational",
                         require_free_running=True,
                     )
 

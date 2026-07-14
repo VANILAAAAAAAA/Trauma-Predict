@@ -29,7 +29,7 @@ TARGET_ROOT = Path(
     os.environ.get(
         "TRAUMA_PREDICT_V2_TARGET_ROOT",
         "/mnt/d/Data/trauma_predict_work/"
-        "multires_event_m4_target_v2_c4_20260713/full_r8",
+        "multires_event_m4_target_v2_c4_20260714/full_r9",
     )
 )
 
@@ -80,7 +80,7 @@ class _TamperedBaseDataset(_DelegatingBaseDataset):
 
 @unittest.skipUnless(
     BASE_ROOT.is_dir() and _is_succeeded(TARGET_ROOT),
-    "formal V1 input or V2 full_r8 sidecar is not mounted",
+    "formal V1 input or V2 full_r9 sidecar is not mounted",
 )
 class MultiresEventV2DataTest(unittest.TestCase):
     @classmethod
@@ -89,7 +89,7 @@ class MultiresEventV2DataTest(unittest.TestCase):
         cls.base_dataset = MultiresEventDataset(BASE_ROOT, "train", cls.supervision)
         cls.dataset = MultiresEventV2Dataset(cls.base_dataset, TARGET_ROOT)
 
-    def test_full_r8_join_uses_sample_and_both_content_hashes(self) -> None:
+    def test_full_r9_join_uses_sample_and_both_content_hashes(self) -> None:
         self.assertEqual(len(self.dataset), 37734)
         for index in (0, len(self.dataset) - 1):
             joined = self.dataset[index]
@@ -216,14 +216,14 @@ class MultiresEventV2DataTest(unittest.TestCase):
             .item()
         )
 
-    def test_preflight_validates_full_r8_boundary_records(self) -> None:
+    def test_preflight_validates_full_r9_boundary_records(self) -> None:
         result = preflight_multires_event_v2(
             self.base_dataset,
             TARGET_ROOT,
             verify_target_shard_hashes=False,
             verify_all_records=False,
         )
-        self.assertEqual(result.dataset_id, "multires_event_m4_target_v2_c4_full_20260713_r8")
+        self.assertEqual(result.dataset_id, "multires_event_m4_target_v2_c4_full_20260714_r9")
         self.assertEqual(result.sample_count, 37734)
         self.assertEqual(result.block_count, 6)
         self.assertEqual(result.core_field_count, 29)

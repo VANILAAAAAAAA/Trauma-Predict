@@ -1,19 +1,19 @@
 schema_version: trauma_predict.multires_event_v2_train_config.v1
-route: multires_event_v2_m4_trajectory
+route: multires_event_v2_m4_relational_primary
 run_name: t4x2_multires_event_v2_block
 mode: block
 seed: 20260713
-lab_scale_artifact: configs/dataset/multires_event_v2_c4_lab_affine_scale.json
-lab_scale_artifact_hash: dbd5b14254338ff8c42fbfbaf02ca024050b83860f21ffb3b58a27899469cd12
-standardized_primitive_scale_artifact: configs/dataset/multires_event_v2_c4_standardized_primitive_scale.json
-standardized_primitive_scale_artifact_hash: 0f13f933ae008613ca0665a2de21674de571cbd1102eeca21376e00e582b49e7
+lab_scale_artifact: configs/dataset/multires_event_v2_c4_lab_affine_scale_r9.json
+lab_scale_artifact_hash: cae827b1f8b1c6a156da4bad340af1b9b0411ca2f5fbe0b9aa8d36ed06cb87bb
+standardized_primitive_scale_artifact: configs/dataset/multires_event_v2_c4_standardized_primitive_scale_r9.json
+standardized_primitive_scale_artifact_hash: f075a9d2d415028845026b06e746cecf382102dfc0ed2c31631000506030665f
 promotion_metric_contract: configs/evaluation/multires_event_v2_promotion_v2.json
 promotion_metric_contract_hash: 7b5b85d5d3b3604308e1fe8b1471bc6c5c0c20bb16e3b9aaffd0c5e3afb53f3f
 
 dataset:
   config_path: configs/dataset/multires_event_v2_c4.yaml
 model:
-  config_path: configs/model/multires_event_v2.yaml
+  config_path: configs/model/multires_event_v2_relational_primary.yaml
 
 objective:
   future_resolution: M4
@@ -43,7 +43,10 @@ evaluation:
   free_running_crn_seed: 20260713
 
 comparison:
-  matched_mode_order: [block, trajectory, relational]
+  primary_mode: relational
+  primary_training_order: [relational]
+  optional_ablation_modes: [trajectory, block]
+  ablations_are_prerequisites: false
   paired_rows: all_6309_persisted_validation_anchors
   paired_unit: subject_id
   estimands: [candidate_minus_control_subject_macro_joint_nll, candidate_over_control_subject_macro_score_ratio]
@@ -52,8 +55,8 @@ comparison:
   shared_subject_bootstrap_schedule: true
   physical_metrics_decision_role: report_only
   coherence_required_rate: 1.0
-  promotion_gate: sequential_conjunction
-  decision_authority: sequential_nll_structural_marginal_coherence_v2
+  promotion_gate: none_for_primary_training
+  decision_authority: relational_primary_then_optional_matched_ablations
 
 training:
   required_cuda_devices: 2
@@ -87,6 +90,7 @@ training:
   logging_steps: 100
   eval_steps: 250
   save_steps: 500
+  initial_checkpoint_step: 2
   keep_last_checkpoints: 3
   max_train_subjects: null
   max_eval_subjects: null

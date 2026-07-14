@@ -104,7 +104,7 @@ def _registry() -> dict[str, object]:
         "spo2",
     )
     return {
-        "version": "2026-07-13-r8",
+        "version": "2026-07-14-r9",
         "scope": {
             "future_blocks": tuple(f"M4_{index:02d}" for index in range(1, 7)),
             "expanded_enabled_core_primitives": EXPECTED_ENABLED_CORE_PRIMITIVES,

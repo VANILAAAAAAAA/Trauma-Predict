@@ -39,7 +39,7 @@ SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="PyTorch/DDP entry point for the six-block M4 V2 matched experiments."
+        description="PyTorch/DDP entry point for the six-block M4 relational primary."
     )
     parser.add_argument("--config", type=Path)
     parser.add_argument("--dry-run", action="store_true")
@@ -121,10 +121,6 @@ def main() -> None:
             elapsed_before_capacity_seconds=float(args.elapsed_before_capacity_seconds),
         )
         return
-    if train.get("run_name") != "t4x2_multires_event_v2_smoke":
-        raise RuntimeError(
-            "formal V2 modes require the capacity-gated single-torchrun entrypoint"
-        )
     run_multires_event_v2_training(config_path.resolve(), repo_root=REPO_ROOT)
 
 

@@ -79,44 +79,42 @@ from trauma_predict.training.observability import (
 )
 
 
-ROUTE = "multires_event_v2_m4_trajectory"
+ROUTE = "multires_event_v2_m4_relational_primary"
 MATCHED_MODES = ("block", "trajectory", "relational")
 TRAINING_AUTHORIZED = True
 AUTHORIZED_TRAINING_RUN_NAMES: tuple[str, ...] = (
-    "t4x2_multires_event_v2_block",
+    "t4x2_multires_event_v2_relational",
 )
 TRAINING_AUTHORIZATION_REASON = (
-    "the r7 zero-Input hosted verification passed the exact dual-T4 data, "
-    "optimizer, checkpoint/resume, and 100x100 rollout path; authorization "
-    "remains limited to the block control"
+    "the frozen primary is the 47,801,855-parameter relational six-M4 model; "
+    "block and trajectory are optional later ablations and cannot gate it"
 )
 VERIFICATION_AUTHORIZED = True
-AUTHORIZED_VERIFICATION_RUN_NAMES = ("t4x2_multires_event_v2_block",)
+AUTHORIZED_VERIFICATION_RUN_NAMES = ("t4x2_multires_event_v2_relational",)
 VERIFICATION_AUTHORIZATION_REASON = (
-    "agent-owned capacity and failure-path verification is authorized, but it must "
-    "stop before formal optimizer step one"
+    "verification must exercise the exact relational primary model and training state"
 )
 EXPECTED_BASE_DATASET_ID = "multires_event_v1_c4_full_20260712"
 EXPECTED_BASE_FINGERPRINT = "d58d003b6a9b2dd7c1f8d269a1867b534ea475a91118d7d4d44804bee69f9e47"
 EXPECTED_BASE_MANIFEST_SHA256 = "4e7742900907e0e2f774099ba1dd485468210ff3da9ddaef3ec3bf67957000c3"
 EXPECTED_BASE_SAMPLE_MANIFEST_SHA256 = "b3d4305353997320fe310c4df6e15619026db6f229a124b0c9a5e1d89898f05e"
 EXPECTED_SUBJECT_SPLIT_SHA256 = "89deb50c2c6415dff5ce00338a980e25531433e8dee835b004a27d561e7adb6d"
-EXPECTED_TARGET_DATASET_ID = "multires_event_m4_target_v2_c4_full_20260713_r8"
-EXPECTED_TARGET_MANIFEST_SHA256 = "fb8748a5d396c5342be143032096acef03af2345bdd80e53dc82f69a7875b8b6"
-EXPECTED_TARGET_SAMPLE_MANIFEST_SHA256 = "96ce73f2cfb4a2a8af0bd21cbbab9634bd02268d03e7cda68ac4f21229596a4e"
-EXPECTED_CONTRACT_BUNDLE_HASH = "10e9ed6c2fb94610fa61edc5061b8465e967ef6c222f22455877da583420cd10"
-EXPECTED_PROCESS_CONTRACT_SHA256 = "3f90bec35d6473a0e9dc69f3654d1b55eaf1c9d3f9850078df1361e84b2cd7db"
-EXPECTED_EMISSION_CONTRACT_SHA256 = "e926e1a3e6e3e71039a26548ca8d3f35bf2eee5725be3195992d4d47f715e96c"
-EXPECTED_PROJECTION_CONTRACT_SHA256 = "7efdf7d3c0415e6aa26d99411f5df66907b5ff74b30f6880e72de72fe4c3d34b"
+EXPECTED_TARGET_DATASET_ID = "multires_event_m4_target_v2_c4_full_20260714_r9"
+EXPECTED_TARGET_MANIFEST_SHA256 = "6c4e1e300686195fb2c58bfcbd74df6c7cb905d7031985cb7a7624d5c7061f1e"
+EXPECTED_TARGET_SAMPLE_MANIFEST_SHA256 = "df5eedcee0abf7d09fea86572db471047bdaa82dc28b14dc8bbf0dac0e32dd0e"
+EXPECTED_CONTRACT_BUNDLE_HASH = "ee4786d5141c5e0a4abfd1780bbca93244c3b2c8323f3ef59a62e09123d11c05"
+EXPECTED_PROCESS_CONTRACT_SHA256 = "2cd5fd86e42f2dc582080a1d147495a24ac6eebb5c9b007f9575918a79f2b33b"
+EXPECTED_EMISSION_CONTRACT_SHA256 = "d41a0965e0ba2170c28c35c0320fc5c78247982548ba354cb8c137113ae6f48c"
+EXPECTED_PROJECTION_CONTRACT_SHA256 = "3974797e7001e0292a89885a3edc81d09134c4ea44e25ea91bf07e18eaf06b65"
 EXPECTED_RELATION_CONTRACT_SHA256 = "65286cd9fb7e1038270de39ea17daafffb160cf9c5ab7bb3beb2556a9aa8eea0"
-EXPECTED_SIDECAR_SCHEMA_SHA256 = "a2e4018d9dac3c4245ad13852036e6cb3ff9014eea9dc996fa9b0b6235251e8f"
-EXPECTED_LAB_SCALE_ARTIFACT = "configs/dataset/multires_event_v2_c4_lab_affine_scale.json"
-EXPECTED_LAB_SCALE_ARTIFACT_HASH = "dbd5b14254338ff8c42fbfbaf02ca024050b83860f21ffb3b58a27899469cd12"
+EXPECTED_SIDECAR_SCHEMA_SHA256 = "58d3673b6e232344709555a7bff2186047b08ea7932b6685553ee1b526d7e0dd"
+EXPECTED_LAB_SCALE_ARTIFACT = "configs/dataset/multires_event_v2_c4_lab_affine_scale_r9.json"
+EXPECTED_LAB_SCALE_ARTIFACT_HASH = "cae827b1f8b1c6a156da4bad340af1b9b0411ca2f5fbe0b9aa8d36ed06cb87bb"
 EXPECTED_STANDARDIZED_PRIMITIVE_SCALE_ARTIFACT = (
-    "configs/dataset/multires_event_v2_c4_standardized_primitive_scale.json"
+    "configs/dataset/multires_event_v2_c4_standardized_primitive_scale_r9.json"
 )
 EXPECTED_STANDARDIZED_PRIMITIVE_SCALE_ARTIFACT_HASH = (
-    "0f13f933ae008613ca0665a2de21674de571cbd1102eeca21376e00e582b49e7"
+    "f075a9d2d415028845026b06e746cecf382102dfc0ed2c31631000506030665f"
 )
 EXPECTED_PROMOTION_METRIC_CONTRACT = (
     "configs/evaluation/multires_event_v2_promotion_v2.json"
@@ -125,7 +123,7 @@ EXPECTED_PROMOTION_METRIC_CONTRACT_HASH = (
     "7b5b85d5d3b3604308e1fe8b1471bc6c5c0c20bb16e3b9aaffd0c5e3afb53f3f"
 )
 EXPECTED_COUNTS = {"samples": 50350, "train": 37734, "val": 6309, "test": 6307, "shards": 52}
-EXPECTED_FORMAL_MODEL_PARAMETER_COUNT = 30_684_479
+EXPECTED_FORMAL_MODEL_PARAMETER_COUNT = 47_801_855
 OPTIMIZER_CONTRACT_VERSION = "trauma_predict.multires_event_v2_optimizer.v1"
 RAW_JOINT_NLL_REDUCTION = "raw_414_factor_joint_nll_batch_mean"
 OPTIMIZER_HEALTH_SUMMARY_SCHEMA = (
@@ -162,7 +160,7 @@ CAPACITY_STRUCTURAL_METRICS = (
     "marginal_state_crps",
 )
 EXPECTED_FORMAL_ARCHITECTURE = {
-    "hidden_size": 384,
+    "hidden_size": 480,
     "num_attention_heads": 8,
     "trajectory_encoder_layers": 6,
     "target_decoder_layers": 6,
@@ -298,7 +296,7 @@ def validate_multires_event_v2_configs(
             raise ValueError(f"dataset.base.{key} differs from immutable V1 authority")
     for key, expected in expected_target.items():
         if str(target.get(key)) != expected:
-            raise ValueError(f"dataset.target.{key} differs from full_r8 authority")
+            raise ValueError(f"dataset.target.{key} differs from full_r9 authority")
     if dict(dataset.get("expected_counts", {})) != EXPECTED_COUNTS:
         raise ValueError("V2 dataset expected_counts must match the persisted C4 rows")
     if str(train.get("lab_scale_artifact")) != EXPECTED_LAB_SCALE_ARTIFACT:
@@ -346,6 +344,8 @@ def validate_multires_event_v2_configs(
         raise ValueError("V2 must initialize from scratch")
     if model.get("text_backbone") is not None or model.get("tokenizer") is not None:
         raise ValueError("V2 structured process model cannot use a text backbone/tokenizer")
+    if model.get("role") != "primary":
+        raise ValueError("V2 formal model config must declare role=primary")
     architecture = _mapping(model.get("architecture"), "model.architecture")
     for key, expected in EXPECTED_FORMAL_ARCHITECTURE.items():
         if int(architecture.get(key, -1)) != expected:
@@ -354,7 +354,7 @@ def validate_multires_event_v2_configs(
     if configured_field_ids != REGISTERED_CORE_FIELD_IDS:
         raise ValueError(
             "formal model.architecture.target_field_ids must exactly match the ordered "
-            "full_r8 registered_core_field_ids"
+            "full_r9 registered_core_field_ids"
         )
 
     evaluation = _mapping(train.get("evaluation"), "train.evaluation")
@@ -388,7 +388,10 @@ def validate_multires_event_v2_configs(
             raise ValueError(f"evaluation.{key} must equal {expected}")
     comparison = _mapping(train.get("comparison"), "train.comparison")
     required_comparison = {
-        "matched_mode_order": ["block", "trajectory", "relational"],
+        "primary_mode": "relational",
+        "primary_training_order": ["relational"],
+        "optional_ablation_modes": ["trajectory", "block"],
+        "ablations_are_prerequisites": False,
         "paired_rows": "all_6309_persisted_validation_anchors",
         "paired_unit": "subject_id",
         "estimands": [
@@ -400,8 +403,8 @@ def validate_multires_event_v2_configs(
         "shared_subject_bootstrap_schedule": True,
         "physical_metrics_decision_role": "report_only",
         "coherence_required_rate": 1.0,
-        "promotion_gate": "sequential_conjunction",
-        "decision_authority": "sequential_nll_structural_marginal_coherence_v2",
+        "promotion_gate": "none_for_primary_training",
+        "decision_authority": "relational_primary_then_optional_matched_ablations",
     }
     for key, expected in required_comparison.items():
         if comparison.get(key) != expected:
@@ -494,6 +497,7 @@ def _validate_run_profile(
             "warmup_steps": 400,
             "eval_steps": 250,
             "save_steps": 500,
+            "initial_checkpoint_step": 2,
             "logging_steps": 100,
             "resume": True,
             "max_train_subjects": None,
@@ -506,6 +510,16 @@ def _validate_run_profile(
         observed = training.get(key)
         if isinstance(observed, bool) or not isinstance(observed, int) or observed != expected[key]:
             raise ValueError(f"training.{key} must equal {expected[key]!r} for {run_name}")
+    if run_name != smoke_name:
+        observed_initial = training.get("initial_checkpoint_step")
+        if (
+            isinstance(observed_initial, bool)
+            or not isinstance(observed_initial, int)
+            or observed_initial != expected["initial_checkpoint_step"]
+        ):
+            raise ValueError(
+                "training.initial_checkpoint_step must equal 2 for the primary run"
+            )
     if training.get("resume") is not expected["resume"]:
         raise ValueError(f"training.resume must equal {expected['resume']!r} for {run_name}")
     if training.get("max_train_subjects") != expected["max_train_subjects"]:
@@ -1050,14 +1064,14 @@ def validate_formal_target_field_order(
     model: Mapping[str, Any],
     contract: MultiresEventV2Contract,
 ) -> None:
-    """Bind the formal decoder field axis to the mounted full_r8 contract."""
+    """Bind the formal decoder field axis to the mounted full_r9 contract."""
 
     architecture = _mapping(model.get("architecture"), "model.architecture")
     configured = tuple(int(value) for value in architecture.get("target_field_ids", ()))
     registered = tuple(int(value) for value in contract.registered_core_field_ids)
     if configured != registered:
         raise ValueError(
-            "formal model target_field_ids must exactly match full_r8 "
+            "formal model target_field_ids must exactly match full_r9 "
             "contract.registered_core_field_ids in order: "
             f"configured={configured}, registered={registered}"
         )
@@ -1094,7 +1108,7 @@ def build_multires_event_v2_runtime(
     world_size: int,
     phase: str,
 ) -> MultiresEventV2Runtime:
-    """Join immutable V1 inputs to frozen full_r8 targets without rebuilding either split."""
+    """Join immutable V1 inputs to frozen full_r9 targets without rebuilding either split."""
 
     try:
         from torch.utils.data import DataLoader
@@ -1590,13 +1604,9 @@ def run_multires_event_v2_capacity_gated_training(
                 f"{CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR}",
                 flush=True,
             )
-        authorization = _capacity_authorization_from_report(
-            train_config_path, train, report
-        )
         result = run_multires_event_v2_training(
             train_config_path,
             repo_root=repo_root,
-            _capacity_authorization=authorization,
         )
         completed = True
         return result
@@ -2431,9 +2441,8 @@ def run_multires_event_v2_training(
     train_config_path: str | Path,
     *,
     repo_root: str | Path,
-    _capacity_authorization: _CapacityAuthorization | None = None,
 ) -> dict[str, Any]:
-    """Run one pre-frozen block/trajectory/relational matched experiment."""
+    """Run the authorized relational primary, including its formal step-2 checkpoint."""
 
     root = Path(repo_root).resolve()
     train, dataset, model_config, dataset_path, model_path = load_multires_event_v2_configs(
@@ -2441,11 +2450,6 @@ def run_multires_event_v2_training(
         repo_root=root,
     )
     require_multires_event_v2_training_authorization(train)
-    _validate_capacity_authorization(
-        _capacity_authorization,
-        train_config_path=train_config_path,
-        train=train,
-    )
     rank, world_size, local_rank, device = _initialize_v2_distributed(train)
     _seed_everything(int(train["seed"]), rank)
     output_dir = resolve_repo_path(str(train["outputs"]["output_dir"]), root)
@@ -2574,6 +2578,10 @@ def run_multires_event_v2_training(
         rank=rank,
         world_size=world_size,
     )
+    if isinstance(result.get("hosted_verification_stop_after_step"), int):
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            torch.distributed.destroy_process_group()
+        return result
     selected_model_identity = _load_v2_best_model(
         output_dir,
         model,
@@ -2706,6 +2714,9 @@ def _train_loop(
     ):
         raise RuntimeError("formal V2 optimizer loop requires exact B32/rank, world size 2, B64")
     global_step = int(state.get("global_step", 0))
+    verification_stop_step = _hosted_verification_stop_step(
+        starting_global_step=global_step
+    )
     epoch = int(state.get("epoch", 0))
     batches_in_epoch = int(state.get("batches_in_epoch", 0))
     micro_in_accum = int(state.get("micro_in_accum", 0))
@@ -2888,7 +2899,17 @@ def _train_loop(
                 )
             model.train()
 
-        if global_step % int(training["save_steps"]) == 0 or global_step == max_steps:
+        initial_checkpoint_step = training.get("initial_checkpoint_step")
+        if (
+            global_step % int(training["save_steps"]) == 0
+            or global_step == max_steps
+            or (
+                isinstance(initial_checkpoint_step, int)
+                and not isinstance(initial_checkpoint_step, bool)
+                and global_step == initial_checkpoint_step
+            )
+            or global_step == verification_stop_step
+        ):
             _save_v2_checkpoint(
                 output_dir=output_dir,
                 model=model,
@@ -2909,6 +2930,86 @@ def _train_loop(
                 rank=rank,
                 keep_last=int(training["keep_last_checkpoints"]),
             )
+            if global_step == initial_checkpoint_step and is_rank_zero():
+                checkpoint = output_dir / "checkpoints" / f"checkpoint-{global_step:08d}"
+                manifest_path = checkpoint / "checkpoint_manifest.json"
+                readiness = {
+                    "schema_version": "trauma_predict.multires_event_v2_formal_step2_readiness.v1",
+                    "status": "PASSED",
+                    "created_at": utc_now(),
+                    "mode": str(train["mode"]),
+                    "run_name": str(train["run_name"]),
+                    "global_step": global_step,
+                    "checkpoint": str(checkpoint.relative_to(output_dir)),
+                    "checkpoint_manifest_sha256": sha256_file(manifest_path),
+                    "model_parameter_count": EXPECTED_FORMAL_MODEL_PARAMETER_COUNT,
+                    "target_dataset_id": EXPECTED_TARGET_DATASET_ID,
+                    "contract_bundle_hash": EXPECTED_CONTRACT_BUNDLE_HASH,
+                    "identity_hashes": dict(identity_hashes),
+                }
+                atomic_write_json(output_dir / "formal_step2_readiness.json", readiness)
+                print(
+                    "MULTIRES_EVENT_V2_FORMAL_STEP2_CHECKPOINT_OK "
+                    f"mode={train['mode']} parameters={EXPECTED_FORMAL_MODEL_PARAMETER_COUNT} "
+                    f"path={checkpoint}",
+                    flush=True,
+                )
+            if global_step == 3 and verification_stop_step == 3 and is_rank_zero():
+                checkpoint = output_dir / "checkpoints/checkpoint-00000003"
+                manifest_path = checkpoint / "checkpoint_manifest.json"
+                atomic_write_json(
+                    output_dir / "formal_resume_step3_readiness.json",
+                    {
+                        "schema_version": (
+                            "trauma_predict.multires_event_v2_formal_resume_step3_readiness.v1"
+                        ),
+                        "status": "PASSED",
+                        "created_at": utc_now(),
+                        "mode": str(train["mode"]),
+                        "run_name": str(train["run_name"]),
+                        "restored_from_step": 2,
+                        "global_step": 3,
+                        "checkpoint": str(checkpoint.relative_to(output_dir)),
+                        "checkpoint_manifest_sha256": sha256_file(manifest_path),
+                        "model_parameter_count": EXPECTED_FORMAL_MODEL_PARAMETER_COUNT,
+                        "target_dataset_id": EXPECTED_TARGET_DATASET_ID,
+                        "contract_bundle_hash": EXPECTED_CONTRACT_BUNDLE_HASH,
+                        "identity_hashes": dict(identity_hashes),
+                    },
+                )
+                print(
+                    "MULTIRES_EVENT_V2_FORMAL_RESUME_STEP3_CHECKPOINT_OK "
+                    f"mode={train['mode']} parameters={EXPECTED_FORMAL_MODEL_PARAMETER_COUNT} "
+                    f"path={checkpoint}",
+                    flush=True,
+                )
+            if verification_stop_step is not None and global_step == verification_stop_step:
+                _collect_distributed_phase(
+                    f"formal hosted-verification step-{global_step} close",
+                    lambda: (
+                        _validate_formal_step2_readiness(
+                            output_dir,
+                            expected_step=global_step,
+                            expected_mode=str(train["mode"]),
+                        )
+                        if global_step == 2
+                        else _validate_formal_resume_step3_readiness(
+                            output_dir,
+                            expected_mode=str(train["mode"]),
+                        )
+                    )
+                    if is_rank_zero()
+                    else None,
+                )
+                return {
+                    "global_step": global_step,
+                    "epochs_started": epoch + 1,
+                    "best_metric": best_metric,
+                    "best_step": best_step,
+                    "max_steps": max_steps,
+                    "scaler_skipped_steps": scaler_skipped_steps,
+                    "hosted_verification_stop_after_step": global_step,
+                }
     return {
         "global_step": global_step,
         "epochs_started": epoch + 1,
@@ -2917,6 +3018,114 @@ def _train_loop(
         "max_steps": max_steps,
         "scaler_skipped_steps": scaler_skipped_steps,
     }
+
+
+def _verification_stop_after_formal_step2_requested() -> bool:
+    value = os.environ.get(
+        "TRAUMA_PREDICT_V2_HOSTED_VERIFY_STOP_AFTER_FORMAL_STEP2", "0"
+    ).strip()
+    if value not in {"0", "1"}:
+        raise ValueError(
+            "TRAUMA_PREDICT_V2_HOSTED_VERIFY_STOP_AFTER_FORMAL_STEP2 must be 0 or 1"
+        )
+    return value == "1"
+
+
+def _verification_stop_after_resume_step3_requested() -> bool:
+    value = os.environ.get(
+        "TRAUMA_PREDICT_V2_HOSTED_VERIFY_STOP_AFTER_RESUME_STEP3", "0"
+    ).strip()
+    if value not in {"0", "1"}:
+        raise ValueError(
+            "TRAUMA_PREDICT_V2_HOSTED_VERIFY_STOP_AFTER_RESUME_STEP3 must be 0 or 1"
+        )
+    return value == "1"
+
+
+def _hosted_verification_stop_step(*, starting_global_step: int) -> int | None:
+    stop_at_2 = _verification_stop_after_formal_step2_requested()
+    stop_at_3 = _verification_stop_after_resume_step3_requested()
+    if stop_at_2 and stop_at_3:
+        raise ValueError("hosted verification stop modes are mutually exclusive")
+    if stop_at_2:
+        if starting_global_step != 0:
+            raise ValueError("formal step-2 verification must start from optimizer step 0")
+        return 2
+    if stop_at_3:
+        if starting_global_step != 2:
+            raise ValueError("resume step-3 verification must restore optimizer step 2")
+        return 3
+    return None
+
+
+def _validate_formal_step2_readiness(
+    output_dir: Path,
+    *,
+    expected_step: int,
+    expected_mode: str,
+) -> dict[str, Any]:
+    readiness_path = output_dir / "formal_step2_readiness.json"
+    if readiness_path.is_symlink() or not readiness_path.is_file():
+        raise FileNotFoundError("formal step-2 readiness evidence is absent")
+    readiness = json.loads(readiness_path.read_text(encoding="utf-8"))
+    checkpoint = output_dir / str(readiness.get("checkpoint") or "")
+    manifest_path = checkpoint / "checkpoint_manifest.json"
+    manifest = _validate_v2_checkpoint_directory(
+        checkpoint,
+        expected_world_size=2,
+        expected_step=expected_step,
+    )
+    if (
+        readiness.get("schema_version")
+        != "trauma_predict.multires_event_v2_formal_step2_readiness.v1"
+        or readiness.get("status") != "PASSED"
+        or readiness.get("mode") != expected_mode
+        or readiness.get("run_name") != "t4x2_multires_event_v2_relational"
+        or int(readiness.get("global_step", -1)) != expected_step
+        or int(readiness.get("model_parameter_count", -1))
+        != EXPECTED_FORMAL_MODEL_PARAMETER_COUNT
+        or readiness.get("target_dataset_id") != EXPECTED_TARGET_DATASET_ID
+        or readiness.get("contract_bundle_hash") != EXPECTED_CONTRACT_BUNDLE_HASH
+        or readiness.get("checkpoint_manifest_sha256") != sha256_file(manifest_path)
+        or readiness.get("identity_hashes") != manifest.get("identity_hashes")
+    ):
+        raise ValueError("formal step-2 readiness evidence does not bind its checkpoint")
+    return readiness
+
+
+def _validate_formal_resume_step3_readiness(
+    output_dir: Path,
+    *,
+    expected_mode: str,
+) -> dict[str, Any]:
+    readiness_path = output_dir / "formal_resume_step3_readiness.json"
+    if readiness_path.is_symlink() or not readiness_path.is_file():
+        raise FileNotFoundError("formal resume step-3 readiness evidence is absent")
+    readiness = json.loads(readiness_path.read_text(encoding="utf-8"))
+    checkpoint = output_dir / str(readiness.get("checkpoint") or "")
+    manifest_path = checkpoint / "checkpoint_manifest.json"
+    manifest = _validate_v2_checkpoint_directory(
+        checkpoint,
+        expected_world_size=2,
+        expected_step=3,
+    )
+    if (
+        readiness.get("schema_version")
+        != "trauma_predict.multires_event_v2_formal_resume_step3_readiness.v1"
+        or readiness.get("status") != "PASSED"
+        or readiness.get("mode") != expected_mode
+        or readiness.get("run_name") != "t4x2_multires_event_v2_relational"
+        or int(readiness.get("restored_from_step", -1)) != 2
+        or int(readiness.get("global_step", -1)) != 3
+        or int(readiness.get("model_parameter_count", -1))
+        != EXPECTED_FORMAL_MODEL_PARAMETER_COUNT
+        or readiness.get("target_dataset_id") != EXPECTED_TARGET_DATASET_ID
+        or readiness.get("contract_bundle_hash") != EXPECTED_CONTRACT_BUNDLE_HASH
+        or readiness.get("checkpoint_manifest_sha256") != sha256_file(manifest_path)
+        or readiness.get("identity_hashes") != manifest.get("identity_hashes")
+    ):
+        raise ValueError("formal resume step-3 evidence does not bind its checkpoint")
+    return readiness
 
 
 def _save_v2_checkpoint(
@@ -3398,8 +3607,8 @@ def _verify_artifact_files(
         (base_root / "dataset_manifest.json", EXPECTED_BASE_MANIFEST_SHA256, "V1 manifest"),
         (base_root / "sample_manifest.csv", EXPECTED_BASE_SAMPLE_MANIFEST_SHA256, "V1 sample manifest"),
         (base_root / "subject_split.csv", EXPECTED_SUBJECT_SPLIT_SHA256, "patient split"),
-        (target_root / "dataset_manifest.json", EXPECTED_TARGET_MANIFEST_SHA256, "full_r8 manifest"),
-        (target_root / "sample_manifest.csv", EXPECTED_TARGET_SAMPLE_MANIFEST_SHA256, "full_r8 sample manifest"),
+        (target_root / "dataset_manifest.json", EXPECTED_TARGET_MANIFEST_SHA256, "full_r9 manifest"),
+        (target_root / "sample_manifest.csv", EXPECTED_TARGET_SAMPLE_MANIFEST_SHA256, "full_r9 sample manifest"),
         (
             target_root / "contracts/target_process_registry_v2.json",
             EXPECTED_PROCESS_CONTRACT_SHA256,
@@ -4363,8 +4572,7 @@ def _source_tree_identity(repo_root: Path) -> dict[str, Any]:
     candidates.extend(
         repo_root / relative
         for relative in (
-            "notebooks/kaggle/train_multires_event_v2.py",
-            "notebooks/kaggle/run_multires_event_v2.py",
+            "notebooks/kaggle/train_relational_primary.py",
             "requirements-multires-kaggle.txt",
             "pyproject.toml",
         )
@@ -4393,12 +4601,40 @@ def _source_tree_identity(repo_root: Path) -> dict[str, Any]:
         return result.stdout.strip() if result.returncode == 0 else None
 
     status = git_text("status", "--porcelain=v1", "--untracked-files=all")
+    release_identity: Mapping[str, Any] | None = None
+    release_path = repo_root / "SOURCE_RELEASE.json"
+    if release_path.is_file() and not release_path.is_symlink():
+        candidate = json.loads(release_path.read_text(encoding="utf-8"))
+        if not isinstance(candidate, Mapping):
+            raise ValueError("SOURCE_RELEASE.json must contain one object")
+        if (
+            candidate.get("schema_version")
+            != "trauma_predict.multires_event_v2_source_release.v1"
+            or candidate.get("source_tree_sha256") != source_tree_sha256
+            or not _is_sha256(candidate.get("git_commit"))
+            or not _is_sha256(candidate.get("git_head_tree"))
+        ):
+            raise ValueError("SOURCE_RELEASE.json does not bind the executable source tree")
+        release_identity = candidate
     return {
         "schema_version": "trauma_predict.multires_event_v2_source_identity.v1",
-        "git_commit": git_text("rev-parse", "HEAD"),
-        "git_head_tree": git_text("rev-parse", "HEAD^{tree}"),
-        "git_clean": status == "" if status is not None else None,
+        "git_commit": (
+            git_text("rev-parse", "HEAD")
+            or (str(release_identity["git_commit"]) if release_identity else None)
+        ),
+        "git_head_tree": (
+            git_text("rev-parse", "HEAD^{tree}")
+            or (str(release_identity["git_head_tree"]) if release_identity else None)
+        ),
+        "git_clean": (
+            status == ""
+            if status is not None
+            else (True if release_identity is not None else None)
+        ),
         "git_status_sha256": sha256_payload(status) if status is not None else None,
+        "release_identity_sha256": (
+            sha256_file(release_path) if release_identity is not None else None
+        ),
         "source_tree_sha256": source_tree_sha256,
         "source_file_count": len(files),
         "source_files": files,

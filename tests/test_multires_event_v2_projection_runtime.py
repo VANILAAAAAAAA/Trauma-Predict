@@ -22,7 +22,7 @@ from trauma_predict.eval.multires_event_v2_projections import (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TARGET_ROOT = Path(
     "/mnt/d/Data/trauma_predict_work/"
-    "multires_event_m4_target_v2_c4_20260713/full_r8"
+    "multires_event_m4_target_v2_c4_20260714/full_r9"
 )
 
 

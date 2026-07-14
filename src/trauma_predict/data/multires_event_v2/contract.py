@@ -13,9 +13,9 @@ from typing import Any, Mapping, Sequence
 TARGET_SCHEMA = "multires_event_m4_target_sidecar_v2"
 DATASET_MANIFEST_SCHEMA = "multires_event_m4_target_dataset_manifest_v2"
 PROCESS_REGISTRY_SCHEMA = "multires_event_target_process_registry_v2"
-PROCESS_REGISTRY_VERSION = "2026-07-13-r8"
+PROCESS_REGISTRY_VERSION = "2026-07-14-r9"
 EMISSION_REGISTRY_SCHEMA = "multires_event_target_emission_registry_v2"
-EMISSION_REGISTRY_VERSION = "2026-07-13-r8"
+EMISSION_REGISTRY_VERSION = "2026-07-14-r9"
 ENABLED_CORE_LAYOUTS_SHA256 = "006d99e3a44f0250755c6235f5f486459fb80199a1341aec41238a3e60d870b1"
 EXPECTED_RETAINED_AUXILIARY_WITHOUT_INITIAL_HEADS = (
     "treatment_amount_onset_joint",
@@ -23,16 +23,18 @@ EXPECTED_RETAINED_AUXILIARY_WITHOUT_INITIAL_HEADS = (
     "surgery_six_block_event_sequence",
 )
 PROJECTION_REGISTRY_SCHEMA = "multires_event_target_projection_registry_v2"
-PROJECTION_REGISTRY_VERSION = "2026-07-13-r8"
+PROJECTION_REGISTRY_VERSION = "2026-07-14-r9"
 
-TARGET_ARITHMETIC_SCHEMA = "multires_event_m4_target_arithmetic_canonicalization_v1"
-TARGET_ARITHMETIC_POLICY = "dense_mean_exact_support_r8"
+TARGET_ARITHMETIC_SCHEMA = "multires_event_m4_target_arithmetic_canonicalization_v2"
+TARGET_ARITHMETIC_POLICY = "exact_support_arithmetic_r9"
+RESPIRATORY_ARITHMETIC_TYPE = "respiratory_negative_uncovered_roundoff_to_zero"
 TARGET_ARITHMETIC_TYPES = (
     "dense_zero_range_mean_to_min",
     "dense_positive_range_mean_lower_outside_one_ulp",
     "dense_positive_range_mean_lower_inside_one_ulp",
     "dense_positive_range_mean_upper_inside_one_ulp",
     "dense_positive_range_mean_upper_outside_one_ulp",
+    RESPIRATORY_ARITHMETIC_TYPE,
 )
 EXPECTED_TARGET_ARITHMETIC_BY_TYPE = {
     "dense_zero_range_mean_to_min": 774,
@@ -40,9 +42,10 @@ EXPECTED_TARGET_ARITHMETIC_BY_TYPE = {
     "dense_positive_range_mean_lower_inside_one_ulp": 19,
     "dense_positive_range_mean_upper_inside_one_ulp": 11,
     "dense_positive_range_mean_upper_outside_one_ulp": 6,
+    RESPIRATORY_ARITHMETIC_TYPE: 8,
 }
-EXPECTED_TARGET_ARITHMETIC_RECORDS = 824
-EXPECTED_TARGET_ARITHMETIC_SAMPLES = 804
+EXPECTED_TARGET_ARITHMETIC_RECORDS = 832
+EXPECTED_TARGET_ARITHMETIC_SAMPLES = 812
 
 BLOCK_IDS = tuple(f"M4_{index:02d}" for index in range(1, 7))
 BLOCK_BOUNDS = tuple((4 * index, 4 * (index + 1)) for index in range(6))
@@ -314,12 +317,12 @@ class MultiresEventV2Contract:
             raise ValueError("V2 process registry schema mismatch")
         if self.process_registry.get("version") != PROCESS_REGISTRY_VERSION:
             raise ValueError(
-                "V2 process registry must use the frozen r8 explicit topological field order"
+                "V2 process registry must use the frozen r9 explicit topological field order"
             )
         if self.emission_registry.get("schema") != EMISSION_REGISTRY_SCHEMA:
             raise ValueError("V2 emission registry schema mismatch")
         if self.emission_registry.get("version") != EMISSION_REGISTRY_VERSION:
-            raise ValueError("V2 emission registry must use the frozen r8 head contract")
+            raise ValueError("V2 emission registry must use the frozen r9 head contract")
         head_contract = _mapping(
             self.emission_registry.get("enabled_core_head_contract"),
             "emission_registry.enabled_core_head_contract",
@@ -349,14 +352,14 @@ class MultiresEventV2Contract:
             if not isinstance(row["layout"], str) or not row["layout"]:
                 raise ValueError(f"V2 emission layout {likelihood_id!r} must be a nonempty string")
         if sha256_canonical_json(layouts) != ENABLED_CORE_LAYOUTS_SHA256:
-            raise ValueError("V2 emission registry head widths/layouts differ from frozen r8")
+            raise ValueError("V2 emission registry head widths/layouts differ from frozen r9")
         retained_auxiliary = head_contract.get("retained_auxiliary_without_initial_heads")
         if tuple(retained_auxiliary or ()) != EXPECTED_RETAINED_AUXILIARY_WITHOUT_INITIAL_HEADS:
             raise ValueError("V2 retained auxiliary no-head policy differs from the frozen contract")
         if self.projection_registry.get("schema") != PROJECTION_REGISTRY_SCHEMA:
             raise ValueError("V2 projection registry schema mismatch")
         if self.projection_registry.get("version") != PROJECTION_REGISTRY_VERSION:
-            raise ValueError("V2 projection registry must use the frozen r8 contract")
+            raise ValueError("V2 projection registry must use the frozen r9 contract")
         scope = _mapping(self.process_registry.get("scope"), "process_registry.scope")
         if tuple(scope.get("future_blocks") or ()) != BLOCK_IDS:
             raise ValueError("V2 target contract must use exactly M4_01 through M4_06")
@@ -439,7 +442,8 @@ class MultiresEventV2Contract:
         )
         if (
             arithmetic.get("policy") != TARGET_ARITHMETIC_POLICY
-            or arithmetic.get("scope") != "dense_continuous_MEAN_only"
+            or arithmetic.get("scope")
+            != "dense_continuous_MEAN_and_negative_binary64_respiratory_simplex_residual_only"
             or arithmetic.get("clinical_clipping") is not False
         ):
             raise ValueError("V2 target arithmetic canonicalization contract drift")
@@ -501,13 +505,13 @@ class MultiresEventV2Contract:
             )
             != EXPECTED_TARGET_ARITHMETIC_SAMPLES
         ):
-            raise ValueError("V2 r8 arithmetic canonicalization manifest counts drifted")
+            raise ValueError("V2 r9 arithmetic canonicalization manifest counts drifted")
         arithmetic_by_type = _mapping(
             counts.get("target_arithmetic_canonicalization_by_type"),
             "counts.target_arithmetic_canonicalization_by_type",
         )
         if dict(arithmetic_by_type) != EXPECTED_TARGET_ARITHMETIC_BY_TYPE:
-            raise ValueError("V2 r8 arithmetic canonicalization type ledger drifted")
+            raise ValueError("V2 r9 arithmetic canonicalization type ledger drifted")
         files = _mapping(manifest.get("files"), "files")
         for name in ("sample_manifest", "subject_split", "target_shards"):
             if name not in files:
@@ -618,7 +622,7 @@ class MultiresEventV2Contract:
         block_map = {str(block["block_id"]): block for block in blocks}
         seen: set[tuple[str, str]] = set()
         observed_by_type: dict[str, int] = {}
-        record_keys = {
+        dense_record_keys = {
             "block_id",
             "field",
             "type",
@@ -629,9 +633,24 @@ class MultiresEventV2Contract:
             "boundary_value",
             "ulp_rule",
         }
+        respiratory_record_keys = {
+            "block_id",
+            "field",
+            "type",
+            "adjusted_component",
+            "original_component_duration",
+            "canonical_component_duration",
+            "original_uncovered",
+            "canonical_uncovered",
+            "block_span_hours",
+            "original_documented_duration_sum",
+            "canonical_documented_duration_sum",
+            "ulp_at_block_span",
+            "max_negative_roundoff_ulps",
+            "rule",
+        }
         for index, raw_record in enumerate(records):
             row = _mapping(raw_record, f"target arithmetic record {index}")
-            _assert_exact_keys(row, record_keys, f"target arithmetic record {index}")
             block_id = str(row["block_id"])
             field = str(row["field"])
             record_type = str(row["type"])
@@ -639,10 +658,94 @@ class MultiresEventV2Contract:
             if key in seen:
                 raise ValueError("V2 target arithmetic records duplicate block/field")
             seen.add(key)
-            if block_id not in block_map or field not in self.dense_fields:
-                raise ValueError("V2 target arithmetic record references a non-dense target")
             if record_type not in TARGET_ARITHMETIC_TYPES:
                 raise ValueError("V2 target arithmetic record type is invalid")
+            if record_type == RESPIRATORY_ARITHMETIC_TYPE:
+                _assert_exact_keys(
+                    row,
+                    respiratory_record_keys,
+                    f"target arithmetic record {index}",
+                )
+                if block_id not in block_map or field != self.respiratory_field:
+                    raise ValueError(
+                        "V2 respiratory arithmetic record references an illegal target"
+                    )
+                process = _mapping(
+                    _mapping(
+                        block_map[block_id].get("processes"),
+                        f"{block_id}.processes",
+                    ).get(field),
+                    f"{block_id}.{field}",
+                )
+                durations = _numeric_vector(
+                    process.get("documented_duration"),
+                    self.respiratory_modalities,
+                    f"{block_id}.{field}.duration",
+                )
+                component = str(row["adjusted_component"])
+                if component not in self.respiratory_modalities:
+                    raise ValueError("V2 respiratory arithmetic component is invalid")
+                original_component = _number(
+                    row["original_component_duration"],
+                    "respiratory arithmetic original component",
+                )
+                canonical_component = _number(
+                    row["canonical_component_duration"],
+                    "respiratory arithmetic canonical component",
+                )
+                original_uncovered = _number(
+                    row["original_uncovered"],
+                    "respiratory arithmetic original uncovered",
+                )
+                canonical_uncovered = _number(
+                    row["canonical_uncovered"],
+                    "respiratory arithmetic canonical uncovered",
+                )
+                span = _number(row["block_span_hours"], "respiratory arithmetic span")
+                original_sum = _number(
+                    row["original_documented_duration_sum"],
+                    "respiratory arithmetic original sum",
+                )
+                canonical_sum = _number(
+                    row["canonical_documented_duration_sum"],
+                    "respiratory arithmetic canonical sum",
+                )
+                restored = dict(durations)
+                restored[component] = original_component
+                valid = (
+                    _float_exact(durations[component], canonical_component)
+                    and _float_exact(sum(restored[name] for name in self.respiratory_modalities), original_sum)
+                    and _float_exact(span - original_sum, original_uncovered)
+                    and original_uncovered < 0.0
+                    and _float_exact(sum(durations[name] for name in self.respiratory_modalities), span)
+                    and _float_exact(canonical_sum, span)
+                    and _float_exact(
+                        _number(process.get("uncovered_duration"), "respiratory uncovered"),
+                        canonical_uncovered,
+                    )
+                    and _float_exact(canonical_uncovered, 0.0)
+                    and _float_exact(
+                        _number(row["ulp_at_block_span"], "respiratory arithmetic ULP"),
+                        math.ulp(span),
+                    )
+                    and _integer(
+                        row["max_negative_roundoff_ulps"],
+                        "respiratory arithmetic ULP limit",
+                    )
+                    == 32
+                    and -original_uncovered <= 32 * math.ulp(span)
+                    and row["rule"]
+                    == "negative_residual_within_registered_binary64_ulp_bound_to_zero"
+                )
+                if not valid:
+                    raise ValueError("V2 respiratory arithmetic evidence violates closure rule")
+                observed_by_type[record_type] = observed_by_type.get(record_type, 0) + 1
+                continue
+            _assert_exact_keys(
+                row, dense_record_keys, f"target arithmetic record {index}"
+            )
+            if block_id not in block_map or field not in self.dense_fields:
+                raise ValueError("V2 target arithmetic record references a non-dense target")
             process = _mapping(
                 _mapping(block_map[block_id].get("processes"), f"{block_id}.processes").get(field),
                 f"{block_id}.{field}",
@@ -892,11 +995,11 @@ class MultiresEventV2Contract:
         )
         uncovered = _number(process["uncovered_duration"], f"{block}.{field}.uncovered")
         if any(
-            number < -PHYSICAL_ARITHMETIC_ATOL
+            number < 0.0
             or number > 4.0 + PHYSICAL_ARITHMETIC_ATOL
             for number in durations.values()
         ) or (
-            uncovered < -PHYSICAL_ARITHMETIC_ATOL
+            uncovered < 0.0
             or uncovered > 4.0 + PHYSICAL_ARITHMETIC_ATOL
         ):
             raise ValueError(f"{block}.{field} respiratory duration is outside [0,4]")

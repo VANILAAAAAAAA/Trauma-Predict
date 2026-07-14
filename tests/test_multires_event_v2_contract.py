@@ -20,7 +20,7 @@ TARGET_ROOT = Path(
     os.environ.get(
         "TRAUMA_PREDICT_V2_TARGET_ROOT",
         "/mnt/d/Data/trauma_predict_work/"
-        "multires_event_m4_target_v2_c4_20260713/full_r8",
+        "multires_event_m4_target_v2_c4_20260714/full_r9",
     )
 )
 OLD_R2_ROOT = Path(
@@ -66,7 +66,7 @@ def _first_target_with_arithmetic_type(
     raise AssertionError(f"no r8 arithmetic evidence found for types={accepted_types}")
 
 
-@unittest.skipUnless(_is_succeeded(TARGET_ROOT), "formal V2 full_r8 sidecar is not ready")
+@unittest.skipUnless(_is_succeeded(TARGET_ROOT), "formal V2 full_r9 sidecar is not ready")
 class MultiresEventV2ContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -85,7 +85,7 @@ class MultiresEventV2ContractTest(unittest.TestCase):
         contract = self.contract
         self.assertEqual(
             contract.process_registry["version"],
-            "2026-07-13-r8",
+            "2026-07-14-r9",
         )
         self.assertEqual(
             contract.registered_core_field_ids,
@@ -248,7 +248,7 @@ class MultiresEventV2ContractTest(unittest.TestCase):
 
     @unittest.skipUnless(OLD_R2_ROOT.is_dir(), "superseded full_r2 is not mounted")
     def test_superseded_non_topological_process_contract_is_rejected(self) -> None:
-        with self.assertRaisesRegex(ValueError, "r8 explicit topological"):
+        with self.assertRaisesRegex(ValueError, "r9 explicit topological"):
             MultiresEventV2Contract.from_dataset_root(OLD_R2_ROOT)
 
 

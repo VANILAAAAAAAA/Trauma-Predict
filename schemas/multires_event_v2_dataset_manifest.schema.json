@@ -59,8 +59,8 @@
         "valid_samples": {"type": "integer", "minimum": 1},
         "errors": {"const": 0},
         "shards": {"type": "integer", "minimum": 1},
-        "target_arithmetic_canonicalizations": {"const": 824},
-        "samples_with_target_arithmetic_canonicalization": {"const": 804},
+        "target_arithmetic_canonicalizations": {"const": 832},
+        "samples_with_target_arithmetic_canonicalization": {"const": 812},
         "target_arithmetic_canonicalization_by_type": {
           "type": "object",
           "additionalProperties": false,
@@ -69,14 +69,16 @@
             "dense_positive_range_mean_lower_outside_one_ulp",
             "dense_positive_range_mean_lower_inside_one_ulp",
             "dense_positive_range_mean_upper_inside_one_ulp",
-            "dense_positive_range_mean_upper_outside_one_ulp"
+            "dense_positive_range_mean_upper_outside_one_ulp",
+            "respiratory_negative_uncovered_roundoff_to_zero"
           ],
           "properties": {
             "dense_zero_range_mean_to_min": {"const": 774},
             "dense_positive_range_mean_lower_outside_one_ulp": {"const": 14},
             "dense_positive_range_mean_lower_inside_one_ulp": {"const": 19},
             "dense_positive_range_mean_upper_inside_one_ulp": {"const": 11},
-            "dense_positive_range_mean_upper_outside_one_ulp": {"const": 6}
+            "dense_positive_range_mean_upper_outside_one_ulp": {"const": 6},
+            "respiratory_negative_uncovered_roundoff_to_zero": {"const": 8}
           }
         },
         "by_split": {
