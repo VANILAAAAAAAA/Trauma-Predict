@@ -44,8 +44,7 @@ from trauma_predict.training.multires_event_v2 import (  # noqa: E402
     CAPACITY_PROBE_VALIDATION_ANCHORS,
     CAPACITY_SEMANTIC_CANARY_ANCHORS,
     CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR,
-    CAPACITY_SESSION_BUDGET_SECONDS,
-    CAPACITY_SESSION_RESERVE_SECONDS,
+    CAPACITY_RUNTIME_POLICY,
     CAPACITY_STRUCTURAL_METRICS,
     EXPECTED_OPTIMIZER_CONTRACT,
     OPTIMIZER_CONTRACT_VERSION,
@@ -1750,35 +1749,40 @@ def validate_capacity_probe_report(root: Path, *, expected_mode: str) -> dict[st
         abs_tol=1e-6,
     ):
         raise ValueError("capacity report projection components do not close")
-    budget = _mapping(report.get("budget"), "capacity budget")
-    elapsed_before = float(budget.get("elapsed_before_capacity_seconds", math.nan))
-    probe_elapsed = float(budget.get("capacity_probe_elapsed_seconds", math.nan))
-    required_seconds = float(budget.get("required_session_seconds", math.nan))
-    remaining_seconds = float(budget.get("remaining_headroom_seconds", math.nan))
-    recomputed_required = (
+    runtime_projection = _mapping(
+        report.get("runtime_projection"), "capacity runtime projection"
+    )
+    elapsed_before = float(
+        runtime_projection.get("elapsed_before_capacity_seconds", math.nan)
+    )
+    probe_elapsed = float(
+        runtime_projection.get("capacity_probe_elapsed_seconds", math.nan)
+    )
+    reported_formal_seconds = float(
+        runtime_projection.get("projected_formal_runtime_seconds", math.nan)
+    )
+    background_seconds = float(
+        runtime_projection.get("projected_background_runtime_seconds", math.nan)
+    )
+    recomputed_background = (
         elapsed_before
         + probe_elapsed
         + projected_seconds
-        + CAPACITY_SESSION_RESERVE_SECONDS
     )
     if (
-        int(budget.get("session_budget_seconds", -1)) != CAPACITY_SESSION_BUDGET_SECONDS
-        or int(budget.get("reserved_finalization_seconds", -1))
-        != CAPACITY_SESSION_RESERVE_SECONDS
+        runtime_projection.get("policy") != CAPACITY_RUNTIME_POLICY
+        or runtime_projection.get("hard_limit_seconds") is not None
+        or runtime_projection.get("gates_capacity_status") is not False
         or not math.isfinite(elapsed_before)
         or elapsed_before < 0.0
         or not math.isfinite(probe_elapsed)
         or probe_elapsed <= 0.0
-        or not math.isfinite(required_seconds)
-        or required_seconds > CAPACITY_SESSION_BUDGET_SECONDS
-        or not math.isclose(required_seconds, recomputed_required, abs_tol=1e-6)
-        or not math.isclose(
-            remaining_seconds,
-            CAPACITY_SESSION_BUDGET_SECONDS - required_seconds,
-            abs_tol=1e-6,
-        )
+        or not math.isfinite(reported_formal_seconds)
+        or not math.isclose(reported_formal_seconds, projected_seconds, abs_tol=1e-6)
+        or not math.isfinite(background_seconds)
+        or not math.isclose(background_seconds, recomputed_background, abs_tol=1e-6)
     ):
-        raise ValueError("capacity report exceeds the frozen session budget")
+        raise ValueError("capacity report runtime projection contract failed")
     if list(root.rglob("SUCCESS")):
         raise ValueError("capacity output contains a forbidden formal SUCCESS marker")
     return {
@@ -1789,7 +1793,7 @@ def validate_capacity_probe_report(root: Path, *, expected_mode: str) -> dict[st
         "projected_formal_runtime_seconds": float(
             projection["projected_formal_runtime_seconds"]
         ),
-        "remaining_headroom_seconds": float(budget["remaining_headroom_seconds"]),
+        "projected_background_runtime_seconds": background_seconds,
     }
 
 

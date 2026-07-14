@@ -142,7 +142,7 @@ EXPECTED_OPTIMIZER_CONTRACT = {
     "adamw_fused": False,
     "gradient_clipping": "disabled",
 }
-CAPACITY_PROBE_SCHEMA = "trauma_predict.multires_event_v2_capacity_probe.v2"
+CAPACITY_PROBE_SCHEMA = "trauma_predict.multires_event_v2_capacity_probe.v3"
 CAPACITY_PROBE_OPTIMIZER_STEPS = 2
 CAPACITY_PROBE_VALIDATION_ANCHORS = 100
 CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR = 100
@@ -151,8 +151,7 @@ CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR = 100
 V2_DISTRIBUTED_TIMEOUT_SECONDS = 600
 V2_NCCL_MONITOR_HEARTBEAT_TIMEOUT_SECONDS = 120
 V2_EARLY_CANARY_PROCESS_GROUP_TIMEOUT_SECONDS = 60
-CAPACITY_SESSION_BUDGET_SECONDS = 12 * 60 * 60
-CAPACITY_SESSION_RESERVE_SECONDS = 60 * 60
+CAPACITY_RUNTIME_POLICY = "background_save_and_run_informational_only"
 CAPACITY_STRUCTURAL_METRICS = (
     "field_macro_lag1_variogram_score_p0_5",
     "relation_edge_macro_variogram_score_p0_5",
@@ -2078,11 +2077,10 @@ def run_multires_event_v2_capacity_probe(
             for key in CAPACITY_STRUCTURAL_METRICS
         }
         coherence = _mapping(free_running.get("coherence"), "free_running.coherence")
-        required_session_seconds = (
+        projected_background_runtime_seconds = (
             elapsed_before
             + probe_elapsed
             + float(projection["projected_formal_runtime_seconds"])
-            + CAPACITY_SESSION_RESERVE_SECONDS
         )
         failures: list[str] = []
         if len(hardware) != 2 or any(
@@ -2121,8 +2119,6 @@ def run_multires_event_v2_capacity_probe(
             for row in hardware
         ):
             failures.append("capacity probe GPU memory accounting is invalid")
-        if required_session_seconds > CAPACITY_SESSION_BUDGET_SECONDS:
-            failures.append("projected formal run exceeds the frozen 12-hour session budget")
         if list(probe_root.rglob("SUCCESS")):
             failures.append("capacity probe emitted a forbidden formal SUCCESS marker")
         status = "PASSED" if not failures else "FAILED"
@@ -2209,14 +2205,17 @@ def run_multires_event_v2_capacity_probe(
                 == tuple(sorted(expected_sample_ids)),
             },
             "projection": projection,
-            "budget": {
-                "session_budget_seconds": CAPACITY_SESSION_BUDGET_SECONDS,
-                "reserved_finalization_seconds": CAPACITY_SESSION_RESERVE_SECONDS,
+            "runtime_projection": {
+                "policy": CAPACITY_RUNTIME_POLICY,
+                "hard_limit_seconds": None,
+                "gates_capacity_status": False,
                 "elapsed_before_capacity_seconds": elapsed_before,
                 "capacity_probe_elapsed_seconds": probe_elapsed,
-                "required_session_seconds": required_session_seconds,
-                "remaining_headroom_seconds": (
-                    CAPACITY_SESSION_BUDGET_SECONDS - required_session_seconds
+                "projected_formal_runtime_seconds": float(
+                    projection["projected_formal_runtime_seconds"]
+                ),
+                "projected_background_runtime_seconds": (
+                    projected_background_runtime_seconds
                 ),
             },
             "failures": failures,
@@ -4452,8 +4451,7 @@ __all__ = [
     "CAPACITY_PROBE_VALIDATION_ANCHORS",
     "CAPACITY_SEMANTIC_CANARY_ANCHORS",
     "CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR",
-    "CAPACITY_SESSION_BUDGET_SECONDS",
-    "CAPACITY_SESSION_RESERVE_SECONDS",
+    "CAPACITY_RUNTIME_POLICY",
     "CAPACITY_STRUCTURAL_METRICS",
     "AUTHORIZED_TRAINING_RUN_NAMES",
     "AUTHORIZED_VERIFICATION_RUN_NAMES",

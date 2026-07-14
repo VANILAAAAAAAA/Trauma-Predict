@@ -789,7 +789,9 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                 "manifest_sha256": sha256(semantic_canary_manifest),
             },
         )
-        optimizer_seconds = 1.0
+        # Deliberately project a long hosted run: duration is recorded for
+        # planning and is not a technical capacity failure.
+        optimizer_seconds = 11.0
         teacher_seconds_per_anchor = 0.1
         free_seconds_per_anchor = 0.2
         components = {
@@ -798,7 +800,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             "free_running": free_seconds_per_anchor * 6309,
         }
         projected = sum(components.values())
-        required = 10.0 + 30.0 + projected + launcher.CAPACITY_SESSION_RESERVE_SECONDS
+        projected_background = 10.0 + 30.0 + projected
         sample_set_sha = "7" * 64
         checkpoint_path = (
             root
@@ -1024,17 +1026,14 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                 "components_seconds": components,
                 "projected_formal_runtime_seconds": projected,
             },
-            "budget": {
-                "session_budget_seconds": launcher.CAPACITY_SESSION_BUDGET_SECONDS,
-                "reserved_finalization_seconds": (
-                    launcher.CAPACITY_SESSION_RESERVE_SECONDS
-                ),
+            "runtime_projection": {
+                "policy": launcher.CAPACITY_RUNTIME_POLICY,
+                "hard_limit_seconds": None,
+                "gates_capacity_status": False,
                 "elapsed_before_capacity_seconds": 10.0,
                 "capacity_probe_elapsed_seconds": 30.0,
-                "required_session_seconds": required,
-                "remaining_headroom_seconds": (
-                    launcher.CAPACITY_SESSION_BUDGET_SECONDS - required
-                ),
+                "projected_formal_runtime_seconds": projected,
+                "projected_background_runtime_seconds": projected_background,
             },
             "failures": [],
         }
@@ -1439,10 +1438,10 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         self.assertEqual(len(notebook["cells"]), 2)
         code = "".join(notebook["cells"][1]["source"])
         markdown = "".join(notebook["cells"][0]["source"])
-        self.assertIn("multires-event-v2-block-run-20260714-r5", code)
+        self.assertIn("multires-event-v2-block-run-20260714-r6", code)
         self.assertIn("refs/tags/", code)
         self.assertIn("run_multires_event_v2.py", code)
-        self.assertIn('REQUIRED_GIT_REF = "multires-event-v2-block-run-20260714-r5"', code)
+        self.assertIn('REQUIRED_GIT_REF = "multires-event-v2-block-run-20260714-r6"', code)
         self.assertIn('V2_ACTION = "block"', code)
         self.assertIn("Do not attach any Kaggle Input", markdown)
         self.assertIn("MULTIRES_EVENT_V2_HOSTED_SMOKE_OK", markdown)
@@ -1468,7 +1467,7 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         code = "".join(notebook["cells"][1]["source"])
         self.assertIn("formal_optimizer_steps=0", markdown)
         self.assertIn(
-            'REQUIRED_GIT_REF = "multires-event-v2-block-verify-20260714-r4"',
+            'REQUIRED_GIT_REF = "multires-event-v2-block-verify-20260714-r5"',
             code,
         )
         self.assertIn('V2_ACTION = "verify_block"', code)
@@ -1705,9 +1704,20 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
                 "projection closure": lambda row: row["projection"][
                     "components_seconds"
                 ].__setitem__("optimizer", 1.0),
-                "session budget": lambda row: row["budget"].__setitem__(
-                    "required_session_seconds",
-                    launcher.CAPACITY_SESSION_BUDGET_SECONDS + 1.0,
+                "runtime projection policy": lambda row: row[
+                    "runtime_projection"
+                ].__setitem__(
+                    "policy",
+                    "unsupported_hard_duration_gate",
+                ),
+                "runtime projection closure": lambda row: row[
+                    "runtime_projection"
+                ].__setitem__(
+                    "projected_background_runtime_seconds",
+                    row["runtime_projection"][
+                        "projected_background_runtime_seconds"
+                    ]
+                    + 1.0,
                 ),
             }
             for index, (label, mutate) in enumerate(mutations.items()):
