@@ -42,7 +42,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
 | `notebooks/kaggle/train_multires_event_v1.ipynb` | kaggle | Two-cell Save & Run notebook pinned to the immutable multires baseline tag. | No embedded data. |
 | `notebooks/kaggle/train_multires_event_v1.py` | kaggle | DDP training entrypoint and dry-run preflight for the multires route. | Reads the frozen private artifact only at runtime. |
-| `notebooks/kaggle/train_multires_event_v2.ipynb` | kaggle | Two-cell block-run Notebook pinned to `multires-event-v2-block-run-20260713-r1`, the accepted private r8 target ref, and `TRAUMA_PREDICT_DRY_RUN_ONLY=0`. | No embedded data. |
+| `notebooks/kaggle/train_multires_event_v2.ipynb` | kaggle | Two-cell block-run Notebook pinned to `multires-event-v2-block-run-20260713-r2`, the accepted private r8 target ref, an attached exact Git bundle, and `TRAUMA_PREDICT_DRY_RUN_ONLY=0`. | No embedded data. |
 | `notebooks/kaggle/train_multires_event_v2.py` | kaggle | V2 CLI entrypoint for exact preflight and block-only formal execution after an internal same-process capacity PASS. | Reads mounted private V1/r8 artifacts only at runtime. |
 | `notebooks/kaggle/train_full_first_run.ipynb` | kaggle | End-to-end Kaggle notebook for the joint-baseline run; not Stage A. | No data. |
 | `notebooks/kaggle/train_stage_a_hour.ipynb` | kaggle | End-to-end Kaggle notebook for Stage A HOUR-only training. | No data. |
