@@ -1149,12 +1149,13 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
         notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
         self.assertEqual(len(notebook["cells"]), 2)
         code = "".join(notebook["cells"][1]["source"])
-        self.assertIn("multires-event-v2-block-run-20260713-r2", code)
+        self.assertIn("multires-event-v2-block-run-20260713-r3", code)
         self.assertIn("refs/tags/", code)
         self.assertIn("run_multires_event_v2.py", code)
-        self.assertIn('REQUIRED_GIT_REF = "multires-event-v2-block-run-20260713-r2"', code)
+        self.assertIn('REQUIRED_GIT_REF = "multires-event-v2-block-run-20260713-r3"', code)
         self.assertIn('V2_ACTION = "block"', code)
         self.assertIn('SOURCE_BUNDLE_DATASET_SLUG = "trauma-v2-block-source-r2-20260714"', code)
+        self.assertIn('SOURCE_BUNDLE_NAME = "trauma-predict-multires-event-v2-block-r3.bundle"', code)
         self.assertIn('["git", "bundle", "list-heads", source_bundle]', code)
         self.assertIn('["git", "bundle", "verify", source_bundle], cwd=REPO_DIR', code)
         self.assertIn('["git", "clone", source_bundle, REPO_DIR]', code)
@@ -1207,6 +1208,38 @@ class MultiresEventV2KaggleRouteTest(unittest.TestCase):
             self.assertEqual(command.count("torch.distributed.run"), 1)
             self.assertEqual(command.count("--capacity-probe-output"), 1)
             self.assertEqual(command.count("--elapsed-before-capacity-seconds"), 1)
+
+    def test_capacity_probe_output_is_attempt_specific_and_disjoint(self) -> None:
+        launcher = load_launcher()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            formal_root = root / "t4x2_multires_event_v2_block"
+            attempt_root = formal_root / "logs" / "attempt-0001"
+            attempt_root.mkdir(parents=True)
+            with patch.object(launcher, "OUTPUT_ROOT", root):
+                probe_root = launcher.capacity_probe_output_for_attempt(
+                    formal_root,
+                    attempt_root,
+                )
+            self.assertEqual(
+                probe_root,
+                root
+                / "_capacity-probes"
+                / "t4x2_multires_event_v2_block"
+                / "attempt-0001",
+            )
+            with self.assertRaises(ValueError):
+                probe_root.relative_to(formal_root)
+            with self.assertRaises(ValueError):
+                formal_root.relative_to(probe_root)
+            with patch.object(launcher, "OUTPUT_ROOT", root), self.assertRaisesRegex(
+                ValueError,
+                "formal logs root",
+            ):
+                launcher.capacity_probe_output_for_attempt(
+                    formal_root,
+                    root / "unbound-attempt-0001",
+                )
 
     def test_capacity_report_fails_closed_under_contract_mutations(self) -> None:
         launcher = load_launcher()

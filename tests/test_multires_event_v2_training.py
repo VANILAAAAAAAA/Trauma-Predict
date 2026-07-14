@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -218,6 +219,22 @@ class MultiresEventV2TrainingContractTest(unittest.TestCase):
                 capacity_output_dir=REPO_ROOT / "unused-capacity",
                 elapsed_before_capacity_seconds=0.0,
             )
+
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ,
+            {"TRAUMA_PREDICT_OUTPUT_ROOT": directory},
+        ):
+            formal_root = Path(directory) / "t4x2_multires_event_v2_block"
+            with self.assertRaisesRegex(
+                ValueError,
+                "must not overlap the formal run root",
+            ):
+                run_multires_event_v2_capacity_probe(
+                    config,
+                    repo_root=REPO_ROOT,
+                    output_dir=formal_root / "logs" / "attempt-0001" / "capacity-probe",
+                    elapsed_before_capacity_seconds=0.0,
+                )
 
         with tempfile.TemporaryDirectory() as directory:
             report_path = Path(directory) / "capacity_probe.json"

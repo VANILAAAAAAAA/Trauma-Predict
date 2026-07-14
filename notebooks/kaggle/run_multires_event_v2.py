@@ -314,7 +314,11 @@ def main() -> None:
     )
     capacity: dict[str, Any] | None = None
     if validation is None:
-        capacity_root = attempt_dir / "capacity-probe" if stage != "smoke" else None
+        capacity_root = (
+            capacity_probe_output_for_attempt(run_dir, attempt_dir)
+            if stage != "smoke"
+            else None
+        )
         run_torchrun(
             config,
             attempt_dir / f"{stage}.log",
@@ -1058,6 +1062,31 @@ def repo_env(base_root: Path, target_root: Path, git_ref: str) -> dict[str, str]
     env["PYTHONPATH"] = str(SRC_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     env.setdefault("PYTHONUNBUFFERED", "1")
     return env
+
+
+def capacity_probe_output_for_attempt(run_dir: Path, attempt_dir: Path) -> Path:
+    """Place attempt-specific capacity evidence outside the formal run root."""
+
+    formal_root = run_dir.resolve()
+    attempt_root = attempt_dir.resolve()
+    expected_logs_root = (formal_root / "logs").resolve()
+    try:
+        attempt_root.relative_to(expected_logs_root)
+    except ValueError as error:
+        raise ValueError("capacity probe requires an attempt under the formal logs root") from error
+    probe_root = (
+        OUTPUT_ROOT.resolve()
+        / "_capacity-probes"
+        / formal_root.name
+        / attempt_root.name
+    ).resolve()
+    for candidate, parent in ((probe_root, formal_root), (formal_root, probe_root)):
+        try:
+            candidate.relative_to(parent)
+        except ValueError:
+            continue
+        raise ValueError("capacity probe output must not overlap the formal run root")
+    return probe_root
 
 
 def run_torchrun(
