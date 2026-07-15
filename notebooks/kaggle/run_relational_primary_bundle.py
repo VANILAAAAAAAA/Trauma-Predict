@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 
-MANIFEST_SCHEMA = "trauma_predict.multires_event_v2_relational_primary_bundle.v1"
+MANIFEST_SCHEMA = "trauma_predict.multires_event_v2_relational_primary_bundle.v2"
 RUN_NAME = "t4x2_multires_event_v2_relational"
 EXPECTED_PARAMETERS = 47_801_855
 EXPECTED_TARGET_DATASET_ID = "multires_event_m4_target_v2_c4_full_20260714_r9"
@@ -88,10 +88,15 @@ def _find_bundle(explicit: Path | None) -> tuple[Path, dict[str, Any]]:
     return matches[0]
 
 
-def _safe_extract(archive: Path, destination: Path) -> None:
+def _safe_extract(
+    archive: Path,
+    destination: Path,
+    *,
+    expected_file_members: set[str] | None = None,
+) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     root = destination.resolve()
-    with tarfile.open(archive, "r:gz") as handle:
+    with tarfile.open(archive, "r:*") as handle:
         members = handle.getmembers()
         for member in members:
             target = (destination / member.name).resolve()
@@ -101,6 +106,12 @@ def _safe_extract(archive: Path, destination: Path) -> None:
                 raise ValueError(f"source archive path escapes destination: {member.name}") from exc
             if member.issym() or member.islnk():
                 raise ValueError(f"source archive links are forbidden: {member.name}")
+        if expected_file_members is not None:
+            observed_file_members = {member.name for member in members if member.isfile()}
+            if observed_file_members != expected_file_members:
+                raise ValueError("small payload pack members do not match its inventory")
+            if any(not member.isfile() for member in members):
+                raise ValueError("small payload pack may contain regular files only")
         handle.extractall(destination, members=members, filter="data")
 
 
@@ -141,10 +152,11 @@ def _materialize_dataset_view(
     bundle: Path,
     declared: dict[str, Any],
     destination: Path,
+    packed_root: Path,
     *,
     label: str,
 ) -> Path:
-    """Create a no-copy filesystem view over flat files mounted by Kaggle."""
+    """Create a view over direct payloads plus a small, hash-bound metadata pack."""
 
     inventory_path = _resolve_file(
         bundle,
@@ -152,27 +164,59 @@ def _materialize_dataset_view(
         f"{label} inventory",
     )
     inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
-    if inventory.get("schema") != "trauma_predict.mounted_file_inventory.v1":
+    if inventory.get("schema") != "trauma_predict.mounted_file_inventory.v2":
         raise ValueError(f"{label} inventory schema mismatch")
     files = inventory.get("files")
     if not isinstance(files, list) or not files:
         raise ValueError(f"{label} inventory must declare files")
     destination.mkdir(parents=True, exist_ok=False)
+    packed_members: set[str] = set()
+    packed_uncompressed_bytes = 0
+    for index, raw_row in enumerate(files):
+        row = _mapping(raw_row, f"{label}.inventory.files[{index}]")
+        if row.get("storage") == "packed":
+            archive_member = _safe_relative(row.get("archive_member"), "archive_member")
+            member_key = archive_member.as_posix()
+            if member_key in packed_members:
+                raise ValueError(f"{label} inventory contains duplicate packed members")
+            packed_members.add(member_key)
+            packed_uncompressed_bytes += int(row.get("size_bytes", -1))
+    packed_payload = inventory.get("packed_payload")
+    if packed_payload is not None:
+        packed_row = _mapping(packed_payload, f"{label}.inventory.packed_payload")
+        archive = _resolve_file(bundle, packed_row, f"{label} small payload pack")
+        if int(packed_row.get("file_count", -1)) != len(packed_members):
+            raise ValueError(f"{label} small payload pack file count mismatch")
+        if int(packed_row.get("uncompressed_bytes", -1)) != packed_uncompressed_bytes:
+            raise ValueError(f"{label} small payload pack byte count mismatch")
+        if int(packed_row.get("archive_bytes", -1)) != archive.stat().st_size:
+            raise ValueError(f"{label} small payload pack archive size mismatch")
+        _safe_extract(archive, packed_root, expected_file_members=packed_members)
+    elif packed_members or int(inventory.get("packed_file_count", -1)) != 0:
+        raise ValueError(f"{label} inventory lacks its declared small payload pack")
     seen_destinations: set[str] = set()
     seen_payloads: set[str] = set()
     for index, raw_row in enumerate(files):
         row = _mapping(raw_row, f"{label}.inventory.files[{index}]")
-        payload_relative = _safe_relative(row.get("mounted_path"), "mounted_path")
         destination_relative = _safe_relative(row.get("destination"), "destination")
-        payload_key = payload_relative.as_posix()
+        storage = row.get("storage")
+        if storage == "mounted":
+            payload_relative = _safe_relative(row.get("mounted_path"), "mounted_path")
+            source = bundle / payload_relative
+            payload_key = f"mounted:{payload_relative.as_posix()}"
+        elif storage == "packed":
+            archive_member = _safe_relative(row.get("archive_member"), "archive_member")
+            source = packed_root / archive_member
+            payload_key = f"packed:{archive_member.as_posix()}"
+        else:
+            raise ValueError(f"{label} inventory storage must be mounted or packed")
         destination_key = destination_relative.as_posix()
         if payload_key in seen_payloads or destination_key in seen_destinations:
             raise ValueError(f"{label} inventory contains duplicate paths")
         seen_payloads.add(payload_key)
         seen_destinations.add(destination_key)
-        source = bundle / payload_relative
         if source.is_symlink() or not source.is_file():
-            raise FileNotFoundError(f"missing mounted {label} payload: {source}")
+            raise FileNotFoundError(f"missing {storage} {label} payload: {source}")
         if source.stat().st_size != int(row.get("size_bytes", -1)):
             raise ValueError(f"mounted {label} payload size mismatch: {source}")
         expected_sha256 = str(row.get("sha256") or "")
@@ -183,6 +227,12 @@ def _materialize_dataset_view(
         target.symlink_to(source)
     if int(inventory.get("file_count", -1)) != len(files):
         raise ValueError(f"{label} inventory file count mismatch")
+    packed_rows = sum(row.get("storage") == "packed" for row in files if isinstance(row, dict))
+    mounted_rows = sum(row.get("storage") == "mounted" for row in files if isinstance(row, dict))
+    if int(inventory.get("packed_file_count", -1)) != packed_rows:
+        raise ValueError(f"{label} inventory packed file count mismatch")
+    if int(inventory.get("direct_mounted_file_count", -1)) != mounted_rows:
+        raise ValueError(f"{label} inventory mounted file count mismatch")
     return destination
 
 
@@ -218,6 +268,13 @@ def main() -> int:
     args = parser.parse_args()
 
     bundle, manifest = _find_bundle(args.bundle_root)
+    launcher = _resolve_file(
+        bundle,
+        _mapping(manifest.get("launcher"), "launcher"),
+        "bundle launcher",
+    )
+    if launcher.resolve() != Path(__file__).resolve():
+        raise ValueError("executed launcher is not the manifest-bound mounted launcher")
     if int(manifest.get("model_parameter_count", -1)) != EXPECTED_PARAMETERS:
         raise ValueError("bundle model parameter count is not the frozen 47,801,855")
     if manifest.get("mode") != "relational" or manifest.get("run_name") != RUN_NAME:
@@ -248,16 +305,19 @@ def main() -> int:
     if working_root.exists():
         shutil.rmtree(working_root)
     data_views = working_root / "mounted_data"
+    small_payloads = working_root / "small_payloads"
     base_root = _materialize_dataset_view(
         bundle,
         base_declared,
         data_views / "multires_event_v1_c4_full_20260712",
+        small_payloads / "base",
         label="V1 base",
     )
     target_root = _materialize_dataset_view(
         bundle,
         target_declared,
         data_views / "multires_event_m4_target_v2_c4_full_20260714_r9",
+        small_payloads / "target",
         label="r9 target",
     )
     _validate_dataset_identity(
@@ -277,6 +337,13 @@ def main() -> int:
         _mapping(manifest.get("input_normalization"), "input_normalization"),
         "input normalization",
     )
+    payload_summary = _mapping(manifest.get("payload_summary"), "payload_summary")
+    if payload_summary.get("bulk_patient_payload_copy_inside_notebook") is not False:
+        raise ValueError("bundle must forbid bulk patient payload copying")
+    if payload_summary.get("bulk_patient_payload_extraction_inside_notebook") is not False:
+        raise ValueError("bundle must forbid bulk patient payload extraction")
+    if payload_summary.get("small_payload_pack_extraction_inside_notebook") is not True:
+        raise ValueError("bundle must disclose small payload pack extraction")
 
     source_parent = working_root / "source"
     repo_root = source_parent / "Trauma-Predict"
@@ -315,7 +382,11 @@ def main() -> int:
     print(
         "RELATIONAL_PRIMARY_MOUNTED_PREFLIGHT_OK "
         f"target={EXPECTED_TARGET_DATASET_ID} parameters={EXPECTED_PARAMETERS} "
-        f"mode=relational GPUs=2 dependencies={json.dumps(dependency_versions, sort_keys=True)}",
+        f"mode=relational GPUs=2 "
+        f"small_packed_files={int(payload_summary.get('small_packed_dataset_files', -1))} "
+        f"small_packed_bytes={int(payload_summary.get('small_packed_uncompressed_bytes', -1))} "
+        "bulk_patient_extraction=false "
+        f"dependencies={json.dumps(dependency_versions, sort_keys=True)}",
         flush=True,
     )
     command = [

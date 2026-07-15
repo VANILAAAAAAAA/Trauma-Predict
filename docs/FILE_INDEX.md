@@ -42,7 +42,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `notebooks/kaggle/README.md` | kaggle | Explains Kaggle launcher folder boundary. | No data. |
 | `notebooks/kaggle/run_multires_event_v1.py` | kaggle | Pinned Kaggle launcher for data acquisition, preflight, DDP smoke, full training, and output verification. | Downloads or reads the private frozen artifact only at runtime. |
 | `notebooks/kaggle/run_multires_event_v2.py` | kaggle | Block-authorized V2 launcher with immutable tag/data checks, builder-equivalent plain-JSONL gzip reconstruction, per-shard hashes, same-process capacity, and promotion gates. | Reads verified private datasets and attached run outputs only at runtime. |
-| `notebooks/kaggle/run_relational_primary_bundle.py` | kaggle | Active one-bundle launcher that verifies mounted source/V1/r9 identities and starts the exact relational formal run without network or patient-data extraction. | Reads one mounted private bundle only at runtime. |
+| `notebooks/kaggle/run_relational_primary_bundle.py` | kaggle | Active one-bundle launcher that verifies mounted source/V1/r9 identities, extracts only the disclosed small hash-bound payload packs, and starts the exact relational formal run without network or bulk patient-shard extraction. | Reads one mounted private bundle only at runtime. |
 | `notebooks/kaggle/run_stage_a_hour.py` | kaggle | Automated Stage A Kaggle launcher for preferred-encoder HOUR-only training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/scan_token_lengths.py` | kaggle | Scans shard input token lengths against the configured encoder window before training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
@@ -147,6 +147,6 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `tests/test_relational_primary_bundle.py` | tests | Tests mounted bundle discovery, no-copy dataset views, and source-extraction safety. | Synthetic files only. |
 | `tests/test_repo_hygiene.py` | tests | Tests file index and forbidden repository paths. | No data. |
 | `tests/test_training_main_route.py` | tests | Tests main-route config, label encoding, collator alignment, adapter shape, and checkpoint helpers. | Synthetic records only. |
-| `tools/build_relational_primary_bundle.py` | tools | Builds the immutable flat private Kaggle run bundle with per-file inventories and identities. | Writes restricted data only outside Git. |
+| `tools/build_relational_primary_bundle.py` | tools | Builds the immutable private Kaggle run bundle with per-file inventories, direct large payloads, deterministic small-payload packs, and a 200-file top-level guard. | Writes restricted data only outside Git. |
 | `tools/update_file_index.py` | tools | Validates that all tracked files appear in this index. | No data. |
 | `uv.lock` | packaging | Exact dependency resolution used in semantic runtime identity. | No data. |

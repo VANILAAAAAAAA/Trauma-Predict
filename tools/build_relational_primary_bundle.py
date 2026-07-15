@@ -5,16 +5,19 @@ import hashlib
 import json
 import os
 import shutil
+import tarfile
 from pathlib import Path
 from typing import Any
 
 
-BUNDLE_SCHEMA = "trauma_predict.multires_event_v2_relational_primary_bundle.v1"
-INVENTORY_SCHEMA = "trauma_predict.mounted_file_inventory.v1"
+BUNDLE_SCHEMA = "trauma_predict.multires_event_v2_relational_primary_bundle.v2"
+INVENTORY_SCHEMA = "trauma_predict.mounted_file_inventory.v2"
 MODEL_PARAMETER_COUNT = 47_801_855
 RUN_NAME = "t4x2_multires_event_v2_relational"
 BASE_DATASET_ID = "multires_event_v1_c4_full_20260712"
 TARGET_DATASET_ID = "multires_event_m4_target_v2_c4_full_20260714_r9"
+SMALL_PAYLOAD_THRESHOLD_BYTES = 64 * 1024
+MAX_KAGGLE_TOP_LEVEL_FILES = 200
 
 
 def sha256_file(path: Path) -> str:
@@ -62,43 +65,84 @@ def build_inventory(
     output: Path,
     *,
     prefix: str,
-) -> tuple[dict[str, Any], int, int]:
+) -> tuple[dict[str, Any], int, int, dict[str, int]]:
     rows: list[dict[str, Any]] = []
     total_bytes = 0
     files = sorted(path for path in root.rglob("*") if path.is_file() and not path.is_symlink())
     if not files:
         raise ValueError(f"dataset contains no regular files: {root}")
-    for index, source in enumerate(files):
-        relative = source.relative_to(root).as_posix()
-        digest = sha256_file(source)
-        # A neutral extension prevents Kaggle from converting CSV/JSONL/GZIP
-        # payloads; the inventory restores each original destination name.
-        mounted_name = f"payload_{prefix}_{index:04d}_{digest[:16]}.blob"
-        destination = output / mounted_name
-        link_or_copy(source, destination)
-        size_bytes = source.stat().st_size
-        rows.append(
-            {
+    pack_path = output / f"payload_{prefix}_small_files.tar"
+    packed_files = 0
+    packed_bytes = 0
+    direct_files = 0
+    with tarfile.open(pack_path, "w") as pack:
+        for index, source in enumerate(files):
+            relative = source.relative_to(root).as_posix()
+            digest = sha256_file(source)
+            # A neutral extension prevents Kaggle from converting structured
+            # payloads; the inventory restores each original destination name.
+            mounted_name = f"payload_{prefix}_{index:04d}_{digest[:16]}.blob"
+            size_bytes = source.stat().st_size
+            row = {
                 "destination": relative,
-                "mounted_path": mounted_name,
                 "sha256": digest,
                 "size_bytes": size_bytes,
             }
-        )
-        total_bytes += size_bytes
+            if size_bytes <= SMALL_PAYLOAD_THRESHOLD_BYTES:
+                member = tarfile.TarInfo(mounted_name)
+                member.size = size_bytes
+                member.mode = 0o444
+                member.uid = 0
+                member.gid = 0
+                member.uname = ""
+                member.gname = ""
+                member.mtime = 0
+                with source.open("rb") as handle:
+                    pack.addfile(member, handle)
+                row.update(storage="packed", archive_member=mounted_name)
+                packed_files += 1
+                packed_bytes += size_bytes
+            else:
+                destination = output / mounted_name
+                link_or_copy(source, destination)
+                row.update(storage="mounted", mounted_path=mounted_name)
+                direct_files += 1
+            rows.append(row)
+            total_bytes += size_bytes
+    packed_payload: dict[str, Any] | None = None
+    if packed_files:
+        packed_payload = {
+            "path": pack_path.name,
+            "sha256": sha256_file(pack_path),
+            "file_count": packed_files,
+            "uncompressed_bytes": packed_bytes,
+            "archive_bytes": pack_path.stat().st_size,
+        }
+    else:
+        pack_path.unlink()
     inventory = {
         "schema": INVENTORY_SCHEMA,
         "source_root_name": root.name,
         "file_count": len(rows),
         "total_bytes": total_bytes,
+        "direct_mounted_file_count": direct_files,
+        "packed_file_count": packed_files,
         "files": rows,
     }
+    if packed_payload is not None:
+        inventory["packed_payload"] = packed_payload
     inventory_path = output / f"{prefix}_inventory.json"
     write_json(inventory_path, inventory)
     return (
         {"path": inventory_path.name, "sha256": sha256_file(inventory_path)},
         total_bytes,
         len(rows),
+        {
+            "direct_files": direct_files,
+            "packed_files": packed_files,
+            "packed_uncompressed_bytes": packed_bytes,
+            "pack_archives": int(packed_payload is not None),
+        },
     )
 
 
@@ -142,10 +186,10 @@ def main() -> int:
         target_root = args.target_root.resolve()
         base_identity = dataset_identity(base_root, BASE_DATASET_ID)
         target_identity = dataset_identity(target_root, TARGET_DATASET_ID)
-        base_inventory, base_bytes, base_files = build_inventory(
+        base_inventory, base_bytes, base_files, base_storage = build_inventory(
             base_root, output, prefix="base"
         )
-        target_inventory, target_bytes, target_files = build_inventory(
+        target_inventory, target_bytes, target_files, target_storage = build_inventory(
             target_root, output, prefix="target"
         )
 
@@ -173,6 +217,7 @@ def main() -> int:
                 "target": {**target_identity, "inventory": target_inventory},
             },
             "source": {"path": source_archive.name, "sha256": sha256_file(source_archive)},
+            "launcher": {"path": launcher.name, "sha256": sha256_file(launcher)},
             "input_normalization": {
                 "path": normalization.name,
                 "sha256": sha256_file(normalization),
@@ -180,9 +225,20 @@ def main() -> int:
             "payload_summary": {
                 "base_bytes": base_bytes,
                 "target_bytes": target_bytes,
-                "patient_data_files": base_files + target_files,
-                "data_copy_inside_notebook": False,
-                "data_extraction_inside_notebook": False,
+                "logical_dataset_files": base_files + target_files,
+                "direct_mounted_dataset_files": (
+                    base_storage["direct_files"] + target_storage["direct_files"]
+                ),
+                "small_packed_dataset_files": (
+                    base_storage["packed_files"] + target_storage["packed_files"]
+                ),
+                "small_packed_uncompressed_bytes": (
+                    base_storage["packed_uncompressed_bytes"]
+                    + target_storage["packed_uncompressed_bytes"]
+                ),
+                "bulk_patient_payload_copy_inside_notebook": False,
+                "bulk_patient_payload_extraction_inside_notebook": False,
+                "small_payload_pack_extraction_inside_notebook": True,
             },
         }
         if args.resume_archive is not None:
@@ -209,6 +265,12 @@ def main() -> int:
                 "isPrivate": True,
             },
         )
+        top_level_files = len([path for path in output.iterdir() if path.is_file()])
+        if top_level_files > MAX_KAGGLE_TOP_LEVEL_FILES:
+            raise ValueError(
+                "bundle exceeds the frozen Kaggle top-level file budget: "
+                f"{top_level_files} > {MAX_KAGGLE_TOP_LEVEL_FILES}"
+            )
     except BaseException:
         shutil.rmtree(output, ignore_errors=True)
         raise

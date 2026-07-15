@@ -85,7 +85,24 @@ class RelationalPrimaryBundleTest(unittest.TestCase):
                 self.launcher._safe_extract(archive, root / "output")
             self.assertFalse((root / "escape.txt").exists())
 
-    def test_materialized_dataset_view_uses_only_mounted_symlinks(self) -> None:
+    def test_safe_extract_rejects_unregistered_small_pack_member(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "small.tar"
+            with tarfile.open(archive, "w") as handle:
+                for name in ("declared.blob", "extra.blob"):
+                    content = name.encode("utf-8")
+                    row = tarfile.TarInfo(name)
+                    row.size = len(content)
+                    handle.addfile(row, io.BytesIO(content))
+            with self.assertRaisesRegex(ValueError, "members do not match"):
+                self.launcher._safe_extract(
+                    archive,
+                    root / "output",
+                    expected_file_members={"declared.blob"},
+                )
+
+    def test_materialized_dataset_view_uses_direct_mounted_symlinks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             bundle = root / "bundle"
@@ -93,10 +110,13 @@ class RelationalPrimaryBundleTest(unittest.TestCase):
             payload = bundle / "payload_000"
             payload.write_bytes(b"mounted-bytes")
             inventory_payload = {
-                "schema": "trauma_predict.mounted_file_inventory.v1",
+                "schema": "trauma_predict.mounted_file_inventory.v2",
                 "file_count": 1,
+                "direct_mounted_file_count": 1,
+                "packed_file_count": 0,
                 "files": [
                     {
+                        "storage": "mounted",
                         "mounted_path": payload.name,
                         "destination": "nested/file.bin",
                         "size_bytes": payload.stat().st_size,
@@ -116,11 +136,64 @@ class RelationalPrimaryBundleTest(unittest.TestCase):
                 bundle,
                 declared,
                 root / "view",
+                root / "packed",
                 label="base",
             )
             linked = view / "nested/file.bin"
             self.assertTrue(linked.is_symlink())
             self.assertEqual(linked.read_bytes(), payload.read_bytes())
+
+    def test_materialized_dataset_view_extracts_only_hash_bound_small_pack(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "bundle"
+            bundle.mkdir()
+            content = b"small-contract-payload"
+            archive = bundle / "payload_base_small_files.tar"
+            with tarfile.open(archive, "w") as handle:
+                row = tarfile.TarInfo("packed_000.blob")
+                row.size = len(content)
+                handle.addfile(row, io.BytesIO(content))
+            inventory_payload = {
+                "schema": "trauma_predict.mounted_file_inventory.v2",
+                "file_count": 1,
+                "direct_mounted_file_count": 0,
+                "packed_file_count": 1,
+                "packed_payload": {
+                    "path": archive.name,
+                    "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                    "file_count": 1,
+                    "uncompressed_bytes": len(content),
+                    "archive_bytes": archive.stat().st_size,
+                },
+                "files": [
+                    {
+                        "storage": "packed",
+                        "archive_member": "packed_000.blob",
+                        "destination": "contracts/file.json",
+                        "size_bytes": len(content),
+                        "sha256": hashlib.sha256(content).hexdigest(),
+                    }
+                ],
+            }
+            inventory = bundle / "base_inventory.json"
+            inventory.write_text(json.dumps(inventory_payload), encoding="utf-8")
+            declared = {
+                "inventory": {
+                    "path": inventory.name,
+                    "sha256": hashlib.sha256(inventory.read_bytes()).hexdigest(),
+                }
+            }
+            view = self.launcher._materialize_dataset_view(
+                bundle,
+                declared,
+                root / "view",
+                root / "packed",
+                label="base",
+            )
+            linked = view / "contracts/file.json"
+            self.assertTrue(linked.is_symlink())
+            self.assertEqual(linked.read_bytes(), content)
 
     def test_materialized_dataset_view_rejects_missing_payload(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -129,10 +202,13 @@ class RelationalPrimaryBundleTest(unittest.TestCase):
             inventory.write_text(
                 json.dumps(
                     {
-                        "schema": "trauma_predict.mounted_file_inventory.v1",
+                        "schema": "trauma_predict.mounted_file_inventory.v2",
                         "file_count": 1,
+                        "direct_mounted_file_count": 1,
+                        "packed_file_count": 0,
                         "files": [
                             {
+                                "storage": "mounted",
                                 "mounted_path": "absent.bin",
                                 "destination": "file.bin",
                                 "size_bytes": 1,
@@ -153,6 +229,7 @@ class RelationalPrimaryBundleTest(unittest.TestCase):
                     root,
                     declared,
                     root / "view",
+                    root / "packed",
                     label="base",
                 )
 
