@@ -71,7 +71,10 @@ def build_inventory(
     files = sorted(path for path in root.rglob("*") if path.is_file() and not path.is_symlink())
     if not files:
         raise ValueError(f"dataset contains no regular files: {root}")
-    pack_path = output / f"payload_{prefix}_small_files.tar"
+    # Kaggle expands recognized archive extensions while preparing a Dataset.
+    # A neutral mounted name preserves the exact archive bytes for our own
+    # hash check and guarded extraction.
+    pack_path = output / f"payload_{prefix}_small_pack.blob"
     packed_files = 0
     packed_bytes = 0
     direct_files = 0
@@ -193,7 +196,7 @@ def main() -> int:
             target_root, output, prefix="target"
         )
 
-        source_archive = output / "trauma_predict_relational_primary_source.tar.gz"
+        source_archive = output / "trauma_predict_relational_primary_source.blob"
         launcher = output / "run_relational_primary_bundle.py"
         normalization = output / "multires_event_v1_input_normalization.json"
         shutil.copy2(args.source_archive.resolve(), source_archive)
@@ -247,7 +250,7 @@ def main() -> int:
                 "checkpoint-"
             ).isdigit():
                 raise ValueError("resume checkpoint directory must be checkpoint-<integer>")
-            resume_archive = output / "relational_primary_resume_checkpoint.tar.gz"
+            resume_archive = output / "relational_primary_resume_checkpoint.blob"
             shutil.copy2(args.resume_archive.resolve(), resume_archive)
             manifest["resume"] = {
                 "path": resume_archive.name,

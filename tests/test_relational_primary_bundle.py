@@ -149,7 +149,7 @@ class RelationalPrimaryBundleTest(unittest.TestCase):
             bundle = root / "bundle"
             bundle.mkdir()
             content = b"small-contract-payload"
-            archive = bundle / "payload_base_small_files.tar"
+            archive = bundle / "payload_base_small_pack.blob"
             with tarfile.open(archive, "w") as handle:
                 row = tarfile.TarInfo("packed_000.blob")
                 row.size = len(content)
