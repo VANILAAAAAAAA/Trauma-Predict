@@ -1671,42 +1671,16 @@ def run_multires_event_v2_rank_artifact_preflight_only(
         )
         if int(result.get("world_size", -1)) != world_size:
             raise RuntimeError("early rank artifact preflight world size changed")
-        checkpoint_canary_root = output_root / "best-checkpoint-collective-canary"
-        checkpoint_canary_identity = {
-            "canary": sha256_payload(
-                {
-                    "schema": "multires_event_v2_best_checkpoint_collective_canary_v1",
-                    "mode": mode,
-                    "world_size": world_size,
-                }
-            )
-        }
-        checkpoint_canary_model = torch.nn.Identity()
-        _materialize_v2_best_model(
-            output_dir=checkpoint_canary_root,
-            model=checkpoint_canary_model,
-            identity_hashes=checkpoint_canary_identity,
-            step=1,
-            metric=0.0,
-        )
-        selected_canary = _load_v2_best_model(
-            checkpoint_canary_root,
-            checkpoint_canary_model,
-            torch.device("cpu"),
-            expected_identity_hashes=checkpoint_canary_identity,
-            expected_best_step=1,
+        _run_v2_best_checkpoint_collective_canary(
+            output_root=output_root / "best-checkpoint-collective-canary",
+            mode=mode,
+            world_size=world_size,
         )
         if is_rank_zero():
             print(
                 "MULTIRES_EVENT_V2_RANK_ARTIFACT_CANARY_OK "
                 f"phase=predata world_size={world_size} best_checkpoint=verified "
                 f"sha256={result['manifest_sha256']}",
-                flush=True,
-            )
-            print(
-                "MULTIRES_EVENT_V2_BEST_CHECKPOINT_COLLECTIVE_CANARY_OK "
-                f"phase=predata world_size={world_size} "
-                f"model_sha256={selected_canary['selected_checkpoint_model_sha256']}",
                 flush=True,
             )
         completed = True
@@ -2493,6 +2467,11 @@ def run_multires_event_v2_training(
         lambda: output_dir.mkdir(parents=True, exist_ok=True)
         if is_rank_zero()
         else None,
+    )
+    _run_v2_best_checkpoint_collective_canary(
+        output_root=output_dir / "preflight/best-checkpoint-collective-canary",
+        mode=str(train["mode"]),
+        world_size=world_size,
     )
     runtime = build_multires_event_v2_runtime(
         train,
@@ -4219,6 +4198,48 @@ def _materialize_v2_best_model(
         if is_rank_zero()
         else None,
     )
+
+
+def _run_v2_best_checkpoint_collective_canary(
+    *,
+    output_root: Path,
+    mode: str,
+    world_size: int,
+) -> dict[str, Any]:
+    """Exercise the production best-checkpoint save/load order before data loading."""
+
+    checkpoint_canary_identity = {
+        "canary": sha256_payload(
+            {
+                "schema": "multires_event_v2_best_checkpoint_collective_canary_v1",
+                "mode": mode,
+                "world_size": world_size,
+            }
+        )
+    }
+    checkpoint_canary_model = torch.nn.Identity()
+    _materialize_v2_best_model(
+        output_dir=output_root,
+        model=checkpoint_canary_model,
+        identity_hashes=checkpoint_canary_identity,
+        step=1,
+        metric=0.0,
+    )
+    selected = _load_v2_best_model(
+        output_root,
+        checkpoint_canary_model,
+        torch.device("cpu"),
+        expected_identity_hashes=checkpoint_canary_identity,
+        expected_best_step=1,
+    )
+    if is_rank_zero():
+        print(
+            "MULTIRES_EVENT_V2_BEST_CHECKPOINT_COLLECTIVE_CANARY_OK "
+            f"phase=predata world_size={world_size} "
+            f"model_sha256={selected['selected_checkpoint_model_sha256']}",
+            flush=True,
+        )
+    return selected
 
 
 def _load_v2_best_model(

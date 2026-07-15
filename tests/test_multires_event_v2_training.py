@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import inspect
 import json
 import os
 import shutil
@@ -49,6 +50,7 @@ from trauma_predict.training.multires_event_v2 import (
     matched_design_signature,
     project_multires_event_v2_capacity_runtime,
     raw_414_factor_joint_nll_batch_mean,
+    run_multires_event_v2_training,
     require_multires_event_v2_training_authorization,
     require_multires_event_v2_verification_authorization,
     _step_grad_scaler,
@@ -121,6 +123,14 @@ class MultiresEventV2TrainingContractTest(unittest.TestCase):
             )
             signatures.add(matched_design_signature(train, self.dataset, self.model))
         self.assertEqual(len(signatures), 1)
+
+    def test_formal_route_runs_best_checkpoint_collective_canary_before_data_runtime(self) -> None:
+        source = inspect.getsource(run_multires_event_v2_training)
+        canary = source.index("_run_v2_best_checkpoint_collective_canary(")
+        runtime = source.index("build_multires_event_v2_runtime(")
+        model = source.index("build_multires_event_v2_model(")
+        self.assertLess(canary, runtime)
+        self.assertLess(canary, model)
 
     def test_hosted_step2_stop_is_explicit_and_fail_closed(self) -> None:
         with patch.dict(
