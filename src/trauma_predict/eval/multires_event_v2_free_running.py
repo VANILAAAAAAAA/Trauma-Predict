@@ -2080,6 +2080,8 @@ def _collect_distributed_phase(
 
     This boundary prevents one rank from entering the next collective while a
     peer has already failed during file hashing or rank-zero assembly.
+    ``factory`` must not itself enter a distributed collective: every rank
+    reaches the all-gather immediately after its rank-local callback returns.
     """
 
     rank, world_size = _rank_world()

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +31,56 @@ from tests.test_multires_event_v2_kaggle_route import optimizer_health_row
 
 
 class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
+    def test_two_rank_best_checkpoint_uses_one_collective_order(self) -> None:
+        worker = (
+            Path(__file__).resolve().parent
+            / "helpers/multires_event_v2_best_checkpoint_worker.py"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_root = Path(directory) / "best-checkpoint"
+            started = time.monotonic()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "torch.distributed.run",
+                    "--standalone",
+                    "--nproc_per_node=2",
+                    str(worker),
+                    str(output_root),
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                text=True,
+                capture_output=True,
+                timeout=25,
+                check=False,
+            )
+            elapsed = time.monotonic() - started
+            combined = completed.stdout + completed.stderr
+            self.assertEqual(completed.returncode, 0, msg=combined)
+            self.assertLess(elapsed, 20.0, msg=combined)
+            self.assertNotIn("collective mismatch", combined.lower())
+            self.assertNotIn("timed out", combined.lower())
+            pointer = json.loads(
+                (output_root / "best_checkpoint.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(pointer["step"], 250)
+            self.assertEqual(pointer["joint_nll_subject_macro"], 1.25)
+
+    def test_rank_zero_best_checkpoint_writer_is_collective_free(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "trauma_predict.training.multires_event_v2._barrier",
+            side_effect=AssertionError("rank-zero writer entered a collective"),
+        ) as barrier:
+            _save_v2_best_model(
+                output_dir=Path(directory),
+                model=torch.nn.Identity(),
+                identity_hashes={"runtime": "identity"},
+                step=1,
+                metric=0.0,
+            )
+            barrier.assert_not_called()
+
     def test_best_checkpoint_load_is_bound_to_schema_step_identity_and_model_bytes(self) -> None:
         identity = {"runtime": "r", "matched_design": "m"}
         with tempfile.TemporaryDirectory() as directory:

@@ -123,6 +123,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `src/trauma_predict/training/observability.py` | package | Atomic JSON, rank-zero shared metrics, rank-local evidence, loss signals, and run heartbeat utilities. | No data. |
 | `src/trauma_predict/training/runtime.py` | package | Shared training runtime helpers for logging, checkpoints, and snapshots. | No data. |
 | `src/trauma_predict/training/stages.py` | package | Explicit Stage A/B/C and joint-baseline active-loss contracts. | No data. |
+| `tests/helpers/multires_event_v2_best_checkpoint_worker.py` | tests | Two-process Gloo worker for the production best-checkpoint collective-order regression. | Synthetic zero-parameter checkpoint only. |
 | `tests/helpers/multires_event_v2_rank_artifact_worker.py` | tests | Two-process Gloo worker for rank-local artifact success and failure-path regression. | Synthetic metadata only. |
 | `tests/test_data_preflight.py` | tests | Tests generated artifact preflight checks with synthetic rows. | Synthetic records only. |
 | `tests/test_manifest_contracts.py` | tests | Tests schema and manifest helper behavior. | Synthetic records only. |

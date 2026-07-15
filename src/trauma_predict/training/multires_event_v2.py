@@ -1628,11 +1628,14 @@ def run_multires_event_v2_rank_artifact_preflight_only(
     output_dir: str | Path,
     mode: str,
 ) -> dict[str, Any]:
-    """Run the exact rank-local writer/hash/gather path before Dataset loading.
+    """Run exact distributed artifact paths before Dataset loading.
 
     This route accepts no model or data config and performs no Dataset scan. It
-    exists so a hosted attempt can reject deterministic rank-local artifact and
-    collective-propagation defects before spending minutes materializing the
+    exercises both rank-local writer/hash/gather and the production
+    best-checkpoint save/load boundary.  The checkpoint canary uses a
+    zero-parameter Identity module; it is an I/O/collective contract check, not
+    a capacity model or optimization attempt.  A hosted attempt can therefore
+    reject deterministic collective-order defects before materializing the
     50,350-anchor runtime.
     """
 
@@ -1668,11 +1671,42 @@ def run_multires_event_v2_rank_artifact_preflight_only(
         )
         if int(result.get("world_size", -1)) != world_size:
             raise RuntimeError("early rank artifact preflight world size changed")
+        checkpoint_canary_root = output_root / "best-checkpoint-collective-canary"
+        checkpoint_canary_identity = {
+            "canary": sha256_payload(
+                {
+                    "schema": "multires_event_v2_best_checkpoint_collective_canary_v1",
+                    "mode": mode,
+                    "world_size": world_size,
+                }
+            )
+        }
+        checkpoint_canary_model = torch.nn.Identity()
+        _materialize_v2_best_model(
+            output_dir=checkpoint_canary_root,
+            model=checkpoint_canary_model,
+            identity_hashes=checkpoint_canary_identity,
+            step=1,
+            metric=0.0,
+        )
+        selected_canary = _load_v2_best_model(
+            checkpoint_canary_root,
+            checkpoint_canary_model,
+            torch.device("cpu"),
+            expected_identity_hashes=checkpoint_canary_identity,
+            expected_best_step=1,
+        )
         if is_rank_zero():
             print(
                 "MULTIRES_EVENT_V2_RANK_ARTIFACT_CANARY_OK "
-                f"phase=predata world_size={world_size} "
+                f"phase=predata world_size={world_size} best_checkpoint=verified "
                 f"sha256={result['manifest_sha256']}",
+                flush=True,
+            )
+            print(
+                "MULTIRES_EVENT_V2_BEST_CHECKPOINT_COLLECTIVE_CANARY_OK "
+                f"phase=predata world_size={world_size} "
+                f"model_sha256={selected_canary['selected_checkpoint_model_sha256']}",
                 flush=True,
             )
         completed = True
@@ -2885,17 +2919,12 @@ def _train_loop(
             candidate = float(evaluation["joint_nll_subject_macro"])
             if best_metric is None or candidate < float(best_metric):
                 best_metric, best_step = candidate, global_step
-                _collect_distributed_phase(
-                    "formal best-checkpoint materialization",
-                    lambda: _save_v2_best_model(
-                        output_dir=output_dir,
-                        model=model,
-                        identity_hashes=identity_hashes,
-                        step=global_step,
-                        metric=candidate,
-                    )
-                    if is_rank_zero()
-                    else None,
+                _materialize_v2_best_model(
+                    output_dir=output_dir,
+                    model=model,
+                    identity_hashes=identity_hashes,
+                    step=global_step,
+                    metric=candidate,
                 )
             model.train()
 
@@ -4133,6 +4162,15 @@ def _save_v2_best_model(
     step: int,
     metric: float,
 ) -> None:
+    """Write best-model files on rank zero without entering a collective.
+
+    Every rank must call :func:`_materialize_v2_best_model`; this filesystem
+    writer is deliberately collective-free so the enclosing distributed phase
+    cannot diverge into barrier versus all-gather ordering.
+    """
+
+    if not is_rank_zero():
+        raise RuntimeError("V2 best-checkpoint writer is rank-zero only")
     if isinstance(step, bool) or not isinstance(step, int) or step < 1:
         raise ValueError("V2 best checkpoint step must be a positive integer")
     if not math.isfinite(float(metric)):
@@ -4142,23 +4180,45 @@ def _save_v2_best_model(
         for key, value in identity_hashes.items()
     ):
         raise ValueError("V2 best checkpoint requires a complete run identity")
-    if is_rank_zero():
-        best_dir = output_dir / "best_checkpoint"
-        best_dir.mkdir(parents=True, exist_ok=True)
-        temporary = best_dir / f".model.pt.tmp-{os.getpid()}"
-        torch.save(_unwrapped_model(model).state_dict(), temporary)
-        temporary.replace(best_dir / "model.pt")
-        atomic_write_json(best_dir / "identity_hashes.json", dict(identity_hashes))
-        atomic_write_json(output_dir / "best_checkpoint.json", {
-            "schema_version": BEST_CHECKPOINT_SCHEMA,
-            "updated_at": utc_now(),
-            "step": int(step),
-            "joint_nll_subject_macro": float(metric),
-            "path": "best_checkpoint",
-            "model_sha256": sha256_file(best_dir / "model.pt"),
-            "identity_hashes": dict(identity_hashes),
-        })
-    _barrier()
+    best_dir = output_dir / "best_checkpoint"
+    best_dir.mkdir(parents=True, exist_ok=True)
+    temporary = best_dir / f".model.pt.tmp-{os.getpid()}"
+    torch.save(_unwrapped_model(model).state_dict(), temporary)
+    temporary.replace(best_dir / "model.pt")
+    atomic_write_json(best_dir / "identity_hashes.json", dict(identity_hashes))
+    atomic_write_json(output_dir / "best_checkpoint.json", {
+        "schema_version": BEST_CHECKPOINT_SCHEMA,
+        "updated_at": utc_now(),
+        "step": int(step),
+        "joint_nll_subject_macro": float(metric),
+        "path": "best_checkpoint",
+        "model_sha256": sha256_file(best_dir / "model.pt"),
+        "identity_hashes": dict(identity_hashes),
+    })
+
+
+def _materialize_v2_best_model(
+    *,
+    output_dir: Path,
+    model: Any,
+    identity_hashes: Mapping[str, str],
+    step: int,
+    metric: float,
+) -> None:
+    """Synchronize one rank-zero best-checkpoint write across every rank."""
+
+    _collect_distributed_phase(
+        "formal best-checkpoint materialization",
+        lambda: _save_v2_best_model(
+            output_dir=output_dir,
+            model=model,
+            identity_hashes=identity_hashes,
+            step=step,
+            metric=metric,
+        )
+        if is_rank_zero()
+        else None,
+    )
 
 
 def _load_v2_best_model(
