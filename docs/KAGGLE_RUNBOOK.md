@@ -1,6 +1,12 @@
 # Kaggle Runbook
 
-First formal target: Stage A `NEXT_HOUR` vital-value training on GPU T4 x2 with fp16. `hour_vent` remains an input covariate but is not a Stage A target or loss. P100 is the fallback path. TPU is not in the first training path because it adds XLA-specific debugging and checkpoint friction.
+The active formal target is the structured `multires_event_v2_m4_relation_v2` route on one P100. Upload `notebooks/kaggle/trauma_predict_relation_v2_p100_r9.ipynb` without renaming it, select P100, keep Internet off, and choose Save & Run All. The Notebook resolves only `vanila111/trauma-predict-relation-v2-p100-r9-bundle`, verifies its clean source release and frozen data identities, and advances through optimizer steps 250, 1500, 2750, and 4000 across successive Save Runs. Later runs reuse the persisted final teacher evaluation and resume hash-bound free-running chunks until all 6,309 validation anchors have 100 trajectories.
+
+This route never clones GitHub, reads raw MIMIC rows, resumes the historical v8 model, changes the 52+39 relation contract, or selects an ablation. Its formal config is `configs/train/p100_multires_event_v2_relation_v2.yaml`; the thin Notebook and bundle launcher are the only active V2 hosted entrypoints.
+
+## Legacy textual Stage A Runbook
+
+The remainder of this file preserves the older textual V1 Stage A procedure. It is available for historical reproduction and is not the active Relation V2 run.
 
 ## Expected Inputs
 

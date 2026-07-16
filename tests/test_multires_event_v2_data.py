@@ -161,17 +161,19 @@ class MultiresEventV2DataTest(unittest.TestCase):
         self.assertEqual(tuple(metadata["field_order"]), self.dataset.contract.core_fields)
         self.assertEqual(len(metadata["factor_order"]), 414)
         self.assertFalse(metadata["deterministic_projections_have_direct_loss"])
-        self.assertEqual(batch["relation_adjacency"].shape, (14, 29, 29))
-        self.assertEqual(tuple(batch["relation_type_lags"].shape), (14,))
-        self.assertEqual(
-            metadata["relation_edge_counts"],
-            {"total_registry": 68, "active_core": 50, "deferred_input_or_aux": 18},
-        )
+        self.assertFalse(any("relation" in key for key in batch))
+        self.assertFalse(any("relation" in key for key in metadata))
         self.assertIn("observed_hours", batch["target_primitive_gates"]["dense_joint_value_state"])
         self.assertIn("compatible_active", batch["target_primitive_gates"]["ned_joint_value_state"])
 
         input_batch = batch["input_batch"]
         self.assertEqual(tuple(input_batch["event_field_ids"].shape[:1]), (2,))
+        self.assertEqual(tuple(input_batch["latest_input_block_index"].shape), (2,))
+        for batch_index, latest_index in enumerate(
+            input_batch["latest_input_block_index"].tolist()
+        ):
+            self.assertEqual(latest_index, int(input_batch["block_mask"][batch_index].sum()) - 1)
+            self.assertEqual(input_batch["block_relative_end"][batch_index, latest_index], 0.0)
         forbidden = {
             "target_values",
             "target_raw_values",
@@ -183,7 +185,7 @@ class MultiresEventV2DataTest(unittest.TestCase):
         self.assertFalse(forbidden.intersection(input_batch))
         self.assertFalse(forbidden.intersection(batch))
 
-    def test_relation_direction_and_lag_survive_collation(self) -> None:
+    def test_relation_contract_is_not_copied_into_samples_or_batch(self) -> None:
         try:
             import torch  # noqa: F401
         except ImportError:
@@ -196,25 +198,23 @@ class MultiresEventV2DataTest(unittest.TestCase):
         )
         batch = collator([self.dataset[0]])
         metadata = batch["target_primitive_metadata"]
-        relation_id = metadata["relation_type_ids"]["support_context"]
-        source = metadata["field_index"]["respiratory_support"]
-        target = metadata["field_index"]["fio2"]
-        self.assertTrue(batch["relation_adjacency"][relation_id, target, source].item())
-        self.assertFalse(batch["relation_adjacency"][relation_id, source, target].item())
-        self_id = metadata["relation_type_ids"]["self_transition"]
-        self.assertEqual(batch["relation_type_lags"][self_id].item(), 1)
-        self.assertTrue(
-            batch["relation_type_lags"]
-            .index_select(
-                0,
-                batch["relation_type_lags"].new_tensor(
-                    [index for index in range(14) if index != self_id]
-                ),
-            )
-            .eq(0)
-            .all()
-            .item()
+        self.assertFalse(any("relation" in key for key in batch))
+        self.assertFalse(any("relation" in key for key in metadata))
+        self.assertFalse(
+            any("relation" in key for key in self.dataset[0]["input_record"])
         )
+
+    def test_latest_input_block_must_be_unique_and_final(self) -> None:
+        collator = MultiresEventV2Collator(
+            contract=self.dataset.contract,
+            supervision=self.supervision,
+            templates=self.base_dataset.templates,
+            normalization=_IdentityInputNormalizer(),
+        )
+        joined = copy.deepcopy(self.dataset[0])
+        joined["input_record"]["block_table"][-2]["relative_end_hour"] = 0
+        with self.assertRaisesRegex(ValueError, "exactly one block ending"):
+            collator([joined])
 
     def test_preflight_validates_full_r9_boundary_records(self) -> None:
         result = preflight_multires_event_v2(

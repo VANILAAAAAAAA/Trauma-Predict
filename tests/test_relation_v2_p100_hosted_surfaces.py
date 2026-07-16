@@ -1,0 +1,348 @@
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import io
+import json
+import subprocess
+import tarfile
+import tempfile
+import unittest
+from pathlib import Path
+
+import yaml
+
+
+ROOT = Path(__file__).resolve().parents[1]
+LAUNCHER_PATH = ROOT / "notebooks/kaggle/run_relation_v2_p100_bundle.py"
+BUILDER_PATH = ROOT / "tools/build_relation_v2_p100_bundle.py"
+NOTEBOOK_PATH = (
+    ROOT / "notebooks/kaggle/trauma_predict_relation_v2_p100_r9.ipynb"
+)
+KERNEL_TEMPLATE_PATH = (
+    ROOT / "notebooks/kaggle/kernel-metadata-relation-v2-p100.template.json"
+)
+
+
+def _load(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class RelationV2P100HostedSurfacesTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.launcher = _load(LAUNCHER_PATH, "relation_v2_p100_launcher")
+        cls.builder = _load(BUILDER_PATH, "relation_v2_p100_builder")
+
+    def test_frozen_route_identity_matches_across_surfaces(self) -> None:
+        metadata = json.loads(KERNEL_TEMPLATE_PATH.read_text(encoding="utf-8"))
+        notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
+        notebook_source = "".join(notebook["cells"][1]["source"])
+        model_config = yaml.safe_load(
+            (ROOT / "configs/model/multires_event_v2_relation_v2.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        frozen_count = int(model_config["formal_contract"]["exact_parameter_count"])
+        self.assertEqual(frozen_count, 48_728_439)
+        self.assertEqual(self.launcher.EXPECTED_PARAMETERS, frozen_count)
+        self.assertEqual(self.builder.MODEL_PARAMETER_COUNT, frozen_count)
+        self.assertEqual(
+            self.launcher.EXPECTED_TRAINING_STOP_STEPS,
+            (250, 1500, 2750, 4000),
+        )
+        self.assertEqual(self.builder.DEFAULT_FREE_RUNNING_MAX_NEW_ANCHORS, 2048)
+        self.assertEqual(metadata["machine_shape"], "NvidiaTeslaP100")
+        self.assertFalse(metadata["enable_internet"])
+        self.assertEqual(metadata["dataset_sources"], [self.builder.DATASET_REF])
+        self.assertIn("kagglehub.dataset_download", notebook_source)
+        self.assertIn("run_relation_v2_p100_bundle.py", notebook_source)
+        self.assertNotIn("git clone", notebook_source)
+        self.assertNotIn("KAGGLE_KEY", notebook_source)
+        self.assertNotIn("torch.distributed.run", notebook_source)
+
+    def test_source_and_prior_output_are_hash_bound(self) -> None:
+        launcher_source = LAUNCHER_PATH.read_text(encoding="utf-8")
+        builder_source = BUILDER_PATH.read_text(encoding="utf-8")
+        for text in (
+            "trauma_predict.source_release_inventory.v1",
+            "SOURCE_RELEASE.json",
+            "source_tree_sha256",
+            "git_head_tree",
+        ):
+            self.assertIn(text, launcher_source)
+            self.assertIn(text, builder_source)
+        self.assertIn(
+            '"notebooks/kaggle/run_relation_v2_p100_bundle.py"',
+            builder_source,
+        )
+        self.assertIn("hosted_stage_manifest.json", launcher_source)
+        self.assertIn("notebook_output_download", launcher_source)
+        self.assertIn("run_files", launcher_source)
+        self.assertNotIn('"kaggle", "kernels", "status"', launcher_source)
+
+    def test_only_explicit_prior_output_404_allows_a_fresh_start(self) -> None:
+        class NotFound(RuntimeError):
+            status_code = 404
+
+        self.assertTrue(self.launcher._prior_output_not_found(NotFound("missing")))
+        self.assertTrue(
+            self.launcher._prior_output_not_found(
+                RuntimeError("404 not found: notebook has no output")
+            )
+        )
+        self.assertFalse(
+            self.launcher._prior_output_not_found(
+                RuntimeError("temporary authentication failure")
+            )
+        )
+
+    def test_safe_extract_rejects_path_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "bad.tar"
+            content = b"forbidden"
+            with tarfile.open(archive, "w") as handle:
+                row = tarfile.TarInfo("../escape.txt")
+                row.size = len(content)
+                handle.addfile(row, io.BytesIO(content))
+            with self.assertRaisesRegex(ValueError, "escapes destination"):
+                self.launcher._safe_extract_regular_files(
+                    archive,
+                    root / "output",
+                    expected_members={
+                        "../escape.txt": {
+                            "size_bytes": len(content),
+                            "sha256": hashlib.sha256(content).hexdigest(),
+                        }
+                    },
+                    label="fixture",
+                )
+            self.assertFalse((root / "escape.txt").exists())
+
+    def test_clean_git_source_release_round_trips_every_tracked_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            repo.mkdir()
+            for relative in sorted(self.builder.REQUIRED_SOURCE_PATHS):
+                path = repo / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"fixture:{relative}\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Hosted Test",
+                    "-c",
+                    "user.email=hosted-test@example.invalid",
+                    "commit",
+                    "-qm",
+                    "fixture",
+                ],
+                cwd=repo,
+                check=True,
+            )
+            bundle = root / "bundle"
+            bundle.mkdir()
+            source, inventory = self.builder.build_source_release(repo, bundle)
+            extracted = self.launcher._extract_source(
+                bundle,
+                {"source": source},
+                root / "scratch",
+            )
+            self.assertEqual(inventory["file_count"], len(self.builder.REQUIRED_SOURCE_PATHS) + 1)
+            self.assertEqual(
+                json.loads((extracted / "SOURCE_RELEASE.json").read_text(encoding="utf-8"))[
+                    "source_tree_sha256"
+                ],
+                source["source_tree_sha256"],
+            )
+            from trauma_predict.training.multires_event_v2 import _source_tree_identity
+
+            runtime_identity = _source_tree_identity(extracted)
+            self.assertEqual(
+                runtime_identity["source_tree_sha256"],
+                source["source_tree_sha256"],
+            )
+            self.assertEqual(runtime_identity["git_commit"], source["git_commit"])
+            self.assertTrue(runtime_identity["git_clean"])
+            for relative in self.builder.REQUIRED_SOURCE_PATHS:
+                self.assertTrue((extracted / relative).is_file())
+
+    def test_checkpoint_validation_hashes_every_state_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "checkpoint-00000250"
+            checkpoint.mkdir()
+            names = {
+                "model.pt",
+                "optimizer.pt",
+                "scheduler.pt",
+                "scaler.pt",
+                "trainer_state.json",
+                "identity_hashes.json",
+                "rng-rank-0000.pt",
+                "sampler-rank-0000.pt",
+            }
+            identity = {"run_contract": "a" * 64}
+            hashes = {}
+            for name in names:
+                content = f"fixture:{name}".encode("utf-8")
+                (checkpoint / name).write_bytes(content)
+                hashes[name] = hashlib.sha256(content).hexdigest()
+            manifest = {
+                "schema_version": self.launcher.CHECKPOINT_SCHEMA,
+                "global_step": 250,
+                "world_size": 1,
+                "identity_hashes": identity,
+                "files": sorted(names),
+                "sha256": hashes,
+            }
+            (checkpoint / "checkpoint_manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+            observed = self.launcher._validate_checkpoint(
+                checkpoint,
+                expected_step=250,
+                expected_identity_hashes=identity,
+            )
+            self.assertEqual(observed["global_step"], 250)
+            (checkpoint / "model.pt").write_bytes(b"mutated")
+            with self.assertRaisesRegex(ValueError, "file/hash"):
+                self.launcher._validate_checkpoint(
+                    checkpoint,
+                    expected_step=250,
+                    expected_identity_hashes=identity,
+                )
+
+    def test_verified_symlink_dataset_view_passes_identity_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "bundle"
+            bundle.mkdir()
+            dataset_id = "fixture-dataset"
+            contents = {
+                "dataset_manifest.json": json.dumps(
+                    {"status": "SUCCEEDED", "dataset_id": dataset_id}
+                ).encode("utf-8"),
+                "sample_manifest.csv": b"sample_id\nfixture\n",
+                "subject_split.csv": b"subject_id,split\n1,train\n",
+                "SUCCEEDED": b"ok\n",
+            }
+            files = []
+            declared = {"dataset_id": dataset_id}
+            authority = {"dataset_id": dataset_id}
+            key_by_name = {
+                "dataset_manifest.json": "dataset_manifest_sha256",
+                "sample_manifest.csv": "sample_manifest_sha256",
+                "subject_split.csv": "subject_split_sha256",
+                "SUCCEEDED": "succeeded_sha256",
+            }
+            for index, (name, content) in enumerate(contents.items()):
+                payload_name = f"payload-{index}.blob"
+                (bundle / payload_name).write_bytes(content)
+                digest = hashlib.sha256(content).hexdigest()
+                files.append(
+                    {
+                        "destination": name,
+                        "mounted_path": payload_name,
+                        "storage": "mounted",
+                        "size_bytes": len(content),
+                        "sha256": digest,
+                    }
+                )
+                declared[key_by_name[name]] = digest
+                authority[key_by_name[name]] = digest
+            inventory = {
+                "schema": self.launcher.DATA_INVENTORY_SCHEMA,
+                "file_count": len(files),
+                "packed_file_count": 0,
+                "direct_mounted_file_count": len(files),
+                "files": files,
+            }
+            inventory_path = bundle / "inventory.json"
+            inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
+            declared["inventory"] = {
+                "path": inventory_path.name,
+                "size_bytes": inventory_path.stat().st_size,
+                "sha256": hashlib.sha256(inventory_path.read_bytes()).hexdigest(),
+            }
+            view = self.launcher._materialize_dataset_view(
+                bundle,
+                declared,
+                root / "view",
+                root / "packed",
+                label="fixture",
+            )
+            self.assertTrue((view / "dataset_manifest.json").is_symlink())
+            self.launcher._validate_dataset_identity(
+                view,
+                declared,
+                authority,
+                label="fixture",
+            )
+
+    def test_stop_selection_never_repeats_a_completed_training_stage(self) -> None:
+        expected = {
+            0: 250,
+            2: 250,
+            250: 1500,
+            1499: 1500,
+            1500: 2750,
+            2750: 4000,
+            4000: 0,
+        }
+        for current, target in expected.items():
+            with self.subTest(current=current):
+                self.assertEqual(self.launcher._select_stop_step(current), target)
+
+    def test_free_running_progress_binds_chunks_identity_and_anchor_count(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory) / self.launcher.RUN_NAME
+            chunk = run_dir / "free_running/chunks/rank00000/chunk000000/manifest.json"
+            chunk.parent.mkdir(parents=True)
+            chunk.write_text('{"fixture": true}\n', encoding="utf-8")
+            identity = {"selected_checkpoint_model_sha256": "b" * 64}
+            chunks = [
+                {
+                    "rank": 0,
+                    "chunk_index": 0,
+                    "anchors": 100,
+                    "manifest_path": "chunks/rank00000/chunk000000/manifest.json",
+                    "manifest_sha256": hashlib.sha256(chunk.read_bytes()).hexdigest(),
+                }
+            ]
+            progress = {
+                "schema_version": (
+                    "trauma_predict.multires_event_v2_free_running_hosted_progress.v1"
+                ),
+                "status": "INCOMPLETE",
+                "completed": 100,
+                "expected": 6309,
+                "completed_anchors": 100,
+                "expected_anchors": 6309,
+                "new_anchors": 100,
+                "identity": identity,
+                "identity_sha256": self.launcher._sha256_payload(identity),
+                "chunk_manifests": chunks,
+                "chunk_manifest_set_sha256": self.launcher._sha256_payload(chunks),
+            }
+            progress_path = run_dir / "free_running/hosted_progress.json"
+            progress_path.write_text(json.dumps(progress), encoding="utf-8")
+            observed = self.launcher._validate_free_running_progress(run_dir)
+            self.assertEqual(observed["completed_anchors"], 100)
+            progress["completed_anchors"] = 99
+            progress_path.write_text(json.dumps(progress), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "progress contract"):
+                self.launcher._validate_free_running_progress(run_dir)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -218,7 +218,7 @@ class TrainingMainRouteTest(unittest.TestCase):
                 if config.get("route") == "multires_event_v1_baseline":
                     model_path = REPO_ROOT / config["model"]["config_path"]
                     validate_multires_event_config(config, load_yaml_config(model_path))
-                elif config.get("route") == "multires_event_v2_m4_relational_primary":
+                elif config.get("route") == "multires_event_v2_m4_relation_v2":
                     dataset_path = REPO_ROOT / config["dataset"]["config_path"]
                     model_path = REPO_ROOT / config["model"]["config_path"]
                     validate_multires_event_v2_configs(

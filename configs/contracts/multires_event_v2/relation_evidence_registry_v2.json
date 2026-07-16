@@ -1,0 +1,164 @@
+{
+  "schema": "multires_event_relation_evidence_registry_v2",
+  "version": "2026-07-16-v2",
+  "scope": {
+    "claim": "soft_typed_context_only",
+    "hard_constraints": false,
+    "signed_effects": false,
+    "causal_claims": false,
+    "target_target_edge_count": 52,
+    "input_target_edge_count": 39,
+    "evidence_interpretation": "An entry supports registering a clinical or structural context edge. It does not establish an effect sign, effect size, or causal direction."
+  },
+  "evidence": [
+    {
+      "evidence_id": "structural_trajectory_v2",
+      "evidence_class": "project_structural_contract",
+      "source_ids": ["project_v2_contract"],
+      "source_locators": [
+        "Input design/multi-resolution event v2/target_process_contract_v2.md",
+        "Input design/multi-resolution event v2/loss_contract_v2.md"
+      ],
+      "supports": "Same-field continuity from visible history into M4_01 and between adjacent future M4 blocks."
+    },
+    {
+      "evidence_id": "measurement_semantics",
+      "evidence_class": "project_measurement_contract",
+      "source_ids": ["project_measurement_contract"],
+      "source_locators": ["sample builder/multires_event_v1/contracts/event_element_registry_v1.json"],
+      "supports": "SBP, DBP, and MAP are separately registered blood-pressure measurements within one hemodynamic measurement context."
+    },
+    {
+      "evidence_id": "gcs_official",
+      "evidence_class": "official_clinical_framework",
+      "source_ids": ["GCS"],
+      "source_locators": ["https://www.glasgowcomascale.org/"],
+      "supports": "Eye, verbal, and motor are the three explicitly registered Glasgow Coma Scale components."
+    },
+    {
+      "evidence_id": "berlin_ards",
+      "evidence_class": "clinical_framework",
+      "source_ids": ["BERLIN"],
+      "source_locators": ["field_category_matrix_v1.csv:BERLIN"],
+      "supports": "Respiratory support, FiO2, PEEP, and oxygenation measurements share a respiratory-support assessment context."
+    },
+    {
+      "evidence_id": "news2_sofa2",
+      "evidence_class": "clinical_framework",
+      "source_ids": ["NEWS2", "SOFA2"],
+      "source_locators": ["field_category_matrix_v1.csv:NEWS2;SOFA2"],
+      "supports": "Respiratory-support state and SpO2 are jointly relevant respiratory monitoring context."
+    },
+    {
+      "evidence_id": "berlin_sofa2",
+      "evidence_class": "clinical_framework",
+      "source_ids": ["BERLIN", "SOFA2"],
+      "source_locators": ["field_category_matrix_v1.csv:BERLIN;SOFA2"],
+      "supports": "FiO2 and SpO2 form an oxygenation assessment context."
+    },
+    {
+      "evidence_id": "news2",
+      "evidence_class": "official_clinical_framework",
+      "source_ids": ["NEWS2"],
+      "source_locators": ["https://www.rcp.ac.uk/improving-care/resources/national-early-warning-score-news2/"],
+      "supports": "Respiratory rate and SpO2 are distinct measurements considered together in respiratory deterioration assessment."
+    },
+    {
+      "evidence_id": "ned_review",
+      "evidence_class": "project_source_semantics",
+      "source_ids": ["NED_REVIEW", "project_ned_contract"],
+      "source_locators": ["Input design/multi-resolution event v2/target_process_contract_v2.md#vasopressor-ned"],
+      "supports": "Vasopressor-support state gates the compatible norepinephrine-equivalent dose process."
+    },
+    {
+      "evidence_id": "ssc2021",
+      "evidence_class": "official_clinical_guideline",
+      "source_ids": ["SSC2021"],
+      "source_locators": ["https://www.sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-guidelines-2021"],
+      "supports": "MAP, vasopressor support, and lactate share a perfusion and therapy-monitoring context."
+    },
+    {
+      "evidence_id": "shock_index",
+      "evidence_class": "clinical_measurement_construct",
+      "source_ids": ["SHOCK_INDEX", "RTS"],
+      "source_locators": ["field_relation_edges_v1.csv:hr_sbp"],
+      "supports": "Heart rate and systolic blood pressure form an established hemodynamic measurement context."
+    },
+    {
+      "evidence_id": "trauma_2023",
+      "evidence_class": "clinical_context_registry",
+      "source_ids": ["TRAUMA2023"],
+      "source_locators": ["field_relation_edges_v1.csv:TRAUMA2023"],
+      "supports": "Lactate, base excess, bicarbonate, and chloride are registered together only for acid-base and perfusion context."
+    },
+    {
+      "evidence_id": "kdigo_aki",
+      "evidence_class": "official_clinical_guideline",
+      "source_ids": ["KDIGO"],
+      "source_locators": ["https://kdigo.org/guidelines/acute-kidney-injury/"],
+      "supports": "Creatinine and urine output are separately observed renal measurements used together in AKI assessment."
+    },
+    {
+      "evidence_id": "renal_measurement_context",
+      "evidence_class": "project_measurement_context",
+      "source_ids": ["KDIGO", "LOINC"],
+      "source_locators": ["field_category_matrix_v1.csv:creatinine;bun"],
+      "supports": "Creatinine and BUN are retained as a noncausal shared renal measurement context; this entry does not attribute the pair directly to KDIGO diagnostic criteria."
+    },
+    {
+      "evidence_id": "ardsnet_peep_fio2",
+      "evidence_class": "clinical_protocol_context",
+      "source_ids": ["ARDSNET_PEEP_FIO2"],
+      "source_locators": ["https://www.nejm.org/doi/full/10.1056/NEJMoa032193"],
+      "supports": "FiO2 and PEEP are jointly adjusted ventilator settings; the registry direction follows decoder order rather than clinical causality."
+    },
+    {
+      "evidence_id": "ssc2021_ned",
+      "evidence_class": "clinical_and_project_context",
+      "source_ids": ["SSC2021", "NED_REVIEW"],
+      "source_locators": [
+        "https://www.sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-guidelines-2021",
+        "Input design/multi-resolution event v2/target_process_contract_v2.md#vasopressor-ned"
+      ],
+      "supports": "MAP is a monitoring context for vasopressor dose intensity represented by NED."
+    },
+    {
+      "evidence_id": "project_cxr_contract",
+      "evidence_class": "project_input_contract",
+      "source_ids": ["project_cxr_contract"],
+      "source_locators": ["Input design/multi-resolution event v2/field_relation_contract_v1.md"],
+      "supports": "Visible historical CXR findings may condition future respiratory-support and SpO2 states without making CXR an output."
+    },
+    {
+      "evidence_id": "trauma_transfusion",
+      "evidence_class": "clinical_monitoring_context",
+      "source_ids": ["TRAUMA2023"],
+      "source_locators": ["field_relation_edges_v1.csv:rbc_hemoglobin;platelet_tx_count;plasma_inr"],
+      "supports": "Visible historical blood-product treatment is registered as context for the corresponding future hematology or coagulation process."
+    },
+    {
+      "evidence_id": "ssc2021_fluid",
+      "evidence_class": "official_clinical_guideline",
+      "source_ids": ["SSC2021"],
+      "source_locators": ["https://www.sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-guidelines-2021"],
+      "supports": "Visible historical crystalloid treatment may condition future MAP and lactate as a soft resuscitation-monitoring context."
+    },
+    {
+      "evidence_id": "kdigo_ssc_fluid",
+      "evidence_class": "official_clinical_guideline_context",
+      "source_ids": ["KDIGO", "SSC2021"],
+      "source_locators": [
+        "https://kdigo.org/guidelines/acute-kidney-injury/",
+        "https://www.sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-guidelines-2021"
+      ],
+      "supports": "Visible historical crystalloid treatment and future recorded urine output share a fluid-balance monitoring context."
+    },
+    {
+      "evidence_id": "ssc2021_antimicrobial",
+      "evidence_class": "official_clinical_guideline_context",
+      "source_ids": ["SSC2021"],
+      "source_locators": ["https://www.sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-guidelines-2021"],
+      "supports": "Visible historical antimicrobial treatment may condition future temperature and WBC as a noncausal treatment-monitoring context."
+    }
+  ]
+}

@@ -11,6 +11,16 @@ from .contract import (
 )
 from .dataset import MultiresEventV2Dataset, TargetManifestEntry, TargetShardSpec
 from .preflight import MultiresEventV2PreflightResult, preflight_multires_event_v2
+from .relation_contract import (
+    INPUT_TARGET_RELATION_EDGE_COUNT,
+    RELATION_CONTRACT_VERSION,
+    RELATION_FIELD_COUNT,
+    TARGET_RELATION_EDGE_COUNT,
+    MultiresEventV2RelationContract,
+    RegisteredRelationEdge,
+    RelationEvidence,
+    RelationField,
+)
 
 __all__ = [
     "BLOCK_IDS",
@@ -23,6 +33,14 @@ __all__ = [
     "MultiresEventV2Contract",
     "MultiresEventV2Dataset",
     "MultiresEventV2PreflightResult",
+    "MultiresEventV2RelationContract",
+    "RegisteredRelationEdge",
+    "RelationEvidence",
+    "RelationField",
+    "RELATION_CONTRACT_VERSION",
+    "RELATION_FIELD_COUNT",
+    "TARGET_RELATION_EDGE_COUNT",
+    "INPUT_TARGET_RELATION_EDGE_COUNT",
     "TargetManifestEntry",
     "TargetShardSpec",
     "preflight_multires_event_v2",

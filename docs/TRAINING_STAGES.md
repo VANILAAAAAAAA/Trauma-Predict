@@ -1,6 +1,6 @@
 # Training Stages
 
-This repository follows the frozen textual V1 staged training contract from `/home/vanila/code/EHR-Predict/llmwiki/input_textual_design_framework_v1.md`.
+This file documents the retained textual V1 staged contract from `/home/vanila/code/EHR-Predict/llmwiki/input_textual_design_framework_v1.md`. The active structured Relation V2 route is a separate single model, not Stage A/B/C and not an ablation; its frozen contract is defined by `configs/train/p100_multires_event_v2_relation_v2.yaml` and the repository README.
 
 ## Stage A: NEXT_HOUR Values
 

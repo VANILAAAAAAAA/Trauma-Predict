@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -13,6 +15,7 @@ from unittest.mock import patch
 import torch
 import yaml
 
+from trauma_predict.data.multires_event_v2 import MultiresEventV2RelationContract
 from trauma_predict.training.multires_event_v2 import (
     BEST_CHECKPOINT_SCHEMA,
     RUN_ARTIFACT_PATHS,
@@ -32,6 +35,15 @@ from tests.test_multires_event_v2_kaggle_route import optimizer_health_row
 
 class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
     def test_two_rank_best_checkpoint_uses_one_collective_order(self) -> None:
+        """Retain the generic two-rank collective regression; it is not a P100 route expectation."""
+        if os.environ.get("CODEX_SANDBOX_NETWORK_DISABLED") == "1":
+            self.skipTest("Codex sandbox forbids the PyTorch TCPStore")
+        try:
+            probe = socket.socket()
+            probe.bind(("127.0.0.1", 0))
+            probe.close()
+        except OSError:
+            self.skipTest("sandbox forbids the localhost TCPStore required by torchrun")
         worker = (
             Path(__file__).resolve().parent
             / "helpers/multires_event_v2_best_checkpoint_worker.py"
@@ -82,7 +94,7 @@ class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
             barrier.assert_not_called()
 
     def test_best_checkpoint_load_is_bound_to_schema_step_identity_and_model_bytes(self) -> None:
-        identity = {"runtime": "r", "matched_design": "m"}
+        identity = {"runtime": "r", "run_contract": "m"}
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = torch.nn.Linear(2, 1)
@@ -187,6 +199,7 @@ class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
             train_dataset=None,
             eval_dataset=None,
             contract=None,
+            relation_contract=MultiresEventV2RelationContract.from_default_config(),
             normalization=None,
             identity={
                 "dataset_id": "dataset",
@@ -199,7 +212,7 @@ class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
                 "lab_scale_artifact_sha256": "5" * 64,
                 "standardized_primitive_scale_sha256": "6" * 64,
                 "input_normalization_sha256": "7" * 64,
-                "promotion_metric_contract_sha256": "d" * 64,
+                "trajectory_metric_contract_sha256": "d" * 64,
             },
         )
         source = {
@@ -212,7 +225,7 @@ class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
             "source_identity": sha256_payload(source),
             "git_commit": source["git_commit"],
             "git_head_tree": source["git_head_tree"],
-            "matched_design": "b" * 64,
+            "run_contract": "b" * 64,
         }
         selected = {
             "schema_version": SELECTED_MODEL_SCHEMA,
@@ -250,14 +263,14 @@ class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
             normalization.write_text('{"normalization": true}\n')
             lab = repo / "configs/lab.json"
             phi = repo / "configs/phi.json"
-            promotion = repo / "configs/promotion.json"
+            trajectory_metric = repo / "configs/trajectory_metric.json"
             train_path = repo / "configs/train.yaml"
             dataset_path = repo / "configs/dataset.yaml"
             model_path = repo / "configs/model.yaml"
             for path, text in (
                 (lab, "lab\n"),
                 (phi, "phi\n"),
-                (promotion, "promotion\n"),
+                (trajectory_metric, "trajectory metric\n"),
                 (train_path, "train: true\n"),
                 (dataset_path, "dataset: true\n"),
                 (model_path, "model: true\n"),
@@ -271,20 +284,21 @@ class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
                 train_dataset=None,
                 eval_dataset=None,
                 contract=None,
+                relation_contract=MultiresEventV2RelationContract.from_default_config(),
                 normalization=SimpleNamespace(),
                 identity={
                     "normalization_artifact": str(normalization),
                     "normalization_artifact_sha256": sha256_file(normalization),
                     "lab_scale_artifact_sha256": "1" * 64,
                     "standardized_primitive_scale_sha256": "2" * 64,
-                    "promotion_metric_contract_sha256": sha256_file(promotion),
+                    "trajectory_metric_contract_sha256": sha256_file(trajectory_metric),
                 },
             )
             train = {
                 "lab_scale_artifact": "configs/lab.json",
                 "standardized_primitive_scale_artifact": "configs/phi.json",
-                "promotion_metric_contract": "configs/promotion.json",
-                "training": {"required_world_size": 2},
+                "trajectory_metric_contract": "configs/trajectory_metric.json",
+                "training": {"required_world_size": 1},
             }
             semantic_runtime = {"fixture": "stable-runtime"}
             runtime_environment = {
@@ -317,6 +331,14 @@ class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
                 self.assertEqual(
                     portable.identity["semantic_runtime_identity_sha256"],
                     sha256_payload(semantic_runtime),
+                )
+                self.assertEqual(
+                    portable.relation_contract.config_dir,
+                    (run / "artifacts/relation_contract").resolve(),
+                )
+                self.assertEqual(
+                    portable.relation_contract.bundle_hash,
+                    runtime.relation_contract.bundle_hash,
                 )
                 for relative in RUN_ARTIFACT_PATHS.values():
                     self.assertTrue((run / relative).is_file())
@@ -381,7 +403,7 @@ class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
                 "source_identity_sha256": "2" * 64,
                 "git_commit": "3" * 40,
                 "git_head_tree": "4" * 40,
-                "matched_design_signature": "5" * 64,
+                "run_contract_signature": "5" * 64,
                 "selected_checkpoint_step": 7,
                 "selected_checkpoint_model_sha256": selected_sha,
             }
@@ -415,7 +437,7 @@ class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
             training_config = yaml.safe_load(
                 (
                     Path(__file__).resolve().parents[1]
-                    / "configs/train/t4x2_multires_event_v2_trajectory.yaml"
+                    / "configs/train/p100_multires_event_v2_relation_v2.yaml"
                 ).read_text(encoding="utf-8")
             )["training"]
             training_config = dict(training_config, max_steps=10, warmup_steps=2)
@@ -427,7 +449,6 @@ class MultiresEventV2CheckpointIdentityTest(unittest.TestCase):
                 root,
                 model,
                 {
-                    "mode": "trajectory",
                     "run_name": "unit",
                     "training": training_config,
                 },

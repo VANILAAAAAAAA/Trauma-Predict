@@ -6,7 +6,6 @@ from pathlib import Path
 import re
 import json
 import math
-import random
 from typing import Any, Iterable, Mapping
 
 import torch
@@ -42,10 +41,11 @@ MODEL_INPUT_KEYS = (
     "static_numeric",
     "static_numeric_mask",
     "static_categorical",
+    "latest_input_block_index",
 )
 
 
-def teacher_forced_model_inputs(batch: Mapping[str, Any], *, mode: str) -> dict[str, Any]:
+def teacher_forced_model_inputs(batch: Mapping[str, Any]) -> dict[str, Any]:
     """Create the model view without mutating the exact raw-unit loss targets."""
 
     input_batch = batch.get("input_batch")
@@ -74,9 +74,6 @@ def teacher_forced_model_inputs(batch: Mapping[str, Any], *, mode: str) -> dict[
         **{key: input_batch[key] for key in MODEL_INPUT_KEYS},
         "target_primitives": feedback,
         "target_primitive_masks": masks,
-        "relation_adjacency": batch.get("relation_adjacency"),
-        "relation_type_lags": batch.get("relation_type_lags"),
-        "mode": mode,
     }
 
 
@@ -85,7 +82,6 @@ def exact_teacher_forced_loss(
     batch: Mapping[str, Any],
     registry: Mapping[str, Any],
     *,
-    mode: str,
     expected_lab_scale_artifact_hash: str | None = None,
     autocast: Any = nullcontext,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
@@ -96,7 +92,7 @@ def exact_teacher_forced_loss(
             "teacher-forced V2 loss requires the configured train-only lab scale artifact hash"
         )
     with autocast():
-        outputs = model(**teacher_forced_model_inputs(batch, mode=mode))
+        outputs = model(**teacher_forced_model_inputs(batch))
     parameters = outputs.get("primitive_parameters")
     if not isinstance(parameters, Mapping):
         raise ValueError("V2 model output lacks primitive parameter banks")
@@ -124,7 +120,6 @@ def evaluate_teacher_forced(
     loader: Iterable[Mapping[str, Any]],
     registry: Mapping[str, Any],
     device: torch.device,
-    mode: str,
     expected_samples: int,
     phase: str,
     step: int,
@@ -149,13 +144,12 @@ def evaluate_teacher_forced(
     local_rows: list[dict[str, Any]] = []
     autocast = _autocast_factory(device, precision)
     with torch.no_grad():
-        for raw_batch in loader:
+        for batch_index, raw_batch in enumerate(loader, start=1):
             batch = move_to_device(raw_batch, device)
             _, result = exact_teacher_forced_loss(
                 model,
                 batch,
                 registry,
-                mode=mode,
                 expected_lab_scale_artifact_hash=expected_lab_scale_artifact_hash,
                 autocast=autocast,
             )
@@ -186,6 +180,20 @@ def evaluate_teacher_forced(
                     strict=True,
                 )
             )
+            if is_rank_zero() and batch_index % 25 == 0:
+                print(
+                    "V2_EVAL_PROGRESS "
+                    f"phase={phase} step={step} batches={batch_index} "
+                    f"local_anchors={len(local_rows)}",
+                    flush=True,
+                )
+
+    if is_rank_zero():
+        print(
+            "V2_EVAL_LOCAL_COMPLETE "
+            f"phase={phase} step={step} local_anchors={len(local_rows)}",
+            flush=True,
+        )
 
     rows = [row for rank_rows in _gather_objects(local_rows) for row in rank_rows]
     sample_ids = [str(row["sample_id"]) for row in rows]
@@ -205,11 +213,11 @@ def evaluate_teacher_forced(
         for subject_id, values in by_subject.items()
     }
     result = {
-        "schema_version": "trauma_predict.multires_event_v2_evaluation.v1",
+        "schema_version": "trauma_predict.multires_event_v2_relation_v2_evaluation.v1",
         "evaluated_at": utc_now(),
         "phase": phase,
         "step": int(step),
-        "mode": mode,
+        "model_contract": "relation_v2",
         "samples": len(rows),
         "subjects": len(subject_means),
         "joint_nll_anchor_mean": sum(float(row["joint_nll"]) for row in rows)
@@ -265,7 +273,7 @@ def evaluate_teacher_forced(
                                 "subject_id": row["subject_id"],
                                 "joint_nll": row["joint_nll"],
                                 "primitive_factors": 414,
-                                "mode": mode,
+                                "model_contract": "relation_v2",
                                 "step": int(step),
                                 "teacher_nll_decomposition": row["decomposition"],
                                 **(
@@ -457,99 +465,6 @@ def move_to_device(value: Any, device: torch.device) -> Any:
     return value
 
 
-def paired_subject_bootstrap_joint_nll(
-    control_path: str | Path,
-    candidate_path: str | Path,
-    *,
-    repetitions: int = 2_000,
-    seed: int = 20260713,
-    expected_anchors: int = 6_309,
-) -> dict[str, Any]:
-    """Describe a matched-mode delta without making a promotion decision."""
-
-    if repetitions != 2_000 or seed != 20260713:
-        raise ValueError("paired V2 bootstrap is frozen to 2,000 draws with seed 20260713")
-    if expected_anchors < 1:
-        raise ValueError("paired V2 comparison expected_anchors must be positive")
-    control = _read_per_anchor_nll(Path(control_path))
-    candidate = _read_per_anchor_nll(Path(candidate_path))
-    if set(control) != set(candidate):
-        missing = set(control).difference(candidate)
-        extra = set(candidate).difference(control)
-        raise ValueError(
-            "paired V2 comparison requires identical persisted validation anchors: "
-            f"missing={len(missing)}, extra={len(extra)}"
-        )
-    if len(control) != expected_anchors:
-        raise ValueError(
-            f"paired V2 comparison requires {expected_anchors} persisted anchors, "
-            f"got {len(control)}"
-        )
-    by_subject: dict[str, list[float]] = defaultdict(list)
-    for sample_id, (subject_id, control_nll) in control.items():
-        candidate_subject, candidate_nll = candidate[sample_id]
-        if candidate_subject != subject_id:
-            raise ValueError(f"subject identity changed for paired anchor {sample_id}")
-        by_subject[subject_id].append(candidate_nll - control_nll)
-    subject_delta = [sum(values) / len(values) for values in by_subject.values()]
-    if not subject_delta:
-        raise ValueError("paired V2 comparison contains no subjects")
-    observed = sum(subject_delta) / len(subject_delta)
-    rng = random.Random(seed)
-    count = len(subject_delta)
-    bootstrap = sorted(
-        sum(subject_delta[rng.randrange(count)] for _ in range(count)) / count
-        for _ in range(repetitions)
-    )
-    lower = _linear_percentile(bootstrap, 0.025)
-    upper = _linear_percentile(bootstrap, 0.975)
-    return {
-        "schema_version": "trauma_predict.multires_event_v2_paired_bootstrap.v2",
-        "created_at": utc_now(),
-        "anchors": len(control),
-        "subjects": len(subject_delta),
-        "estimand": "candidate_minus_control_subject_macro_joint_nll",
-        "observed_delta": observed,
-        "ci95": {"lower": lower, "upper": upper},
-        "bootstrap_repetitions": repetitions,
-        "bootstrap_seed": seed,
-        "ci95_upper_lt_zero": upper < 0.0,
-        "decision_authority": "none_pending_final_mathematical_audit",
-        "promotion_contract_valid": False,
-        "promotion_decision": None,
-    }
-
-
-def _read_per_anchor_nll(path: Path) -> dict[str, tuple[str, float]]:
-    if not path.is_file():
-        raise FileNotFoundError(path)
-    result: dict[str, tuple[str, float]] = {}
-    with path.open("r", encoding="utf-8") as handle:
-        for line_number, line in enumerate(handle, start=1):
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            sample_id = str(row.get("sample_id") or "")
-            subject_id = str(row.get("subject_id") or "")
-            nll = float(row.get("joint_nll"))
-            if not sample_id or not subject_id or not math.isfinite(nll):
-                raise ValueError(f"invalid per-anchor V2 NLL row at {path}:{line_number}")
-            if sample_id in result:
-                raise ValueError(f"duplicate per-anchor V2 sample_id={sample_id}")
-            result[sample_id] = (subject_id, nll)
-    if not result:
-        raise ValueError(f"per-anchor V2 NLL file is empty: {path}")
-    return result
-
-
-def _linear_percentile(sorted_values: list[float], probability: float) -> float:
-    position = (len(sorted_values) - 1) * probability
-    lower = int(position)
-    upper = min(lower + 1, len(sorted_values) - 1)
-    fraction = position - lower
-    return sorted_values[lower] * (1.0 - fraction) + sorted_values[upper] * fraction
-
-
 def _autocast_factory(device: torch.device, precision: str) -> Any:
     if device.type != "cuda" or precision != "fp16":
         return nullcontext
@@ -625,6 +540,5 @@ __all__ = [
     "evaluate_teacher_forced",
     "exact_teacher_forced_loss",
     "move_to_device",
-    "paired_subject_bootstrap_joint_nll",
     "teacher_forced_model_inputs",
 ]

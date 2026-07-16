@@ -133,12 +133,6 @@ class MultiresEventV2Collator:
             "target_primitive_masks": primitive_masks,
             "target_primitive_gates": primitive_gates,
             "target_primitive_metadata": self.metadata,
-            "relation_adjacency": torch.tensor(
-                self.contract.relation_adjacency, dtype=torch.bool
-            ),
-            "relation_type_lags": torch.tensor(
-                self.contract.relation_type_lags, dtype=torch.long
-            ),
             "sample_id": [str(record["sample_id"]) for record in records],
             "subject_id": [str(record["subject_id"]) for record in records],
             "prediction_hour": torch.tensor(
@@ -245,6 +239,9 @@ class MultiresEventV2Collator:
                 ),
                 dtype=torch.bool,
             ),
+            "latest_input_block_index": torch.tensor(
+                [item["latest_input_block_index"] for item in prepared], dtype=torch.long
+            ),
             "static_numeric": torch.tensor(
                 [item["static_numeric"] for item in prepared], dtype=torch.float32
             ),
@@ -287,6 +284,31 @@ class MultiresEventV2Collator:
         input_blocks = sorted(record["block_table"], key=lambda item: int(item["block_id"]))
         if any(block.get("side") != "input" for block in input_blocks):
             raise ValueError("V2 input_record block table contains a target block")
+        relative_ends = [float(block["relative_end_hour"]) for block in input_blocks]
+        latest_candidates = [
+            index for index, relative_end in enumerate(relative_ends) if relative_end == 0.0
+        ]
+        if len(latest_candidates) != 1:
+            raise ValueError(
+                "V2 input block table must contain exactly one block ending at prediction time"
+            )
+        latest_input_block_index = latest_candidates[0]
+        if any(relative_end > 0.0 for relative_end in relative_ends):
+            raise ValueError("V2 input block table contains a post-anchor block")
+        if any(left > right for left, right in zip(relative_ends, relative_ends[1:])):
+            raise ValueError("V2 input block ids are not in chronological order")
+        if latest_input_block_index != len(input_blocks) - 1:
+            raise ValueError("the block ending at prediction time must be the final input block")
+        latest_block = input_blocks[latest_input_block_index]
+        if (
+            latest_block.get("role") != "NEAR"
+            or latest_block.get("resolution") != "H1"
+            or float(latest_block.get("relative_start_hour")) != -1.0
+            or float(latest_block.get("span_hours")) != 1.0
+        ):
+            raise ValueError(
+                "the final input block must be the frozen NEAR/H1 (-1h, 0h] block"
+            )
         block_position = {
             int(block["block_id"]): index for index, block in enumerate(input_blocks)
         }
@@ -353,6 +375,7 @@ class MultiresEventV2Collator:
                 "block_relative_start": [float(item["relative_start_hour"]) for item in input_blocks],
                 "block_relative_end": [float(item["relative_end_hour"]) for item in input_blocks],
                 "block_span": [float(item["span_hours"]) for item in input_blocks],
+                "latest_input_block_index": latest_input_block_index,
                 "static_numeric": static_numeric,
                 "static_numeric_mask": static_numeric_mask,
                 "static_categorical": static_categorical,
@@ -772,17 +795,6 @@ class MultiresEventV2Collator:
             "verbal_status_ids": dict(VERBAL_STATUS_IDS),
             "ordinal_max": dict(self.contract.ordinal_max),
             "valid_ranges": valid_ranges,
-            "relation_orientation": "adjacency[type, query=target, key=source]",
-            "relation_types": self.contract.relation_types,
-            "relation_type_ids": {
-                name: index for index, name in enumerate(self.contract.relation_types)
-            },
-            "relation_type_lags": self.contract.relation_type_lags,
-            "relation_edge_counts": {
-                "total_registry": self.contract.relation_total_edges,
-                "active_core": self.contract.relation_active_core_edges,
-                "deferred_input_or_aux": self.contract.relation_deferred_edges,
-            },
             "likelihoods_by_field": likelihoods_by_field,
             "factor_order": tuple(factor_order),
             "enabled_factor_count": EXPECTED_ENABLED_FACTOR_COUNT,

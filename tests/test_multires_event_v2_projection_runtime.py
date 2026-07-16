@@ -1,12 +1,18 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import unittest
 
 import torch
+import yaml
 
-from trauma_predict.data.multires_event_v2 import MultiresEventV2Contract
+from trauma_predict.data.multires_event_v2 import (
+    MultiresEventV2Contract,
+    MultiresEventV2RelationContract,
+)
+from trauma_predict.eval.multires_event_v2_metric_contract import (
+    load_trajectory_metric_contract,
+)
 from trauma_predict.eval.multires_event_v2_projections import (
     PhysicalProjectionSpec,
     PrimitiveVectorCoordinate,
@@ -99,17 +105,25 @@ class PhysicalProjectionRuntimeTest(unittest.TestCase):
 
 @unittest.skipUnless(
     (TARGET_ROOT / "dataset_manifest.json").is_file(),
-    "formal r8 contract is unavailable",
+    "formal r9 contract is unavailable",
 )
-class PromotionMetricRuntimeTest(unittest.TestCase):
+class RelationV2MetricRuntimeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.contract = MultiresEventV2Contract.from_dataset_root(TARGET_ROOT)
+        cls.relations = MultiresEventV2RelationContract.from_default_config()
+        cls.relations.assert_target_field_order(cls.contract.core_fields)
         cls.schema = build_standardized_primitive_schema(cls.contract)
-        cls.promotion = json.loads(
+        train = yaml.safe_load(
             (
-                REPO_ROOT / "configs/evaluation/multires_event_v2_promotion_v2.json"
+                REPO_ROOT
+                / "configs/train/p100_multires_event_v2_relation_v2.yaml"
             ).read_text(encoding="utf-8")
+        )
+        cls.metrics = load_trajectory_metric_contract(
+            REPO_ROOT / train["trajectory_metric_contract"],
+            expected_sha256=train["trajectory_metric_contract_hash"],
+            relation_contract=cls.relations,
         )
 
     def test_coordinate_crps_matches_scalar_empirical_definition(self) -> None:
@@ -127,7 +141,7 @@ class PromotionMetricRuntimeTest(unittest.TestCase):
                 places=12,
             )
 
-    def test_structural_scores_use_exact_field_and_edge_macro_contract(self) -> None:
+    def test_structural_scores_use_exact_relation_v2_field_and_edge_macro_contract(self) -> None:
         torch.manual_seed(23)
         samples = torch.randn(100, 6, 160, dtype=torch.float64)
         truth = torch.randn(6, 160, dtype=torch.float64)
@@ -135,11 +149,11 @@ class PromotionMetricRuntimeTest(unittest.TestCase):
             samples,
             truth,
             self.schema,
-            self.contract.active_core_relation_edges,
-            self.promotion,
+            self.relations.target_edges,
+            self.metrics,
         )
         self.assertEqual(len(result["field_temporal_variogram"]), 29)
-        self.assertEqual(len(result["relation_variogram_by_edge"]), 21)
+        self.assertEqual(len(result["relation_variogram_by_edge"]), 23)
         self.assertAlmostEqual(
             result["field_macro_lag1_variogram_score_p0_5"],
             sum(result["field_temporal_variogram"].values()) / 29,
@@ -147,22 +161,28 @@ class PromotionMetricRuntimeTest(unittest.TestCase):
         )
         self.assertAlmostEqual(
             result["relation_edge_macro_variogram_score_p0_5"],
-            sum(result["relation_variogram_by_edge"].values()) / 21,
+            sum(result["relation_variogram_by_edge"].values()) / 23,
             places=12,
         )
         self.assertGreaterEqual(result["marginal_value_crps"], 0.0)
         self.assertGreaterEqual(result["marginal_state_crps"], 0.0)
 
-    def test_relation_score_rejects_nonexact_edge_cover(self) -> None:
+    def test_relation_v2_score_rejects_nonexact_edge_cover(self) -> None:
         samples = torch.zeros(100, 6, 160, dtype=torch.float64)
         truth = torch.zeros(6, 160, dtype=torch.float64)
-        with self.assertRaisesRegex(ValueError, "21 canonical"):
+        structural = tuple(
+            edge
+            for edge in self.relations.target_edges
+            if edge.time_scope == "same_future_block_registered_order"
+            and edge.source_field != edge.target_field
+        )
+        with self.assertRaisesRegex(ValueError, "23 registered"):
             score_standardized_primitive_ensemble(
                 samples,
                 truth,
                 self.schema,
-                self.contract.active_core_relation_edges[:-1],
-                self.promotion,
+                structural[:-1],
+                self.metrics,
             )
 
 if __name__ == "__main__":

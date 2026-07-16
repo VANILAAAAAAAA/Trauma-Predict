@@ -1,0 +1,21 @@
+{
+  "id": "vanila111/trauma-predict-relation-v2-p100-r9",
+  "title": "Trauma Predict Relation V2 P100 R9",
+  "code_file": "trauma_predict_relation_v2_p100_r9.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": false,
+  "keywords": [
+    "gpu"
+  ],
+  "dataset_sources": [
+    "vanila111/trauma-predict-relation-v2-p100-r9-bundle"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": [],
+  "machine_shape": "NvidiaTeslaP100"
+}

@@ -10,6 +10,9 @@
 
 # MIMIC / derived restricted data files
 *.csv
+!configs/contracts/
+!configs/contracts/multires_event_v2/
+!configs/contracts/multires_event_v2/*.csv
 *.csv.gz
 *.tsv
 *.tsv.gz

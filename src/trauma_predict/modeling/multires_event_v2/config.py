@@ -1,11 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, fields
-from typing import Any, Literal, Mapping
-
-
-TrajectoryMode = Literal["block", "trajectory", "relational"]
-VALID_TRAJECTORY_MODES = frozenset({"block", "trajectory", "relational"})
+from typing import Any, Mapping
 
 
 @dataclass(frozen=True)
@@ -36,6 +32,7 @@ class MultiResolutionEventV2Config:
     static_categorical_vocab_size: int = 32
     study_slot_vocab_size: int = 16
     time_scale_hours: float = 24.0
+    input_only_temporal_fusion: str = "block_geometry_softmax_v1"
 
     future_block_count: int = 6
     target_field_count: int = 29
@@ -45,8 +42,6 @@ class MultiResolutionEventV2Config:
         1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 7,
         14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 35,
     )
-    relation_type_count: int = 14
-    mode: TrajectoryMode = "trajectory"
     primitive_head_dims: Mapping[str, int] | tuple[tuple[str, int], ...] = ()
     primitive_feedback_dims: Mapping[str, int] | tuple[tuple[str, int], ...] = ()
 
@@ -61,6 +56,13 @@ class MultiResolutionEventV2Config:
             raise ValueError("block compressor dimensions must be positive")
         if not 0.0 <= self.dropout < 1.0:
             raise ValueError("dropout must be in [0, 1)")
+        if self.time_scale_hours <= 0.0:
+            raise ValueError("time_scale_hours must be positive")
+        if self.input_only_temporal_fusion != "block_geometry_softmax_v1":
+            raise ValueError(
+                "strict relation V2 requires block_geometry_softmax_v1 for "
+                "input-only temporal fusion"
+            )
         if self.future_block_count != 6:
             raise ValueError("the V2 target contract is frozen to six M4 blocks")
         if self.target_field_count != 29:
@@ -73,10 +75,6 @@ class MultiResolutionEventV2Config:
             raise ValueError("target field id zero is reserved for padding")
         if max(self.target_field_ids, default=0) >= self.field_vocab_size:
             raise ValueError("target_field_ids exceeds field_vocab_size")
-        if self.relation_type_count < 1:
-            raise ValueError("relation_type_count must be positive")
-        if self.mode not in VALID_TRAJECTORY_MODES:
-            raise ValueError(f"unsupported trajectory mode: {self.mode!r}")
         _validate_primitive_heads(self.primitive_head_dims)
         _validate_primitive_heads(self.primitive_feedback_dims)
         if set(self.primitive_dims) != set(self.feedback_dims):
@@ -109,14 +107,33 @@ class MultiResolutionEventV2Config:
             "latent_count": "block_latent_count",
             "m4_blocks": "future_block_count",
             "field_count": "target_field_count",
-            "relation_types": "relation_type_count",
         }
+        forbidden_names = {
+            "mode",
+            "relation_type_count",
+            "relation_types",
+            "disable_relation",
+            "relation_gate",
+            "edge_policy",
+        }
+        forbidden = {
+            str(key)
+            for key in value
+            if str(key) in forbidden_names
+            or str(key).startswith("target_relation_")
+            or str(key).startswith("input_target_relation_")
+        }
+        if forbidden:
+            raise ValueError(
+                "strict relation V2 architecture does not accept mode or runtime "
+                f"relation switches: {sorted(forbidden)}"
+            )
         accepted = {item.name for item in fields(cls)}
         normalized: dict[str, Any] = {}
         for key, item in value.items():
             name = aliases.get(str(key), str(key))
             if name not in accepted:
-                continue
+                raise ValueError(f"unknown strict relation V2 architecture key: {key!r}")
             if name == "target_field_ids":
                 item = tuple(int(field_id) for field_id in item)
             normalized[name] = item
@@ -124,15 +141,6 @@ class MultiResolutionEventV2Config:
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
-
-
-def resolve_mode(mode: str | None, default: TrajectoryMode) -> TrajectoryMode:
-    resolved = default if mode is None else str(mode)
-    if resolved not in VALID_TRAJECTORY_MODES:
-        raise ValueError(f"unsupported trajectory mode: {resolved!r}")
-    return resolved  # type: ignore[return-value]
-
-
 def _validate_primitive_heads(
     value: Mapping[str, int] | tuple[tuple[str, int], ...],
 ) -> None:

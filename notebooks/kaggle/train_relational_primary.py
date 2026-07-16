@@ -1,28 +1,22 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = REPO_ROOT / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
-
-from torch.distributed.elastic.multiprocessing.errors import record  # noqa: E402
-from trauma_predict.training.multires_event_v2 import (  # noqa: E402
-    run_multires_event_v2_training,
+HISTORICAL_ROUTE_ID = "multires_event_v2_m4_relational_primary_v8"
+RELATION_V2_ROUTE_ID = "multires_event_v2_m4_relation_v2"
+HOSTED_ROUTE_STATUS = "pending"
+DISABLED_MESSAGE = (
+    "HISTORICAL_RELATIONAL_PRIMARY_DISABLED: the v8 Kaggle entrypoint does not "
+    "implement Relation Contract V2 (52 target-target edges, 39 input-target "
+    "edges, and 91 edge-specific parameters). The Relation V2 hosted route is "
+    "pending a separately frozen notebook and bundle; no hosted training is "
+    "authorized from this file."
 )
 
 
-PRIMARY_CONFIG = REPO_ROOT / "configs/train/t4x2_multires_event_v2_relational.yaml"
-
-
-@record
 def main() -> None:
-    if not PRIMARY_CONFIG.is_file():
-        raise FileNotFoundError(PRIMARY_CONFIG)
-    run_multires_event_v2_training(PRIMARY_CONFIG, repo_root=REPO_ROOT)
+    """Fail closed before importing training code or resolving any config."""
+
+    raise RuntimeError(DISABLED_MESSAGE)
 
 
 if __name__ == "__main__":

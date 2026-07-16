@@ -29,7 +29,7 @@ class RelationalPrimaryBundleTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.launcher = _load_launcher()
 
-    def test_launcher_has_no_network_clone_install_or_capacity_probe_path(self) -> None:
+    def test_launcher_is_historical_and_fails_before_any_hosted_action(self) -> None:
         source = LAUNCHER.read_text(encoding="utf-8")
         forbidden = (
             "git clone",
@@ -38,13 +38,17 @@ class RelationalPrimaryBundleTest(unittest.TestCase):
             "pip install",
             "capacity-probe",
             "run_multires_event_v2_capacity_gated_training",
+            "torch.distributed.run",
+            "train_relational_primary.py",
+            "t4x2_multires_event_v2_relational.yaml",
         )
         for text in forbidden:
             self.assertNotIn(text, source)
-        self.assertIn("RELATIONAL_PRIMARY_MOUNTED_PREFLIGHT_OK", source)
-        self.assertIn("RELATIONAL_PRIMARY_HOSTED_FORMAL_STEP2_VERIFIED", source)
-        self.assertIn("RELATIONAL_PRIMARY_HOSTED_FORMAL_RESUME_STEP3_VERIFIED", source)
-        self.assertIn("train_relational_primary.py", source)
+        self.assertEqual(self.launcher.HOSTED_ROUTE_STATUS, "pending")
+        with self.assertRaisesRegex(
+            RuntimeError, "HISTORICAL_RELATIONAL_PRIMARY_BUNDLE_DISABLED"
+        ):
+            self.launcher.main()
 
     def test_bundle_discovery_requires_one_exact_schema(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

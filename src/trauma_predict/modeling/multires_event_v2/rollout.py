@@ -5,7 +5,6 @@ from collections.abc import Callable, Mapping
 import torch
 from torch import nn
 
-from .config import TrajectoryMode
 from .field_state import PrimitiveFeedbackEncoder, PrimitiveParameterHeads
 from .trajectory import FieldStateTrajectoryDecoder
 
@@ -38,10 +37,11 @@ class AutoregressiveFieldStateRollout(nn.Module):
         decoder: FieldStateTrajectoryDecoder,
         primitive_heads: PrimitiveParameterHeads,
         feedback_encoder: PrimitiveFeedbackEncoder,
-        mode: TrajectoryMode,
         sampler: PrimitiveSampler,
-        relation_adjacency: torch.Tensor | None = None,
-        relation_type_lags: torch.Tensor | None = None,
+        target_relation_adjacency: torch.Tensor,
+        target_time_scope_ids: torch.Tensor,
+        input_target_relation_adjacency: torch.Tensor,
+        input_target_time_scope_ids: torch.Tensor,
         use_cache: bool | None = None,
         use_selected_heads: bool | None = None,
     ) -> tuple[
@@ -72,9 +72,10 @@ class AutoregressiveFieldStateRollout(nn.Module):
                 query_tokens,
                 memory,
                 memory_mask,
-                mode=mode,
-                relation_adjacency=relation_adjacency,
-                relation_type_lags=relation_type_lags,
+                target_relation_adjacency=target_relation_adjacency,
+                target_time_scope_ids=target_time_scope_ids,
+                input_target_relation_adjacency=input_target_relation_adjacency,
+                input_target_time_scope_ids=input_target_time_scope_ids,
             )
             if cache_enabled
             else None
@@ -106,11 +107,12 @@ class AutoregressiveFieldStateRollout(nn.Module):
                     query_tokens,
                     memory,
                     memory_mask,
-                    mode=mode,
                     context_states=context,
                     context_mask=available,
-                    relation_adjacency=relation_adjacency,
-                    relation_type_lags=relation_type_lags,
+                    target_relation_adjacency=target_relation_adjacency,
+                    target_time_scope_ids=target_time_scope_ids,
+                    input_target_relation_adjacency=input_target_relation_adjacency,
+                    input_target_time_scope_ids=input_target_time_scope_ids,
                     query_positions=torch.tensor([position], device=query_tokens.device),
                 )[:, 0]
             block_id, field_order = divmod(position, self.field_count)

@@ -7,14 +7,18 @@ import hashlib
 import io
 import json
 import math
+import os
 from pathlib import Path
-import random
+import re
 import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import torch
 
-from trauma_predict.data.multires_event_v2 import MultiresEventV2Contract
+from trauma_predict.data.multires_event_v2 import (
+    MultiresEventV2Contract,
+    MultiresEventV2RelationContract,
+)
 from trauma_predict.eval.multires_event_v2 import MODEL_INPUT_KEYS, move_to_device
 from trauma_predict.eval.multires_event_v2_projections import (
     build_physical_projection_schema,
@@ -45,6 +49,19 @@ CRN_SCHEDULE_SCHEMA = "multires_event_v2_common_random_numbers_sha256_v1"
 PRODUCTION_TRAJECTORIES_PER_ANCHOR = 100
 PRODUCTION_CRN_SEED = 20260713
 RETAINED_AUDIT_TRAJECTORIES_PER_ANCHOR = 1
+PRODUCTION_CHUNK_TARGET_ANCHORS = 100
+FREE_RUNNING_CHUNK_SCHEMA = (
+    "trauma_predict.multires_event_v2_free_running_atomic_chunk.v1"
+)
+FREE_RUNNING_CHUNK_STATS_SCHEMA = (
+    "trauma_predict.multires_event_v2_free_running_chunk_sufficient_stats.v1"
+)
+FREE_RUNNING_RESUME_SCHEMA = (
+    "trauma_predict.multires_event_v2_free_running_resume_status.v1"
+)
+FREE_RUNNING_HOSTED_PROGRESS_SCHEMA = (
+    "trauma_predict.multires_event_v2_free_running_hosted_progress.v1"
+)
 RANK_ARTIFACT_PREFLIGHT_SCHEMA = (
     "trauma_predict.multires_event_v2_rank_artifact_preflight.v1"
 )
@@ -55,8 +72,8 @@ def evaluate_free_running_v2(
     model: Any,
     loader: Iterable[Mapping[str, Any]],
     contract: MultiresEventV2Contract,
+    relation_contract: MultiresEventV2RelationContract,
     device: torch.device,
-    mode: str,
     expected_samples: int,
     step: int,
     output_dir: str | Path,
@@ -64,24 +81,26 @@ def evaluate_free_running_v2(
     standardized_primitive_scale_path: str | Path,
     expected_standardized_primitive_scale_hash: str,
     input_normalization_sha256: str,
-    promotion_metric_contract: Mapping[str, Any],
+    trajectory_metric_contract: Mapping[str, Any],
     evaluation_identity: Mapping[str, Any] | None = None,
     trajectories_per_anchor: int = PRODUCTION_TRAJECTORIES_PER_ANCHOR,
     trajectory_batch_size: int | None = None,
     crn_seed: int = PRODUCTION_CRN_SEED,
     metrics_path: Path | None = None,
     precision: str = "fp16",
+    chunk_target_anchors: int = PRODUCTION_CHUNK_TARGET_ANCHORS,
+    max_new_anchors: int | None = None,
 ) -> dict[str, Any]:
     """Evaluate generated six-block trajectories without future truth feedback.
 
     The model input is encoded once per anchor. The cached memory/query state is
     expanded to the ensemble dimension and decoded autoregressively with the
     registry sampler. Production configuration freezes 100 trajectories; the
-    function accepts smaller positive counts for unit/integration tests.
+    function accepts smaller positive counts for unit/integration tests. Atomic
+    chunks commit only after complete loader batches; ``max_new_anchors`` may
+    return an ``INCOMPLETE`` status after the next durable chunk boundary.
     """
 
-    if mode not in {"block", "trajectory", "relational"}:
-        raise ValueError("free-running V2 mode must be block/trajectory/relational")
     if expected_samples < 1 or trajectories_per_anchor < 1:
         raise ValueError("free-running sample and trajectory counts must be positive")
     batch_size = trajectories_per_anchor if trajectory_batch_size is None else int(
@@ -93,6 +112,10 @@ def evaluate_free_running_v2(
         raise ValueError("free-running CRN seed must be a nonnegative integer")
     if precision not in {"fp16", "fp32"}:
         raise ValueError("free-running neural precision must be fp16 or fp32")
+    if chunk_target_anchors < 1:
+        raise ValueError("free-running chunk target must be positive")
+    if max_new_anchors is not None and max_new_anchors < 1:
+        raise ValueError("free-running per-invocation anchor limit must be positive")
     if len(input_normalization_sha256) != 64 or any(
         character not in "0123456789abcdef"
         for character in input_normalization_sha256
@@ -154,7 +177,6 @@ def evaluate_free_running_v2(
         "digest": "sha256_first_63_bits_big_endian",
         "trajectory_batch_size": batch_size,
         "trajectories_per_anchor": trajectories_per_anchor,
-        "mode_in_seed": False,
         "registered_sampling_order": "block_major_then_topological_field_then_likelihood",
         "draw_consumption": "fixed_by_registered_factor_and_ensemble_shape",
     }
@@ -165,7 +187,10 @@ def evaluate_free_running_v2(
         "process_contract_sha256": contract.contract_hashes["process"],
         "emission_contract_sha256": contract.contract_hashes["emission"],
         "projection_contract_sha256": contract.contract_hashes["projection"],
-        "relation_contract_sha256": contract.contract_hashes["relation"],
+        "target_sidecar_relation_contract_sha256": contract.contract_hashes["relation"],
+        "relation_contract_version": relation_contract.version,
+        "relation_contract_sha256": relation_contract.bundle_hash,
+        "relation_contract_file_sha256": dict(relation_contract.file_hashes),
         "sidecar_schema_sha256": contract.contract_hashes["sidecar_schema"],
         "lab_scale_artifact_sha256": expected_lab_scale_artifact_hash,
         "standardized_primitive_scale_sha256": expected_standardized_primitive_scale_hash,
@@ -179,7 +204,7 @@ def evaluate_free_running_v2(
             "source_identity_sha256",
             "git_commit",
             "git_head_tree",
-            "matched_design_signature",
+            "run_contract_signature",
             "selected_checkpoint_step",
             "selected_checkpoint_model_sha256",
         )
@@ -192,6 +217,10 @@ def evaluate_free_running_v2(
             raise ValueError(
                 f"free-running final model identity is incomplete: {missing}"
             )
+        if int(evaluation_identity["selected_checkpoint_step"]) != int(step):
+            raise ValueError(
+                "free-running selected checkpoint identity differs from evaluation step"
+            )
         for key, value in evaluation_identity.items():
             if key in identity and str(identity[key]) != str(value):
                 raise ValueError(
@@ -200,9 +229,8 @@ def evaluate_free_running_v2(
                 )
             identity[key] = value
     schema_path = output_root / "sample_schema.json"
-    schema_payload = {
+    schema_contract = {
         "schema_version": "trauma_predict.multires_event_v2_sample_export.v2",
-        "created_at": utc_now(),
         "identity": identity,
         "crn_contract": crn_contract,
         "primitive_order": primitive_order,
@@ -228,50 +256,117 @@ def evaluate_free_running_v2(
         },
     }
     _collect_distributed_phase(
+        "free-running chunk-root validation",
+        lambda: _validate_chunk_root_layout(output_root, world_size)
+        if rank == 0
+        else None,
+    )
+    schema_results = _collect_distributed_phase(
         "free-running sample-schema materialization",
-        lambda: _atomic_json(schema_path, schema_payload) if rank == 0 else None,
+        lambda: _materialize_or_validate_sample_schema(schema_path, schema_contract)
+        if rank == 0
+        else None,
+    )
+    schema_info = schema_results[0]
+    if not isinstance(schema_info, Mapping):
+        raise RuntimeError("free-running sample schema identity was not assembled")
+    sample_schema_sha256 = str(schema_info["file_sha256"])
+    sample_schema_identity_sha256 = str(schema_info["identity_sha256"])
+
+    loaded_chunks = _collect_distributed_phase(
+        "free-running atomic-chunk validation",
+        lambda: _load_completed_free_running_chunks(
+            output_root=output_root,
+            rank=rank,
+            world_size=world_size,
+            step=step,
+            trajectories_per_anchor=trajectories_per_anchor,
+            chunk_target_anchors=chunk_target_anchors,
+            identity=identity,
+            crn_contract=crn_contract,
+            sample_schema_sha256=sample_schema_sha256,
+            sample_schema_identity_sha256=sample_schema_identity_sha256,
+        ),
+    )
+    completed_chunks = list(loaded_chunks[rank])
+    completed_loader_batches = [
+        [str(sample_id) for sample_id in batch_ids]
+        for chunk in completed_chunks
+        for batch_ids in chunk["loader_batch_sample_ids"]
+    ]
+    completed_sample_ids = [
+        str(sample_id)
+        for chunk in completed_chunks
+        for sample_id in chunk["sample_ids"]
+    ]
+    completed_terminal_partial = bool(
+        completed_chunks
+        and int(completed_chunks[-1]["anchors"]) < chunk_target_anchors
     )
 
-    primitive_path = output_root / f"audit_trajectory_samples.rank{rank:05d}.jsonl.gz"
-    anchor_path = output_root / f"per_anchor_scores.rank{rank:05d}.jsonl"
-    local_anchor_count = 0
-    local_calibration = _empty_calibration_state()
-    local_coverage = _empty_coverage_state()
+    local_anchor_count = len(completed_sample_ids)
     local_sample_ids: set[str] = set()
+    completed_batch_cursor = 0
+    chunk_anchor_rows: list[dict[str, Any]] = []
+    chunk_audit_rows: list[dict[str, Any]] = []
+    chunk_stats_rows: list[dict[str, Any]] = []
+    chunk_loader_batches: list[list[str]] = []
+    new_anchor_count = 0
+    stopped_for_limit = False
     autocast = _autocast_factory(device, precision)
     _emit_rank_progress(
         path=rank_progress_path,
         rank=rank,
-        mode=mode,
-        completed_anchors=0,
+        completed_anchors=local_anchor_count,
         started_at=rank_started_at,
     )
-    with _atomic_gzip_text(primitive_path) as primitive_handle, _atomic_text(
-        anchor_path
-    ) as anchor_handle:
-        with torch.no_grad():
-            for raw_batch in loader:
-                batch = move_to_device(raw_batch, device)
-                sample_ids = _string_batch(batch.get("sample_id"))
-                subject_ids = _string_batch(batch.get("subject_id"))
-                if not sample_ids or len(sample_ids) != len(subject_ids):
-                    raise ValueError("free-running identities do not align within the batch")
-                metadata = batch.get("target_primitive_metadata")
-                if not isinstance(metadata, Mapping):
-                    raise ValueError("free-running batch lacks target primitive metadata")
-                with autocast():
-                    encoded_batch = _encode_batch_once(
-                        core_model, batch, expected_batch_size=len(sample_ids)
+    with torch.no_grad():
+        for raw_batch in loader:
+            sample_ids = _string_batch(raw_batch.get("sample_id"))
+            subject_ids = _string_batch(raw_batch.get("subject_id"))
+            if not sample_ids or len(sample_ids) != len(subject_ids):
+                raise ValueError("free-running identities do not align within the batch")
+            duplicates = local_sample_ids.intersection(sample_ids)
+            if duplicates or len(sample_ids) != len(set(sample_ids)):
+                within_batch = {
+                    item for item in sample_ids if sample_ids.count(item) > 1
+                }
+                duplicate = sorted(duplicates or within_batch)[0]
+                raise RuntimeError(f"duplicate local free-running anchor {duplicate}")
+            local_sample_ids.update(sample_ids)
+
+            if completed_batch_cursor < len(completed_loader_batches):
+                expected_batch_ids = completed_loader_batches[completed_batch_cursor]
+                if sample_ids != expected_batch_ids:
+                    raise RuntimeError(
+                        "free-running resume loader order or batch boundary changed before "
+                        f"completed chunk {completed_batch_cursor}: {sample_ids[:3]} != "
+                        f"{expected_batch_ids[:3]}"
                     )
-                truth_batch = _primitive_batch_slice_inputs(
-                    batch, expected_batch_size=len(sample_ids)
+                completed_batch_cursor += 1
+                # A completed batch is rejected before device transfer and before
+                # encode_for_rollout, so resume never repeats model computation.
+                continue
+            if completed_terminal_partial:
+                raise RuntimeError(
+                    "free-running resume found anchors after a committed terminal "
+                    "partial chunk"
                 )
-                for anchor_index, (sample_id, subject_id) in enumerate(
-                    zip(sample_ids, subject_ids, strict=True)
-                ):
-                    if sample_id in local_sample_ids:
-                        raise RuntimeError(f"duplicate local free-running anchor {sample_id}")
-                    local_sample_ids.add(sample_id)
+
+            batch = move_to_device(raw_batch, device)
+            metadata = batch.get("target_primitive_metadata")
+            if not isinstance(metadata, Mapping):
+                raise ValueError("free-running batch lacks target primitive metadata")
+            with autocast():
+                encoded_batch = _encode_batch_once(
+                    core_model, batch, expected_batch_size=len(sample_ids)
+                )
+            truth_batch = _primitive_batch_slice_inputs(
+                batch, expected_batch_size=len(sample_ids)
+            )
+            for anchor_index, (sample_id, subject_id) in enumerate(
+                zip(sample_ids, subject_ids, strict=True)
+            ):
                     encoded = {
                         key: value[anchor_index : anchor_index + 1]
                         for key, value in encoded_batch.items()
@@ -297,6 +392,7 @@ def evaluate_free_running_v2(
                     generated_masks: list[torch.Tensor] = []
                     generated_phi: list[torch.Tensor] = []
                     coherence_rows: list[dict[str, Any]] = []
+                    retained_audit_row: dict[str, Any] | None = None
                     trajectory_start = 0
                     while trajectory_start < trajectories_per_anchor:
                         count = min(
@@ -321,9 +417,6 @@ def evaluate_free_running_v2(
                                     expanded["memory_mask"],
                                     expanded["query_tokens"],
                                     sampler=sampler,
-                                    relation_adjacency=batch.get("relation_adjacency"),
-                                    relation_type_lags=batch.get("relation_type_lags"),
-                                    mode=mode,
                                 )
                         primitives = outputs.get("generated_primitives")
                         primitive_masks = outputs.get("generated_primitive_masks")
@@ -358,7 +451,6 @@ def evaluate_free_running_v2(
                             export = _trajectory_export_row(
                                 sample_id=sample_id,
                                 subject_id=subject_id,
-                                mode=mode,
                                 trajectory_index=0,
                                 crn_seed=seed,
                                 rng_row_index=row_index,
@@ -369,8 +461,11 @@ def evaluate_free_running_v2(
                                 physical_masks=physical_masks,
                                 row_index=row_index,
                             )
-                            primitive_handle.write(_json_line(export))
+                            retained_audit_row = export
                         trajectory_start += count
+
+                    if retained_audit_row is None:
+                        raise AssertionError("free-running audit trajectory was not retained")
 
                     # Scoring is a small [100,6,D] workload with many scalar
                     # summaries.  Move each complete ensemble once so the
@@ -386,20 +481,16 @@ def evaluate_free_running_v2(
                         truth_masks[0].detach().cpu(),
                         physical_schema,
                     )
-                    _update_calibration_state(
-                        local_calibration,
-                        physical_scores.pop("branch_calibration_rows"),
-                    )
-                    _update_coverage_state(
-                        local_coverage,
-                        physical_scores.pop("coverage_by_projection"),
+                    calibration_rows = physical_scores.pop("branch_calibration_rows")
+                    coverage_by_projection = physical_scores.pop(
+                        "coverage_by_projection"
                     )
                     trajectory_scores = score_standardized_primitive_ensemble(
                         ensemble_phi,
                         truth_phi[0].detach().cpu(),
                         primitive_schema,
-                        contract.active_core_relation_edges,
-                        promotion_metric_contract,
+                        relation_contract.target_edges,
+                        trajectory_metric_contract,
                     )
                     coherent = sum(bool(row["coherent"]) for row in coherence_rows)
                     violation_counts: dict[str, int] = defaultdict(int)
@@ -410,7 +501,7 @@ def evaluate_free_running_v2(
                         "schema_version": "trauma_predict.multires_event_v2_free_running_anchor.v1",
                         "sample_id": sample_id,
                         "subject_id": subject_id,
-                        "mode": mode,
+                        "model_contract": "relation_v2",
                         "step": int(step),
                         "trajectories": trajectories_per_anchor,
                         "energy_score": trajectory_scores["energy_score"],
@@ -438,69 +529,186 @@ def evaluate_free_running_v2(
                         "coherence_violations": dict(sorted(violation_counts.items())),
                         "identity": identity,
                     }
+                    chunk_anchor_rows.append(anchor_row)
+                    chunk_audit_rows.append(retained_audit_row)
+                    chunk_stats_rows.append(
+                        {
+                            "schema_version": FREE_RUNNING_CHUNK_STATS_SCHEMA,
+                            "sample_id": sample_id,
+                            "branch_calibration_rows": calibration_rows,
+                            "coverage_by_projection": coverage_by_projection,
+                        }
+                    )
+                    new_anchor_count += 1
                     local_anchor_count += 1
-                    anchor_handle.write(_json_line(anchor_row))
-                    if local_anchor_count % 25 == 0:
-                        _emit_rank_progress(
-                            path=rank_progress_path,
-                            rank=rank,
-                            mode=mode,
-                            completed_anchors=local_anchor_count,
-                            started_at=rank_started_at,
-                        )
 
-    if local_anchor_count % 25 != 0:
-        _emit_rank_progress(
-            path=rank_progress_path,
-            rank=rank,
-            mode=mode,
-            completed_anchors=local_anchor_count,
-            started_at=rank_started_at,
+            # Chunks end only at an original loader-batch boundary.  This makes
+            # resumed and uninterrupted encoding use identical batch shapes.
+            chunk_loader_batches.append(list(sample_ids))
+            if len(chunk_anchor_rows) >= chunk_target_anchors:
+                completed_chunks.append(
+                    _commit_free_running_chunk(
+                        output_root=output_root,
+                        rank=rank,
+                        world_size=world_size,
+                        chunk_index=len(completed_chunks),
+                        step=step,
+                        trajectories_per_anchor=trajectories_per_anchor,
+                        chunk_target_anchors=chunk_target_anchors,
+                        identity=identity,
+                        crn_contract=crn_contract,
+                        sample_schema_sha256=sample_schema_sha256,
+                        sample_schema_identity_sha256=sample_schema_identity_sha256,
+                        score_rows=chunk_anchor_rows,
+                        audit_rows=chunk_audit_rows,
+                        stats_rows=chunk_stats_rows,
+                        loader_batch_sample_ids=chunk_loader_batches,
+                    )
+                )
+                chunk_anchor_rows = []
+                chunk_audit_rows = []
+                chunk_stats_rows = []
+                chunk_loader_batches = []
+                _emit_rank_progress(
+                    path=rank_progress_path,
+                    rank=rank,
+                    completed_anchors=local_anchor_count,
+                    started_at=rank_started_at,
+                )
+                if (
+                    max_new_anchors is not None
+                    and new_anchor_count >= max_new_anchors
+                ):
+                    stopped_for_limit = True
+                    break
+
+    if completed_batch_cursor != len(completed_loader_batches):
+        raise RuntimeError(
+            "free-running loader ended before all committed resume batches were seen"
         )
+    if stopped_for_limit:
+        if chunk_anchor_rows or chunk_audit_rows or chunk_stats_rows or chunk_loader_batches:
+            raise AssertionError("free-running invocation stopped with an uncommitted chunk")
+    elif chunk_anchor_rows:
+        completed_chunks.append(
+            _commit_free_running_chunk(
+                output_root=output_root,
+                rank=rank,
+                world_size=world_size,
+                chunk_index=len(completed_chunks),
+                step=step,
+                trajectories_per_anchor=trajectories_per_anchor,
+                chunk_target_anchors=chunk_target_anchors,
+                identity=identity,
+                crn_contract=crn_contract,
+                sample_schema_sha256=sample_schema_sha256,
+                sample_schema_identity_sha256=sample_schema_identity_sha256,
+                score_rows=chunk_anchor_rows,
+                audit_rows=chunk_audit_rows,
+                stats_rows=chunk_stats_rows,
+                loader_batch_sample_ids=chunk_loader_batches,
+            )
+        )
+        chunk_anchor_rows = []
+        chunk_audit_rows = []
+        chunk_stats_rows = []
+        chunk_loader_batches = []
+
+    _emit_rank_progress(
+        path=rank_progress_path,
+        rank=rank,
+        completed_anchors=local_anchor_count,
+        started_at=rank_started_at,
+    )
 
     def build_rank_payload() -> dict[str, Any]:
         return {
-            "manifest": {
-                "rank": rank,
-                "anchors": local_anchor_count,
-                "audit_trajectory_sample_path": primitive_path.name,
-                "audit_trajectory_sample_sha256": sha256_file(primitive_path),
-                "retained_audit_trajectories": local_anchor_count,
-                "per_anchor_score_path": anchor_path.name,
-                "per_anchor_score_sha256": sha256_file(anchor_path),
-                "progress_metrics_path": rank_progress_path.name,
-                "progress_metrics_sha256": sha256_file(rank_progress_path),
-            },
-            "calibration": local_calibration,
-            "coverage": local_coverage,
+            "rank": rank,
+            "anchors": local_anchor_count,
+            "new_anchors": new_anchor_count,
+            "stopped_for_limit": stopped_for_limit,
+            "chunks": completed_chunks,
+            "sample_ids": [
+                str(sample_id)
+                for chunk in completed_chunks
+                for sample_id in chunk["sample_ids"]
+            ],
         }
 
     rank_payloads = _collect_distributed_phase(
         "free-running rank artifact finalization",
         build_rank_payload,
     )
-    manifests = [payload["manifest"] for payload in rank_payloads]
-    calibration_parts = [payload["calibration"] for payload in rank_payloads]
-    coverage_parts = [payload["coverage"] for payload in rank_payloads]
-
     def assemble_rank_zero_result() -> dict[str, Any] | None:
         if rank != 0:
             return None
-        rows: list[dict[str, Any]] = []
-        for manifest in sorted(manifests, key=lambda item: int(item["rank"])):
-            rows.extend(
-                _read_jsonl(output_root / str(manifest["per_anchor_score_path"]))
-            )
-        if len(rows) != expected_samples:
-            raise RuntimeError(
-                f"free-running evaluation expected {expected_samples} anchors, got {len(rows)}"
-            )
-        ids = [str(row["sample_id"]) for row in rows]
+        ordered_rank_payloads = sorted(rank_payloads, key=lambda item: int(item["rank"]))
+        ids = [
+            str(sample_id)
+            for payload in ordered_rank_payloads
+            for sample_id in payload["sample_ids"]
+        ]
         if len(ids) != len(set(ids)):
             raise RuntimeError("free-running sampler introduced duplicate persisted anchors")
+        if len(ids) > expected_samples:
+            raise RuntimeError(
+                f"free-running evaluation expected {expected_samples} anchors, got {len(ids)}"
+            )
+        if len(ids) < expected_samples:
+            if not any(bool(payload["stopped_for_limit"]) for payload in ordered_rank_payloads):
+                raise RuntimeError(
+                    f"free-running evaluation expected {expected_samples} anchors, got {len(ids)}"
+                )
+            partial = {
+                "schema_version": FREE_RUNNING_RESUME_SCHEMA,
+                "status": "INCOMPLETE",
+                "updated_at": utc_now(),
+                "model_contract": "relation_v2",
+                "step": int(step),
+                "anchors": len(ids),
+                "expected_anchors": expected_samples,
+                "new_anchors_this_invocation": sum(
+                    int(payload["new_anchors"]) for payload in ordered_rank_payloads
+                ),
+                "trajectories_per_anchor": trajectories_per_anchor,
+                "chunk_target_anchors": chunk_target_anchors,
+                "identity": identity,
+                "crn_contract": crn_contract,
+                "sample_schema_path": schema_path.name,
+                "sample_schema_sha256": sample_schema_sha256,
+                "sample_schema_identity_sha256": sample_schema_identity_sha256,
+                "ranks": ordered_rank_payloads,
+            }
+            _atomic_json(output_root / "resume_status.json", partial)
+            _write_free_running_hosted_progress(
+                output_root=output_root,
+                status="INCOMPLETE",
+                completed_anchors=len(ids),
+                expected_anchors=expected_samples,
+                new_anchors=sum(
+                    int(payload["new_anchors"])
+                    for payload in ordered_rank_payloads
+                ),
+                identity=identity,
+                rank_payloads=ordered_rank_payloads,
+            )
+            return partial
+
+        rows: list[dict[str, Any]] = []
+        manifests: list[dict[str, Any]] = []
+        calibration_parts: list[dict[str, Any]] = []
+        coverage_parts: list[dict[str, Any]] = []
+        for payload in ordered_rank_payloads:
+            merged = _merge_free_running_rank_chunks(
+                output_root=output_root,
+                rank_payload=payload,
+            )
+            manifests.append(merged["manifest"])
+            calibration_parts.append(merged["calibration"])
+            coverage_parts.append(merged["coverage"])
+            rows.extend(merged["rows"])
         result = _summarize_free_running_rows(
             rows,
-            mode=mode,
             step=step,
             trajectories=trajectories_per_anchor,
             identity=identity,
@@ -509,21 +717,53 @@ def evaluate_free_running_v2(
             coverage=_merge_coverage_states(coverage_parts),
         )
         result["sample_schema_path"] = schema_path.name
-        result["sample_schema_sha256"] = sha256_file(schema_path)
+        result["sample_schema_sha256"] = sample_schema_sha256
+        result["sample_schema_identity_sha256"] = sample_schema_identity_sha256
         result["shards"] = manifests
+        result["atomic_chunks"] = [
+            chunk
+            for payload in ordered_rank_payloads
+            for chunk in payload["chunks"]
+        ]
         manifest_path = output_root / "manifest.json"
         _atomic_json(
             manifest_path,
             {
-                "schema_version": "trauma_predict.multires_event_v2_free_running_manifest.v1",
+                "schema_version": "trauma_predict.multires_event_v2_free_running_manifest.v2",
                 "created_at": utc_now(),
                 "evaluation": result,
                 "per_anchor_score_shards": manifests,
+                "atomic_chunks": result["atomic_chunks"],
             },
         )
         result["manifest_path"] = manifest_path.name
         result["manifest_sha256"] = sha256_file(manifest_path)
         _atomic_json(output_root / "evaluation.json", result)
+        _atomic_json(
+            output_root / "resume_status.json",
+            {
+                "schema_version": FREE_RUNNING_RESUME_SCHEMA,
+                "status": "COMPLETE",
+                "updated_at": utc_now(),
+                "anchors": len(rows),
+                "expected_anchors": expected_samples,
+                "step": int(step),
+                "identity": identity,
+                "manifest_path": manifest_path.name,
+                "manifest_sha256": result["manifest_sha256"],
+            },
+        )
+        _write_free_running_hosted_progress(
+            output_root=output_root,
+            status="COMPLETE",
+            completed_anchors=len(rows),
+            expected_anchors=expected_samples,
+            new_anchors=sum(
+                int(payload["new_anchors"]) for payload in ordered_rank_payloads
+            ),
+            identity=identity,
+            rank_payloads=ordered_rank_payloads,
+        )
         if metrics_path is not None:
             append_jsonl(metrics_path, {"event": "v2_free_running_evaluation", **result})
         return result
@@ -538,263 +778,627 @@ def evaluate_free_running_v2(
     return dict(result)
 
 
-def evaluate_multires_event_v2_promotion(
-    *,
-    block_teacher_path: str | Path,
-    trajectory_teacher_path: str | Path,
-    relational_teacher_path: str | Path,
-    block_free_running_path: str | Path,
-    trajectory_free_running_path: str | Path,
-    relational_free_running_path: str | Path,
-    promotion_metric_contract: Mapping[str, Any],
-    expected_anchors: int = 6309,
-    bootstrap_repetitions: int = 2000,
-    bootstrap_seed: int = 20260713,
-) -> dict[str, Any]:
-    """Apply the frozen structural sequential promotion decision."""
+def _validate_chunk_root_layout(output_root: Path, world_size: int) -> None:
+    chunk_root = output_root / "chunks"
+    if not chunk_root.exists():
+        legacy = (
+            list(output_root.glob("per_anchor_scores.rank*.jsonl"))
+            + list(output_root.glob("audit_trajectory_samples.rank*.jsonl.gz"))
+            + [
+                path
+                for path in (
+                    output_root / "manifest.json",
+                    output_root / "evaluation.json",
+                    output_root / "hosted_progress.json",
+                )
+                if path.exists()
+            ]
+        )
+        if legacy:
+            raise RuntimeError(
+                "free-running output contains legacy formal artifacts without atomic chunks"
+            )
+        return
+    if chunk_root.is_symlink() or not chunk_root.is_dir():
+        raise RuntimeError("free-running chunk root is linked or not a directory")
+    formal_rank_roots: list[Path] = []
+    for entry in chunk_root.iterdir():
+        if ".tmp" in entry.name:
+            continue
+        match = re.fullmatch(r"rank([0-9]{5})", entry.name)
+        if match is None or entry.is_symlink() or not entry.is_dir():
+            raise RuntimeError(f"invalid formal free-running rank chunk path: {entry}")
+        persisted_rank = int(match.group(1))
+        if persisted_rank < 0 or persisted_rank >= world_size:
+            raise RuntimeError(
+                "free-running chunks were created under a different distributed world"
+            )
+        formal_rank_roots.append(entry)
 
-    bootstrap_contract = promotion_metric_contract.get("bootstrap")
-    if not isinstance(bootstrap_contract, Mapping):
-        raise ValueError("V2 promotion metric contract lacks bootstrap settings")
+    actual_manifest_paths = {
+        str(path.relative_to(output_root))
+        for rank_root in formal_rank_roots
+        for path in rank_root.glob("chunk[0-9][0-9][0-9][0-9][0-9][0-9]/manifest.json")
+        if ".tmp" not in str(path.relative_to(output_root))
+    }
+    hosted_progress_path = output_root / "hosted_progress.json"
+    if hosted_progress_path.exists():
+        if hosted_progress_path.is_symlink() or not hosted_progress_path.is_file():
+            raise RuntimeError("free-running hosted progress is linked or invalid")
+        hosted = json.loads(hosted_progress_path.read_text(encoding="utf-8"))
+        hosted_chunks = hosted.get("chunk_manifests") if isinstance(hosted, dict) else None
+        hosted_identity = hosted.get("identity") if isinstance(hosted, dict) else None
+        hosted_status = hosted.get("status") if isinstance(hosted, dict) else None
+        hosted_completed = int(hosted.get("completed", -1)) if isinstance(hosted, dict) else -1
+        hosted_expected = int(hosted.get("expected", -1)) if isinstance(hosted, dict) else -1
+        hosted_chunk_anchors = (
+            sum(
+                int(chunk.get("anchors", -1))
+                for chunk in hosted_chunks
+                if isinstance(chunk, Mapping)
+            )
+            if isinstance(hosted_chunks, list)
+            else -1
+        )
+        if (
+            not isinstance(hosted, dict)
+            or hosted.get("schema_version") != FREE_RUNNING_HOSTED_PROGRESS_SCHEMA
+            or hosted_status not in {"INCOMPLETE", "COMPLETE"}
+            or not isinstance(hosted_chunks, list)
+            or not isinstance(hosted_identity, Mapping)
+            or hosted.get("identity_sha256") != sha256_payload(hosted_identity)
+            or hosted.get("completed_anchors") != hosted_completed
+            or hosted.get("expected_anchors") != hosted_expected
+            or hosted_completed < 0
+            or hosted_expected < 1
+            or hosted_completed > hosted_expected
+            or (hosted_status == "COMPLETE" and hosted_completed != hosted_expected)
+            or (hosted_status == "INCOMPLETE" and hosted_completed >= hosted_expected)
+            or int(hosted.get("new_anchors", -1)) < 0
+            or hosted_chunk_anchors != hosted_completed
+            or hosted.get("set_sha256") != sha256_payload(hosted_chunks)
+            or hosted.get("chunk_manifest_set_sha256") != sha256_payload(hosted_chunks)
+        ):
+            raise RuntimeError("free-running hosted progress contract failed")
+        hosted_manifest_paths: set[str] = set()
+        for chunk in hosted_chunks:
+            if not isinstance(chunk, Mapping):
+                raise RuntimeError("free-running hosted chunk pointer is invalid")
+            relative = str(chunk.get("manifest_path") or "")
+            path = output_root / relative
+            if (
+                not relative
+                or path.is_symlink()
+                or not path.is_file()
+                or not path.resolve().is_relative_to(output_root)
+                or sha256_file(path) != str(chunk.get("manifest_sha256") or "")
+            ):
+                raise RuntimeError("free-running hosted chunk manifest pointer/hash failed")
+            hosted_manifest_paths.add(relative)
+        # A process may die after atomically committing a new chunk but before
+        # refreshing hosted_progress.json.  Such an extra complete chunk is
+        # independently validated below; every previously declared chunk is fixed.
+        if not hosted_manifest_paths.issubset(actual_manifest_paths):
+            raise RuntimeError("free-running hosted chunk set is missing formal evidence")
+
+    final_manifest_path = output_root / "manifest.json"
+    final_evaluation_path = output_root / "evaluation.json"
+    if final_manifest_path.exists() != final_evaluation_path.exists():
+        raise RuntimeError("free-running final manifest/evaluation pair is incomplete")
+    if not final_manifest_path.exists():
+        return
     if (
-        bootstrap_repetitions != int(bootstrap_contract["repetitions"])
-        or bootstrap_seed != int(bootstrap_contract["seed"])
+        final_manifest_path.is_symlink()
+        or not final_manifest_path.is_file()
+        or final_evaluation_path.is_symlink()
+        or not final_evaluation_path.is_file()
     ):
-        raise ValueError("V2 promotion bootstrap is frozen to 2,000 draws/seed 20260713")
-    teacher = {
-        "block": _index_rows(_read_jsonl(Path(block_teacher_path)), expected_anchors),
-        "trajectory": _index_rows(
-            _read_jsonl(Path(trajectory_teacher_path)), expected_anchors
-        ),
-        "relational": _index_rows(
-            _read_jsonl(Path(relational_teacher_path)), expected_anchors
-        ),
-    }
-    free = {
-        "block": _index_rows(
-            _read_free_running_rows(Path(block_free_running_path)), expected_anchors
-        ),
-        "trajectory": _index_rows(
-            _read_free_running_rows(Path(trajectory_free_running_path)), expected_anchors
-        ),
-        "relational": _index_rows(
-            _read_free_running_rows(Path(relational_free_running_path)), expected_anchors
-        ),
-    }
-    _assert_matched_identity(teacher)
-    _assert_matched_identity(free)
-    _assert_teacher_free_anchor_identity(teacher, free)
-    _assert_common_random_contract(free)
-    _assert_teacher_free_contract_identity(teacher, free)
-    subject_order = _shared_subject_order(teacher["block"])
-    expected_subjects = int(promotion_metric_contract["population"]["subjects"])
-    if expected_anchors == int(promotion_metric_contract["population"]["anchors"]) and len(
-        subject_order
-    ) != expected_subjects:
-        raise ValueError(
-            f"production promotion requires {expected_subjects} subjects, got "
-            f"{len(subject_order)}"
-        )
-    bootstrap_schedule = _shared_subject_bootstrap_schedule(
-        len(subject_order),
-        repetitions=bootstrap_repetitions,
-        seed=bootstrap_seed,
-    )
-
-    trajectory_teacher = _paired_subject_bootstrap_delta(
-        teacher["block"],
-        teacher["trajectory"],
-        value=lambda row: float(row["joint_nll"]),
-        subject_order=subject_order,
-        bootstrap_schedule=bootstrap_schedule,
-        metric="teacher_joint_nll_nats_per_anchor",
-    )
-    relational_teacher = _paired_subject_bootstrap_delta(
-        teacher["trajectory"],
-        teacher["relational"],
-        value=lambda row: float(row["joint_nll"]),
-        subject_order=subject_order,
-        bootstrap_schedule=bootstrap_schedule,
-        metric="teacher_joint_nll_nats_per_anchor",
-    )
-    _add_log_score_units(trajectory_teacher)
-    _add_log_score_units(relational_teacher)
-    _add_log_density_ratios(trajectory_teacher)
-    _add_log_density_ratios(relational_teacher)
-    gates = promotion_metric_contract.get("gates")
-    if not isinstance(gates, Mapping):
-        raise ValueError("V2 promotion metric contract lacks gates")
-    trajectory_gate = gates["trajectory_over_block"]
-    relational_gate = gates["relational_over_trajectory"]
-    if not isinstance(trajectory_gate, Mapping) or not isinstance(
-        relational_gate, Mapping
+        raise RuntimeError("free-running final manifest/evaluation is linked or invalid")
+    final_manifest = json.loads(final_manifest_path.read_text(encoding="utf-8"))
+    chunks = final_manifest.get("atomic_chunks") if isinstance(final_manifest, dict) else None
+    if (
+        not isinstance(final_manifest, dict)
+        or final_manifest.get("schema_version")
+        != "trauma_predict.multires_event_v2_free_running_manifest.v2"
+        or not isinstance(chunks, list)
     ):
-        raise ValueError("V2 promotion structural gates are invalid")
-    trajectory_teacher_pass = (
-        float(trajectory_teacher["ci95"]["upper"])
-        < float(trajectory_gate["teacher_joint_nll_delta_ci95_upper_lt"])
-    )
-    relational_teacher_pass = (
-        float(relational_teacher["ci95"]["upper"])
-        < float(relational_gate["teacher_joint_nll_delta_ci95_upper_lt"])
-    )
+        raise RuntimeError("free-running final manifest does not describe atomic chunks")
+    declared_manifest_paths: set[str] = set()
+    for chunk in chunks:
+        if not isinstance(chunk, Mapping):
+            raise RuntimeError("free-running final chunk pointer is invalid")
+        relative = str(chunk.get("manifest_path") or "")
+        path = output_root / relative
+        if (
+            not relative
+            or path.is_symlink()
+            or not path.is_file()
+            or not path.resolve().is_relative_to(output_root)
+            or sha256_file(path) != str(chunk.get("manifest_sha256") or "")
+        ):
+            raise RuntimeError("free-running final chunk manifest pointer/hash failed")
+        declared_manifest_paths.add(relative)
+    if declared_manifest_paths != actual_manifest_paths:
+        raise RuntimeError("free-running final manifest chunk set is incomplete")
 
-    trajectory_temporal = _paired_subject_bootstrap_ratio(
-        free["block"],
-        free["trajectory"],
-        value=lambda row: float(row["field_macro_lag1_variogram_score_p0_5"]),
-        subject_order=subject_order,
-        bootstrap_schedule=bootstrap_schedule,
-        metric="field_macro_lag1_variogram_score_p0_5",
-    )
-    relational_structure = _paired_subject_bootstrap_ratio(
-        free["trajectory"],
-        free["relational"],
-        value=lambda row: float(row["relation_edge_macro_variogram_score_p0_5"]),
-        subject_order=subject_order,
-        bootstrap_schedule=bootstrap_schedule,
-        metric="relation_edge_macro_variogram_score_p0_5",
-    )
-    trajectory_marginal = {
-        partition: _paired_subject_bootstrap_ratio(
-            free["block"],
-            free["trajectory"],
-            value=lambda row, name=partition: float(row[f"marginal_{name}_crps"]),
-            subject_order=subject_order,
-            bootstrap_schedule=bootstrap_schedule,
-            metric=f"marginal_{partition}_crps",
-        )
-        for partition in ("value", "state")
-    }
-    relational_marginal = {
-        partition: _paired_subject_bootstrap_ratio(
-            free["trajectory"],
-            free["relational"],
-            value=lambda row, name=partition: float(row[f"marginal_{name}_crps"]),
-            subject_order=subject_order,
-            bootstrap_schedule=bootstrap_schedule,
-            metric=f"marginal_{partition}_crps",
-        )
-        for partition in ("value", "state")
-    }
-    trajectory_physical = _physical_noninferiority_gate(
-        free["block"],
-        free["trajectory"],
-        repetitions=bootstrap_repetitions,
-        seed=bootstrap_seed,
-    )
-    relational_physical = _physical_noninferiority_gate(
-        free["trajectory"],
-        free["relational"],
-        repetitions=bootstrap_repetitions,
-        seed=bootstrap_seed,
-    )
-    coherence = {
-        mode: _coherence_gate(rows) for mode, rows in free.items()
-    }
-    trajectory_coherence_pass = coherence["block"]["passed"] and coherence[
-        "trajectory"
-    ]["passed"]
-    relational_coherence_pass = coherence["trajectory"]["passed"] and coherence[
-        "relational"
-    ]["passed"]
-    trajectory_temporal_pass = (
-        float(trajectory_temporal["observed_ratio"])
-        <= float(trajectory_gate["temporal_score_observed_ratio_lte"])
-        and float(trajectory_temporal["ci95"]["upper"])
-        < float(trajectory_gate["temporal_score_ci95_upper_lt"])
-    )
-    relational_structure_pass = (
-        float(relational_structure["observed_ratio"])
-        <= float(relational_gate["relation_score_observed_ratio_lte"])
-        and float(relational_structure["ci95"]["upper"])
-        < float(relational_gate["relation_score_ci95_upper_lt"])
-    )
-    trajectory_marginal_pass = all(
-        float(trajectory_marginal[name]["ci95"]["upper"])
-        < float(trajectory_gate[f"{name}_marginal_score_ci95_upper_lt"])
-        for name in ("value", "state")
-    )
-    relational_marginal_pass = all(
-        float(relational_marginal[name]["ci95"]["upper"])
-        < float(relational_gate[f"{name}_marginal_score_ci95_upper_lt"])
-        for name in ("value", "state")
-    )
-    trajectory_pass = (
-        trajectory_teacher_pass
-        and trajectory_temporal_pass
-        and trajectory_marginal_pass
-        and trajectory_coherence_pass
-    )
-    relational_increment_pass = (
-        relational_teacher_pass
-        and relational_structure_pass
-        and relational_marginal_pass
-        and relational_coherence_pass
-    )
-    relational_pass = trajectory_pass and relational_increment_pass
-    winner = "relational" if relational_pass else "trajectory" if trajectory_pass else "block"
+
+def _materialize_or_validate_sample_schema(
+    path: Path,
+    schema_contract: Mapping[str, Any],
+) -> dict[str, str]:
+    identity_sha256 = sha256_payload(schema_contract)
+    if path.exists():
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError("free-running sample schema is linked or not a file")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise RuntimeError("free-running sample schema is not a mapping")
+        created_at = payload.pop("created_at", None)
+        if not isinstance(created_at, str) or not created_at:
+            raise RuntimeError("free-running sample schema lacks its creation identity")
+        if sha256_payload(payload) != identity_sha256:
+            raise RuntimeError(
+                "free-running sample schema differs from the resumed evaluation contract"
+            )
+    else:
+        _atomic_json(path, {**dict(schema_contract), "created_at": utc_now()})
     return {
-        "schema_version": "trauma_predict.multires_event_v2_promotion.v2",
-        "created_at": utc_now(),
-        "anchors": expected_anchors,
-        "bootstrap": {
-            "unit": "subject_id",
-            "repetitions": bootstrap_repetitions,
-            "seed": bootstrap_seed,
-            "interval": "paired_percentile_95",
-            "shared_subject_index_schedule": True,
-        },
-        "teacher_log_score": {
-            "units": "fixed_six_block_joint_target_nats_per_anchor",
-            "trajectory_minus_block": trajectory_teacher,
-            "relational_minus_trajectory": relational_teacher,
-            "not_coordinate_percentage": True,
-        },
-        "structural_scores": {
-            "trajectory_minus_block": trajectory_temporal,
-            "relational_minus_trajectory": relational_structure,
-        },
-        "marginal_noninferiority": {
-            "rule": "field_balanced_phi_marginal_score_ratio_CI95_upper_lt_1.01",
-            "trajectory_over_block": trajectory_marginal,
-            "relational_over_trajectory": relational_marginal,
-        },
-        "physical_report": {
-            "decision_role": "report_only_no_veto",
-            "trajectory_minus_block": trajectory_physical,
-            "relational_minus_trajectory": relational_physical,
-        },
-        "coherence": {
-            "rule": "100_percent_generated_trajectories",
-            "modes": coherence,
-        },
-        "care_and_procedure": {
-            "status": "not_applicable",
-            "reason": "care_and_procedure_joint_objective_off",
-        },
-        "gates": {
-            "trajectory_over_block": {
-                "teacher_joint_nll_superiority": trajectory_teacher_pass,
-                "temporal_structure": trajectory_temporal_pass,
-                "marginal_noninferiority": trajectory_marginal_pass,
-                "coherence": trajectory_coherence_pass,
-                "passed": trajectory_pass,
-            },
-            "relational_over_trajectory": {
-                "teacher_joint_nll_superiority": relational_teacher_pass,
-                "relation_structure": relational_structure_pass,
-                "marginal_noninferiority": relational_marginal_pass,
-                "coherence": relational_coherence_pass,
-                "increment_passed": relational_increment_pass,
-                "passed": relational_pass,
-            },
-        },
-        "winner": winner,
-        "trajectory_promoted": trajectory_pass,
-        "relational_promoted": relational_pass,
-        "promoted": winner != "block",
+        "file_sha256": sha256_file(path),
+        "identity_sha256": identity_sha256,
     }
+
+
+def _commit_free_running_chunk(
+    *,
+    output_root: Path,
+    rank: int,
+    world_size: int,
+    chunk_index: int,
+    step: int,
+    trajectories_per_anchor: int,
+    chunk_target_anchors: int,
+    identity: Mapping[str, Any],
+    crn_contract: Mapping[str, Any],
+    sample_schema_sha256: str,
+    sample_schema_identity_sha256: str,
+    score_rows: Sequence[Mapping[str, Any]],
+    audit_rows: Sequence[Mapping[str, Any]],
+    stats_rows: Sequence[Mapping[str, Any]],
+    loader_batch_sample_ids: Sequence[Sequence[str]],
+) -> dict[str, Any]:
+    anchors = len(score_rows)
+    if anchors < 1 or len(audit_rows) != anchors or len(stats_rows) != anchors:
+        raise ValueError("free-running chunk rows do not align")
+    score_ids = [str(row.get("sample_id")) for row in score_rows]
+    audit_ids = [str(row.get("sample_id")) for row in audit_rows]
+    stats_ids = [str(row.get("sample_id")) for row in stats_rows]
+    loader_ids = [str(item) for batch in loader_batch_sample_ids for item in batch]
+    if (
+        score_ids != audit_ids
+        or score_ids != stats_ids
+        or score_ids != loader_ids
+        or len(score_ids) != len(set(score_ids))
+    ):
+        raise ValueError("free-running chunk sample identities do not align")
+
+    rank_root = output_root / "chunks" / f"rank{rank:05d}"
+    rank_root.mkdir(parents=True, exist_ok=True)
+    chunk_name = f"chunk{chunk_index:06d}"
+    final_path = rank_root / chunk_name
+    if final_path.exists() or final_path.is_symlink():
+        raise RuntimeError(f"refusing to replace formal free-running chunk {final_path}")
+    temporary = rank_root / (
+        f"{chunk_name}.tmp.{os.getpid()}.{time.time_ns()}"
+    )
+    temporary.mkdir()
+    score_path = temporary / "scores.jsonl"
+    audit_path = temporary / "audit_trajectories.jsonl.gz"
+    stats_path = temporary / "calibration_coverage_stats.jsonl.gz"
+    with _atomic_text(score_path) as handle:
+        for row in score_rows:
+            handle.write(_json_line(row))
+    with _atomic_gzip_text(audit_path) as handle:
+        for row in audit_rows:
+            handle.write(_json_line(row))
+    with _atomic_gzip_text(stats_path) as handle:
+        for row in stats_rows:
+            handle.write(_json_line(row))
+
+    def file_row(path: Path, rows: int) -> dict[str, Any]:
+        return {
+            "path": path.name,
+            "sha256": sha256_file(path),
+            "size_bytes": path.stat().st_size,
+            "rows": rows,
+        }
+
+    identity_payload = dict(identity)
+    source_model_run_identity = {
+        key: identity_payload.get(key)
+        for key in (
+            "source_tree_sha256",
+            "source_identity_sha256",
+            "git_commit",
+            "git_head_tree",
+            "run_contract_signature",
+            "selected_checkpoint_step",
+            "selected_checkpoint_model_sha256",
+        )
+    }
+    manifest = {
+        "schema_version": FREE_RUNNING_CHUNK_SCHEMA,
+        "status": "COMPLETE",
+        "created_at": utc_now(),
+        "model_contract": "relation_v2",
+        "rank": int(rank),
+        "world_size": int(world_size),
+        "chunk_index": int(chunk_index),
+        "chunk_target_anchors": int(chunk_target_anchors),
+        "commit_boundary": "complete_loader_batch_at_or_above_target",
+        "anchors": anchors,
+        "sample_ids": score_ids,
+        "loader_batch_sample_ids": [
+            [str(item) for item in batch] for batch in loader_batch_sample_ids
+        ],
+        "step": int(step),
+        "trajectories_per_anchor": int(trajectories_per_anchor),
+        "identity": identity_payload,
+        "identity_sha256": sha256_payload(identity_payload),
+        "source_model_run_identity": source_model_run_identity,
+        "crn_contract": dict(crn_contract),
+        "crn_contract_sha256": sha256_payload(crn_contract),
+        "sample_schema_sha256": sample_schema_sha256,
+        "sample_schema_identity_sha256": sample_schema_identity_sha256,
+        "files": {
+            "scores": file_row(score_path, anchors),
+            "audit_trajectories": file_row(audit_path, anchors),
+            "calibration_coverage_sufficient_stats": file_row(stats_path, anchors),
+        },
+    }
+    _atomic_json(temporary / "manifest.json", manifest)
+    temporary.replace(final_path)
+    return _free_running_chunk_descriptor(output_root, final_path, manifest)
+
+
+def _free_running_chunk_descriptor(
+    output_root: Path,
+    chunk_path: Path,
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    manifest_path = chunk_path / "manifest.json"
+    return {
+        "rank": int(manifest["rank"]),
+        "chunk_index": int(manifest["chunk_index"]),
+        "anchors": int(manifest["anchors"]),
+        "sample_ids": [str(item) for item in manifest["sample_ids"]],
+        "loader_batch_sample_ids": [
+            [str(item) for item in batch]
+            for batch in manifest["loader_batch_sample_ids"]
+        ],
+        "manifest_path": str(manifest_path.relative_to(output_root)),
+        "manifest_sha256": sha256_file(manifest_path),
+    }
+
+
+def _load_completed_free_running_chunks(
+    *,
+    output_root: Path,
+    rank: int,
+    world_size: int,
+    step: int,
+    trajectories_per_anchor: int,
+    chunk_target_anchors: int,
+    identity: Mapping[str, Any],
+    crn_contract: Mapping[str, Any],
+    sample_schema_sha256: str,
+    sample_schema_identity_sha256: str,
+) -> list[dict[str, Any]]:
+    rank_root = output_root / "chunks" / f"rank{rank:05d}"
+    rank_root.mkdir(parents=True, exist_ok=True)
+    formal_paths: list[Path] = []
+    for entry in rank_root.iterdir():
+        if ".tmp" in entry.name:
+            # Interrupted temporary directories are never adopted as evidence.
+            continue
+        if re.fullmatch(r"chunk[0-9]{6}", entry.name) is None:
+            raise RuntimeError(f"invalid formal free-running chunk path: {entry}")
+        if entry.is_symlink() or not entry.is_dir():
+            raise RuntimeError(f"formal free-running chunk is linked or not a directory: {entry}")
+        formal_paths.append(entry)
+    formal_paths.sort(key=lambda path: path.name)
+    descriptors: list[dict[str, Any]] = []
+    for expected_index, path in enumerate(formal_paths):
+        if path.name != f"chunk{expected_index:06d}":
+            raise RuntimeError("free-running formal chunks are not contiguous")
+        descriptors.append(
+            _validate_free_running_chunk(
+                output_root=output_root,
+                chunk_path=path,
+                rank=rank,
+                world_size=world_size,
+                chunk_index=expected_index,
+                step=step,
+                trajectories_per_anchor=trajectories_per_anchor,
+                chunk_target_anchors=chunk_target_anchors,
+                identity=identity,
+                crn_contract=crn_contract,
+                sample_schema_sha256=sample_schema_sha256,
+                sample_schema_identity_sha256=sample_schema_identity_sha256,
+            )
+        )
+    for descriptor in descriptors[:-1]:
+        if int(descriptor["anchors"]) < chunk_target_anchors:
+            raise RuntimeError("only the terminal free-running chunk may be below target size")
+    sample_ids = [
+        sample_id for descriptor in descriptors for sample_id in descriptor["sample_ids"]
+    ]
+    if len(sample_ids) != len(set(sample_ids)):
+        raise RuntimeError("free-running formal chunks contain duplicate sample IDs")
+    return descriptors
+
+
+def _validate_free_running_chunk(
+    *,
+    output_root: Path,
+    chunk_path: Path,
+    rank: int,
+    world_size: int,
+    chunk_index: int,
+    step: int,
+    trajectories_per_anchor: int,
+    chunk_target_anchors: int,
+    identity: Mapping[str, Any],
+    crn_contract: Mapping[str, Any],
+    sample_schema_sha256: str,
+    sample_schema_identity_sha256: str,
+) -> dict[str, Any]:
+    manifest_path = chunk_path / "manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise RuntimeError(f"formal free-running chunk lacks its manifest: {chunk_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise RuntimeError("free-running chunk manifest is not a mapping")
+    if (
+        manifest.get("schema_version") != FREE_RUNNING_CHUNK_SCHEMA
+        or manifest.get("status") != "COMPLETE"
+        or manifest.get("model_contract") != "relation_v2"
+        or int(manifest.get("rank", -1)) != rank
+        or int(manifest.get("world_size", -1)) != world_size
+        or int(manifest.get("chunk_index", -1)) != chunk_index
+        or int(manifest.get("step", -1)) != step
+        or int(manifest.get("trajectories_per_anchor", -1))
+        != trajectories_per_anchor
+        or int(manifest.get("chunk_target_anchors", -1)) != chunk_target_anchors
+        or manifest.get("commit_boundary")
+        != "complete_loader_batch_at_or_above_target"
+    ):
+        raise RuntimeError("free-running formal chunk contract identity changed")
+    expected_identity_hash = sha256_payload(identity)
+    expected_crn_hash = sha256_payload(crn_contract)
+    expected_source_model_run_identity = {
+        key: identity.get(key)
+        for key in (
+            "source_tree_sha256",
+            "source_identity_sha256",
+            "git_commit",
+            "git_head_tree",
+            "run_contract_signature",
+            "selected_checkpoint_step",
+            "selected_checkpoint_model_sha256",
+        )
+    }
+    if (
+        manifest.get("identity_sha256") != expected_identity_hash
+        or sha256_payload(manifest.get("identity")) != expected_identity_hash
+        or manifest.get("source_model_run_identity")
+        != expected_source_model_run_identity
+        or manifest.get("crn_contract_sha256") != expected_crn_hash
+        or sha256_payload(manifest.get("crn_contract")) != expected_crn_hash
+        or manifest.get("sample_schema_sha256") != sample_schema_sha256
+        or manifest.get("sample_schema_identity_sha256")
+        != sample_schema_identity_sha256
+    ):
+        raise RuntimeError("free-running formal chunk source/model/run/CRN/schema drift")
+
+    sample_ids = manifest.get("sample_ids")
+    loader_batches = manifest.get("loader_batch_sample_ids")
+    files = manifest.get("files")
+    anchors = int(manifest.get("anchors", -1))
+    if (
+        anchors < 1
+        or not isinstance(sample_ids, list)
+        or len(sample_ids) != anchors
+        or len({str(item) for item in sample_ids}) != anchors
+        or not isinstance(loader_batches, list)
+        or [str(item) for batch in loader_batches for item in batch]
+        != [str(item) for item in sample_ids]
+        or not isinstance(files, Mapping)
+        or set(files)
+        != {
+            "scores",
+            "audit_trajectories",
+            "calibration_coverage_sufficient_stats",
+        }
+    ):
+        raise RuntimeError("free-running formal chunk sample/file contract failed")
+
+    paths: dict[str, Path] = {}
+    for key, expected_name in (
+        ("scores", "scores.jsonl"),
+        ("audit_trajectories", "audit_trajectories.jsonl.gz"),
+        (
+            "calibration_coverage_sufficient_stats",
+            "calibration_coverage_stats.jsonl.gz",
+        ),
+    ):
+        row = files[key]
+        if not isinstance(row, Mapping) or row.get("path") != expected_name:
+            raise RuntimeError("free-running chunk file pointer changed")
+        path = chunk_path / expected_name
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or path.resolve().parent != chunk_path.resolve()
+            or int(row.get("rows", -1)) != anchors
+            or int(row.get("size_bytes", -1)) != path.stat().st_size
+            or row.get("sha256") != sha256_file(path)
+        ):
+            raise RuntimeError(f"free-running chunk file/hash failed: {path}")
+        paths[key] = path
+
+    score_rows = _read_jsonl(paths["scores"])
+    audit_rows = _read_gzip_jsonl(paths["audit_trajectories"])
+    stats_rows = _read_gzip_jsonl(paths["calibration_coverage_sufficient_stats"])
+    expected_ids = [str(item) for item in sample_ids]
+    if any(len(rows) != anchors for rows in (score_rows, audit_rows, stats_rows)):
+        raise RuntimeError("free-running chunk row counts differ from its manifest")
+    for label, rows in (
+        ("scores", score_rows),
+        ("audit", audit_rows),
+        ("statistics", stats_rows),
+    ):
+        if [str(row.get("sample_id")) for row in rows] != expected_ids:
+            raise RuntimeError(f"free-running chunk {label} sample order changed")
+    for row in score_rows:
+        if (
+            row.get("model_contract") != "relation_v2"
+            or int(row.get("step", -1)) != step
+            or int(row.get("trajectories", -1)) != trajectories_per_anchor
+            or sha256_payload(row.get("identity")) != expected_identity_hash
+        ):
+            raise RuntimeError("free-running chunk score identity changed")
+    for row in audit_rows:
+        if int(row.get("trajectory_index", -1)) != 0:
+            raise RuntimeError("free-running chunk audit retention changed")
+    for row in stats_rows:
+        if (
+            row.get("schema_version") != FREE_RUNNING_CHUNK_STATS_SCHEMA
+            or not isinstance(row.get("branch_calibration_rows"), list)
+            or not isinstance(row.get("coverage_by_projection"), Mapping)
+        ):
+            raise RuntimeError("free-running chunk sufficient statistics changed")
+    return _free_running_chunk_descriptor(output_root, chunk_path, manifest)
+
+
+def _read_gzip_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if not isinstance(row, dict):
+                raise ValueError(f"invalid gzip JSONL row at {path}:{line_number}")
+            rows.append(row)
+    return rows
+
+
+def _merge_free_running_rank_chunks(
+    *,
+    output_root: Path,
+    rank_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    rank = int(rank_payload["rank"])
+    chunks = rank_payload.get("chunks")
+    if not isinstance(chunks, list):
+        raise RuntimeError("free-running rank payload lacks atomic chunks")
+    primitive_path = output_root / f"audit_trajectory_samples.rank{rank:05d}.jsonl.gz"
+    anchor_path = output_root / f"per_anchor_scores.rank{rank:05d}.jsonl"
+    rows: list[dict[str, Any]] = []
+    calibration = _empty_calibration_state()
+    coverage = _empty_coverage_state()
+    with _atomic_text(anchor_path) as anchor_handle, _atomic_gzip_text(
+        primitive_path
+    ) as primitive_handle:
+        for descriptor in chunks:
+            manifest_path = output_root / str(descriptor["manifest_path"])
+            if (
+                manifest_path.is_symlink()
+                or not manifest_path.is_file()
+                or sha256_file(manifest_path) != descriptor["manifest_sha256"]
+            ):
+                raise RuntimeError("free-running chunk manifest changed during final merge")
+            chunk_path = manifest_path.parent
+            chunk_rows = _read_jsonl(chunk_path / "scores.jsonl")
+            audit_rows = _read_gzip_jsonl(chunk_path / "audit_trajectories.jsonl.gz")
+            stats_rows = _read_gzip_jsonl(
+                chunk_path / "calibration_coverage_stats.jsonl.gz"
+            )
+            for row in chunk_rows:
+                anchor_handle.write(_json_line(row))
+            for row in audit_rows:
+                primitive_handle.write(_json_line(row))
+            for row in stats_rows:
+                _update_calibration_state(calibration, row["branch_calibration_rows"])
+                _update_coverage_state(coverage, row["coverage_by_projection"])
+            rows.extend(chunk_rows)
+    expected_ids = [str(item) for item in rank_payload["sample_ids"]]
+    if [str(row["sample_id"]) for row in rows] != expected_ids:
+        raise RuntimeError("free-running final rank merge changed sample order")
+    progress_path = output_root / f"progress.rank{rank:05d}.jsonl"
+    if progress_path.is_symlink() or not progress_path.is_file():
+        raise RuntimeError("free-running rank progress artifact is missing")
+    manifest = {
+        "rank": rank,
+        "anchors": len(rows),
+        "audit_trajectory_sample_path": primitive_path.name,
+        "audit_trajectory_sample_sha256": sha256_file(primitive_path),
+        "retained_audit_trajectories": len(rows),
+        "per_anchor_score_path": anchor_path.name,
+        "per_anchor_score_sha256": sha256_file(anchor_path),
+        "progress_metrics_path": progress_path.name,
+        "progress_metrics_sha256": sha256_file(progress_path),
+        "atomic_chunks": chunks,
+    }
+    return {
+        "manifest": manifest,
+        "calibration": calibration,
+        "coverage": coverage,
+        "rows": rows,
+    }
+
+
+def _write_free_running_hosted_progress(
+    *,
+    output_root: Path,
+    status: str,
+    completed_anchors: int,
+    expected_anchors: int,
+    new_anchors: int,
+    identity: Mapping[str, Any],
+    rank_payloads: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    if status not in {"INCOMPLETE", "COMPLETE"}:
+        raise ValueError("free-running hosted progress status is invalid")
+    chunks = [
+        {
+            "rank": int(chunk["rank"]),
+            "chunk_index": int(chunk["chunk_index"]),
+            "anchors": int(chunk["anchors"]),
+            "manifest_path": str(chunk["manifest_path"]),
+            "manifest_sha256": str(chunk["manifest_sha256"]),
+        }
+        for payload in sorted(rank_payloads, key=lambda item: int(item["rank"]))
+        for chunk in payload["chunks"]
+    ]
+    chunk_manifest_set_sha256 = sha256_payload(chunks)
+    payload = {
+        "schema_version": FREE_RUNNING_HOSTED_PROGRESS_SCHEMA,
+        "status": status,
+        "updated_at": utc_now(),
+        "completed": int(completed_anchors),
+        "expected": int(expected_anchors),
+        "completed_anchors": int(completed_anchors),
+        "expected_anchors": int(expected_anchors),
+        "new_anchors": int(new_anchors),
+        "identity": dict(identity),
+        "identity_sha256": sha256_payload(identity),
+        "chunk_manifests": chunks,
+        "set_sha256": chunk_manifest_set_sha256,
+        "chunk_manifest_set_sha256": chunk_manifest_set_sha256,
+    }
+    _atomic_json(output_root / "hosted_progress.json", payload)
+    return payload
 
 
 def common_random_seed(
@@ -813,6 +1417,232 @@ def common_random_seed(
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return int.from_bytes(hashlib.sha256(encoded).digest()[:8], "big") & ((1 << 63) - 1)
+
+
+def probe_free_running_v2_capacity(
+    *,
+    model: Any,
+    validation_batch: Mapping[str, Any],
+    contract: MultiresEventV2Contract,
+    device: torch.device,
+    expected_lab_scale_artifact_hash: str,
+    crn_seed: int = PRODUCTION_CRN_SEED,
+    precision: str = "fp16",
+    trajectories_per_anchor: int = PRODUCTION_TRAJECTORIES_PER_ANCHOR,
+    trajectory_batch_size: int = PRODUCTION_TRAJECTORIES_PER_ANCHOR,
+) -> dict[str, Any]:
+    """Prove the production 100-trajectory rollout fits without mutating state.
+
+    The first real validation anchor is encoded exactly once and expanded to the
+    production ensemble width.  CPU/all-CUDA RNG states and the model's training
+    mode are restored even if the probe fails; parameter bytes are hash-checked.
+    """
+
+    if trajectories_per_anchor != PRODUCTION_TRAJECTORIES_PER_ANCHOR:
+        raise ValueError("formal free-running capacity probe requires 100 trajectories")
+    if trajectory_batch_size != PRODUCTION_TRAJECTORIES_PER_ANCHOR:
+        raise ValueError("formal free-running capacity probe requires batch size 100")
+    if precision not in {"fp16", "fp32"}:
+        raise ValueError("formal free-running capacity probe precision is invalid")
+    sample_ids = _string_batch(validation_batch.get("sample_id"))
+    if not sample_ids:
+        raise ValueError("formal free-running capacity probe lacks a validation anchor")
+    first_batch = _first_anchor_batch(validation_batch, batch_size=len(sample_ids))
+    sample_id = _string_batch(first_batch.get("sample_id"))[0]
+    core_model = model.module if hasattr(model, "module") else model
+    if not callable(getattr(core_model, "encode_for_rollout", None)) or not callable(
+        getattr(core_model, "rollout_from_encoded", None)
+    ):
+        raise RuntimeError("formal capacity probe requires cached free-running APIs")
+
+    cpu_rng_before = torch.get_rng_state().clone()
+    cuda_rng_before = (
+        [state.clone() for state in torch.cuda.get_rng_state_all()]
+        if torch.cuda.is_available()
+        else []
+    )
+    parameter_sha_before = _model_parameter_state_sha256(core_model)
+    was_training = bool(core_model.training)
+    allocated_before: int | None = None
+    reserved_before: int | None = None
+    peak_allocated: int | None = None
+    peak_reserved: int | None = None
+    allocated_after: int | None = None
+    reserved_after: int | None = None
+    encoded_shapes: dict[str, list[int]] = {}
+    generated_shapes: dict[str, list[int]] = {}
+    parameter_sha_after = ""
+    try:
+        core_model.eval()
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+            allocated_before = int(torch.cuda.memory_allocated(device))
+            reserved_before = int(torch.cuda.memory_reserved(device))
+            torch.cuda.reset_peak_memory_stats(device)
+        torch.manual_seed(
+            common_random_seed(
+                crn_seed,
+                sample_id,
+                trajectory_start=0,
+                trajectory_count=trajectory_batch_size,
+            )
+        )
+        if device.type == "cuda":
+            torch.cuda.manual_seed(
+                common_random_seed(
+                    crn_seed,
+                    sample_id,
+                    trajectory_start=0,
+                    trajectory_count=trajectory_batch_size,
+                )
+            )
+        batch = move_to_device(first_batch, device)
+        metadata = batch.get("target_primitive_metadata")
+        if not isinstance(metadata, Mapping):
+            raise ValueError("formal capacity probe lacks target primitive metadata")
+        autocast = _autocast_factory(device, precision)
+        with torch.no_grad():
+            with autocast():
+                encoded = _encode_batch_once(core_model, batch, expected_batch_size=1)
+                expanded = _expand_encoded(encoded, trajectory_batch_size)
+                sampler = RegistryPrimitiveSampler(
+                    contract.process_registry,
+                    metadata,
+                    expected_lab_scale_artifact_hash=expected_lab_scale_artifact_hash,
+                )
+                outputs = core_model.rollout_from_encoded(
+                    expanded["memory"],
+                    expanded["memory_mask"],
+                    expanded["query_tokens"],
+                    sampler=sampler,
+                )
+        primitives = outputs.get("generated_primitives")
+        masks = outputs.get("generated_primitive_masks")
+        if (
+            not isinstance(primitives, Mapping)
+            or not primitives
+            or not isinstance(masks, Mapping)
+            or set(primitives) != set(masks)
+            or set(primitives) != set(V2_PRIMITIVE_FEEDBACK_DIMS)
+        ):
+            raise RuntimeError("formal capacity probe did not generate every primitive bank")
+        encoded_shapes = {key: list(value.shape) for key, value in encoded.items()}
+        for likelihood_id, value in primitives.items():
+            mask = masks[likelihood_id]
+            bank = _bank4(value)
+            mask_bank = _bank4(mask)
+            if (
+                bank.shape[:3] != (trajectory_batch_size, 6, 29)
+                or mask_bank.shape != bank.shape
+            ):
+                raise RuntimeError(
+                    f"formal capacity probe primitive shape failed: {likelihood_id}"
+                )
+            generated_shapes[str(likelihood_id)] = list(bank.shape)
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+            peak_allocated = int(torch.cuda.max_memory_allocated(device))
+            peak_reserved = int(torch.cuda.max_memory_reserved(device))
+            allocated_after = int(torch.cuda.memory_allocated(device))
+            reserved_after = int(torch.cuda.memory_reserved(device))
+        parameter_sha_after = _model_parameter_state_sha256(core_model)
+        if parameter_sha_after != parameter_sha_before:
+            raise RuntimeError("formal capacity probe mutated model parameter state")
+    finally:
+        torch.set_rng_state(cpu_rng_before)
+        if cuda_rng_before:
+            torch.cuda.set_rng_state_all(cuda_rng_before)
+        core_model.train(was_training)
+
+    cpu_restored = torch.equal(torch.get_rng_state(), cpu_rng_before)
+    cuda_restored = not cuda_rng_before or all(
+        torch.equal(current, expected)
+        for current, expected in zip(
+            torch.cuda.get_rng_state_all(), cuda_rng_before, strict=True
+        )
+    )
+    if not cpu_restored or not cuda_restored:
+        raise RuntimeError("formal capacity probe failed to restore RNG state")
+    return {
+        "schema_version": "trauma_predict.multires_event_v2_free_running_capacity_probe.v1",
+        "status": "PASSED",
+        "sample_id": sample_id,
+        "trajectories_per_anchor": trajectories_per_anchor,
+        "trajectory_batch_size": trajectory_batch_size,
+        "blocks": 6,
+        "fields": 29,
+        "device": str(device),
+        "cuda_device_name": (
+            torch.cuda.get_device_name(device) if device.type == "cuda" else None
+        ),
+        "encode_calls": 1,
+        "neural_precision": precision,
+        "parameter_state_sha256_before": parameter_sha_before,
+        "parameter_state_sha256_after": parameter_sha_after,
+        "parameter_state_unchanged": True,
+        "rng": {
+            "cpu_restored": cpu_restored,
+            "cuda_device_count": len(cuda_rng_before),
+            "all_cuda_restored": cuda_restored,
+        },
+        "encoded_shapes": encoded_shapes,
+        "generated_primitive_shapes": generated_shapes,
+        "cuda_memory": {
+            "allocated_before_bytes": allocated_before,
+            "reserved_before_bytes": reserved_before,
+            "peak_allocated_bytes": peak_allocated,
+            "peak_reserved_bytes": peak_reserved,
+            "allocated_after_rollout_bytes": allocated_after,
+            "reserved_after_rollout_bytes": reserved_after,
+            "peak_allocated_increase_bytes": (
+                peak_allocated - allocated_before
+                if peak_allocated is not None and allocated_before is not None
+                else None
+            ),
+        },
+    }
+
+
+def _first_anchor_batch(
+    batch: Mapping[str, Any],
+    *,
+    batch_size: int,
+) -> dict[str, Any]:
+    def select(value: Any) -> Any:
+        if isinstance(value, torch.Tensor):
+            if value.ndim > 0 and value.shape[0] == batch_size:
+                return value[:1]
+            return value
+        if isinstance(value, Mapping):
+            return {key: select(item) for key, item in value.items()}
+        if isinstance(value, list) and len(value) == batch_size:
+            return value[:1]
+        if isinstance(value, tuple) and len(value) == batch_size:
+            return value[:1]
+        return value
+
+    result: dict[str, Any] = {}
+    for key, value in batch.items():
+        # Primitive metadata is registry-global, not batch-major; its sequences
+        # may coincidentally have the same length as a validation batch.
+        result[str(key)] = value if key == "target_primitive_metadata" else select(value)
+    if len(_string_batch(result.get("sample_id"))) != 1:
+        raise ValueError("formal capacity probe could not isolate the first anchor")
+    return result
+
+
+def _model_parameter_state_sha256(model: Any) -> str:
+    digest = hashlib.sha256()
+    named_parameters = sorted(model.named_parameters(), key=lambda item: item[0])
+    if not named_parameters:
+        raise RuntimeError("formal capacity probe found no model parameters")
+    for name, parameter in named_parameters:
+        tensor = parameter.detach().cpu().contiguous()
+        digest.update(name.encode("utf-8"))
+        digest.update(str(tensor.dtype).encode("ascii"))
+        digest.update(json.dumps(list(tensor.shape), separators=(",", ":")).encode("ascii"))
+        digest.update(tensor.reshape(-1).view(torch.uint8).numpy().tobytes())
+    return digest.hexdigest()
 
 
 def _encode_batch_once(
@@ -912,7 +1742,6 @@ def _trajectory_export_row(
     *,
     sample_id: str,
     subject_id: str,
-    mode: str,
     trajectory_index: int,
     crn_seed: int,
     rng_row_index: int,
@@ -949,7 +1778,7 @@ def _trajectory_export_row(
         "schema_version": "trauma_predict.multires_event_v2_primitive_sample.v2",
         "sample_id": sample_id,
         "subject_id": subject_id,
-        "mode": mode,
+        "model_contract": "relation_v2",
         "trajectory_index": int(trajectory_index),
         "crn_seed": int(crn_seed),
         "rng_row_index": int(rng_row_index),
@@ -972,7 +1801,6 @@ def _trajectory_export_row(
 def _summarize_free_running_rows(
     rows: Sequence[Mapping[str, Any]],
     *,
-    mode: str,
     step: int,
     trajectories: int,
     identity: Mapping[str, Any],
@@ -985,7 +1813,7 @@ def _summarize_free_running_rows(
     result = {
         "schema_version": FREE_RUNNING_SCHEMA,
         "evaluated_at": utc_now(),
-        "mode": mode,
+        "model_contract": "relation_v2",
         "step": int(step),
         "anchors": len(rows),
         "subjects": len({str(row["subject_id"]) for row in rows}),
@@ -1056,7 +1884,6 @@ def _emit_rank_progress(
     *,
     path: Path,
     rank: int,
-    mode: str,
     completed_anchors: int,
     started_at: float,
 ) -> None:
@@ -1065,7 +1892,7 @@ def _emit_rank_progress(
         "event": "v2_free_running_rank_progress",
         "evaluated_at": utc_now(),
         "rank": int(rank),
-        "mode": str(mode),
+        "model_contract": "relation_v2",
         "completed_anchors": int(completed_anchors),
         "elapsed_seconds": elapsed,
         "anchors_per_second": completed_anchors / elapsed,
@@ -1073,7 +1900,7 @@ def _emit_rank_progress(
     append_rank_local_jsonl(path, row, rank_value=rank)
     print(
         "V2_FREE_PROGRESS "
-        f"rank={rank} mode={mode} anchors={completed_anchors} "
+        f"rank={rank} model_contract=relation_v2 anchors={completed_anchors} "
         f"elapsed={elapsed:.1f}s anchors_per_second={completed_anchors / elapsed:.4f}",
         flush=True,
     )
@@ -1082,17 +1909,14 @@ def _emit_rank_progress(
 def verify_rank_local_artifact_preflight(
     *,
     output_dir: str | Path,
-    mode: str,
 ) -> dict[str, Any]:
     """Exercise rank-local write, hash, gather, and rank-zero assembly.
 
-    The capacity route runs this immediately after DDP initialization so an
+    The formal route runs this immediately after DDP initialization so an
     invalid per-rank artifact contract fails before model construction or any
     expensive rollout.
     """
 
-    if mode not in {"block", "trajectory", "relational"}:
-        raise ValueError("rank artifact preflight mode must be block/trajectory/relational")
     output_root = Path(output_dir).resolve()
     rank, world_size = _rank_world()
     _collect_distributed_phase(
@@ -1104,7 +1928,6 @@ def verify_rank_local_artifact_preflight(
     _emit_rank_progress(
         path=progress_path,
         rank=rank,
-        mode=mode,
         completed_anchors=0,
         started_at=started_at,
     )
@@ -1119,7 +1942,7 @@ def verify_rank_local_artifact_preflight(
         if (
             int(row.get("rank", -1)) != rank
             or int(row.get("completed_anchors", -1)) != 0
-            or str(row.get("mode")) != mode
+            or str(row.get("model_contract")) != "relation_v2"
         ):
             raise RuntimeError("rank artifact preflight progress identity mismatch")
         return {
@@ -1146,7 +1969,7 @@ def verify_rank_local_artifact_preflight(
             "schema_version": RANK_ARTIFACT_PREFLIGHT_SCHEMA,
             "created_at": utc_now(),
             "status": "PASSED",
-            "mode": mode,
+            "model_contract": "relation_v2",
             "world_size": world_size,
             "rank_artifacts": artifacts,
         }
@@ -1171,13 +1994,10 @@ def verify_rank_local_artifact_preflight(
 def validate_rank_local_artifact_preflight(
     output_dir: str | Path,
     *,
-    expected_mode: str,
     expected_world_size: int = 2,
 ) -> dict[str, Any]:
     """Re-open every retained rank-local canary byte and validate its contract."""
 
-    if expected_mode not in {"block", "trajectory", "relational"}:
-        raise ValueError("rank artifact validation mode is invalid")
     if expected_world_size < 1:
         raise ValueError("rank artifact validation world size must be positive")
     output_root = Path(output_dir).resolve()
@@ -1195,7 +2015,7 @@ def validate_rank_local_artifact_preflight(
     if (
         manifest.get("schema_version") != RANK_ARTIFACT_PREFLIGHT_SCHEMA
         or manifest.get("status") != "PASSED"
-        or manifest.get("mode") != expected_mode
+        or manifest.get("model_contract") != "relation_v2"
         or int(manifest.get("world_size", -1)) != expected_world_size
         or not isinstance(artifacts, list)
         or len(artifacts) != expected_world_size
@@ -1224,7 +2044,7 @@ def validate_rank_local_artifact_preflight(
             len(rows) != 1
             or rows[0].get("event") != "v2_free_running_rank_progress"
             or int(rows[0].get("rank", -1)) != expected_rank
-            or rows[0].get("mode") != expected_mode
+            or rows[0].get("model_contract") != "relation_v2"
             or int(rows[0].get("completed_anchors", -1)) != 0
         ):
             raise ValueError("rank artifact preflight retained row contract failed")
@@ -1334,453 +2154,6 @@ def _merge_calibration_states(states: Sequence[Mapping[str, Any]]) -> dict[str, 
             "bins": bin_rows,
         }
     return result
-
-
-def _physical_noninferiority_gate(
-    control: Mapping[str, Mapping[str, Any]],
-    candidate: Mapping[str, Mapping[str, Any]],
-    *,
-    repetitions: int,
-    seed: int,
-) -> dict[str, Any]:
-    blockers: list[str] = []
-    for label, rows in (("control", control), ("candidate", candidate)):
-        incomplete = [
-            sample_id
-            for sample_id, row in rows.items()
-            if row["physical_scores"]["physical_metric_contract_status"] != "complete"
-        ]
-        if incomplete:
-            blockers.append(f"{label}_conditional_coverage_incomplete:{len(incomplete)}")
-    metrics: dict[str, Any] = {}
-    for key in ("energy_score", "lag1_variogram_score_p0_5"):
-        metrics[key] = _paired_subject_bootstrap(
-            control,
-            candidate,
-            value=lambda row, name=key: float(row[name]),
-            repetitions=repetitions,
-            seed=seed,
-            metric=key,
-        )
-    control_keys = _nested_metric_keys(control, ("physical_scores", "crps_by_projection"))
-    candidate_keys = _nested_metric_keys(
-        candidate, ("physical_scores", "crps_by_projection")
-    )
-    if control_keys != candidate_keys:
-        blockers.append("physical_crps_projection_key_mismatch")
-    crps: dict[str, Any] = {}
-    for projection_id in sorted(control_keys & candidate_keys):
-        control_support = _nested_metric_anchor_support(
-            control, ("physical_scores", "crps_by_projection"), projection_id
-        )
-        candidate_support = _nested_metric_anchor_support(
-            candidate, ("physical_scores", "crps_by_projection"), projection_id
-        )
-        if control_support != candidate_support:
-            blockers.append(f"physical_crps:{projection_id}:anchor_support_mismatch")
-            continue
-        try:
-            crps[projection_id] = _paired_subject_bootstrap(
-                control,
-                candidate,
-                value=lambda row, name=projection_id: float(
-                    row["physical_scores"]["crps_by_projection"][name]
-                ),
-                repetitions=repetitions,
-                seed=seed,
-                metric=f"physical_crps:{projection_id}",
-                allow_missing=True,
-            )
-        except ValueError as exc:
-            blockers.append(f"physical_crps:{projection_id}:{exc}")
-    scalar_pass = all(float(row["ci95"]["upper"]) <= 0.0 for row in metrics.values())
-    crps_pass = bool(crps) and all(
-        float(row["ci95"]["upper"]) <= 0.0 for row in crps.values()
-    )
-    return {
-        "rule": "all_CI95_upper_le_zero",
-        "standardized_trajectory_scores": metrics,
-        "physical_crps_by_projection": crps,
-        "blockers": blockers,
-        "passed": not blockers and scalar_pass and crps_pass,
-    }
-
-
-def _shared_subject_order(
-    rows: Mapping[str, Mapping[str, Any]],
-) -> tuple[str, ...]:
-    subjects = sorted({str(row["subject_id"]) for row in rows.values()})
-    if not subjects or any(not subject for subject in subjects):
-        raise ValueError("promotion rows contain no valid subjects")
-    return tuple(subjects)
-
-
-def _shared_subject_bootstrap_schedule(
-    subject_count: int,
-    *,
-    repetitions: int,
-    seed: int,
-) -> tuple[tuple[int, ...], ...]:
-    if subject_count < 1 or repetitions < 1:
-        raise ValueError("shared subject bootstrap dimensions must be positive")
-    rng = random.Random(seed)
-    return tuple(
-        tuple(rng.randrange(subject_count) for _ in range(subject_count))
-        for _ in range(repetitions)
-    )
-
-
-def _subject_metric_values(
-    rows: Mapping[str, Mapping[str, Any]],
-    *,
-    value: Any,
-    subject_order: Sequence[str],
-    metric: str,
-) -> list[float]:
-    by_subject: dict[str, list[float]] = defaultdict(list)
-    for sample_id in sorted(rows):
-        row = rows[sample_id]
-        subject_id = str(row["subject_id"])
-        observed = float(value(row))
-        if not math.isfinite(observed):
-            raise ValueError(f"non-finite subject-bootstrap value for {metric}")
-        by_subject[subject_id].append(observed)
-    if set(by_subject) != set(subject_order):
-        raise ValueError(f"subject support differs for promotion metric {metric}")
-    return [sum(by_subject[subject]) / len(by_subject[subject]) for subject in subject_order]
-
-
-def _paired_subject_bootstrap_delta(
-    control: Mapping[str, Mapping[str, Any]],
-    candidate: Mapping[str, Mapping[str, Any]],
-    *,
-    value: Any,
-    subject_order: Sequence[str],
-    bootstrap_schedule: Sequence[Sequence[int]],
-    metric: str,
-) -> dict[str, Any]:
-    if set(control) != set(candidate):
-        raise ValueError("paired bootstrap requires identical anchors")
-    control_values = _subject_metric_values(
-        control, value=value, subject_order=subject_order, metric=metric
-    )
-    candidate_values = _subject_metric_values(
-        candidate, value=value, subject_order=subject_order, metric=metric
-    )
-    subject_delta = [
-        candidate_value - control_value
-        for control_value, candidate_value in zip(
-            control_values, candidate_values, strict=True
-        )
-    ]
-    observed = sum(subject_delta) / len(subject_delta)
-    draws = sorted(
-        sum(subject_delta[index] for index in indices) / len(indices)
-        for indices in bootstrap_schedule
-    )
-    return {
-        "metric": metric,
-        "anchors": len(control),
-        "subjects": len(subject_delta),
-        "estimand": "candidate_minus_control_subject_macro_mean",
-        "observed_delta": observed,
-        "ci95": {
-            "lower": _linear_percentile(draws, 0.025),
-            "upper": _linear_percentile(draws, 0.975),
-        },
-    }
-
-
-def _paired_subject_bootstrap_ratio(
-    control: Mapping[str, Mapping[str, Any]],
-    candidate: Mapping[str, Mapping[str, Any]],
-    *,
-    value: Any,
-    subject_order: Sequence[str],
-    bootstrap_schedule: Sequence[Sequence[int]],
-    metric: str,
-) -> dict[str, Any]:
-    if set(control) != set(candidate):
-        raise ValueError("paired bootstrap requires identical anchors")
-    control_values = _subject_metric_values(
-        control, value=value, subject_order=subject_order, metric=metric
-    )
-    candidate_values = _subject_metric_values(
-        candidate, value=value, subject_order=subject_order, metric=metric
-    )
-    control_mean = sum(control_values) / len(control_values)
-    candidate_mean = sum(candidate_values) / len(candidate_values)
-    if control_mean <= 0.0 or candidate_mean < 0.0:
-        raise ValueError(f"nonpositive ratio denominator or negative score for {metric}")
-    observed = candidate_mean / control_mean
-    draws: list[float] = []
-    for indices in bootstrap_schedule:
-        control_sum = sum(control_values[index] for index in indices)
-        candidate_sum = sum(candidate_values[index] for index in indices)
-        if control_sum <= 0.0 or candidate_sum < 0.0:
-            raise ValueError(
-                f"nonpositive bootstrap ratio denominator or negative score for {metric}"
-            )
-        draws.append(candidate_sum / control_sum)
-    draws.sort()
-    return {
-        "metric": metric,
-        "anchors": len(control),
-        "subjects": len(control_values),
-        "estimand": "candidate_subject_macro_mean_over_control_subject_macro_mean",
-        "control_subject_macro_mean": control_mean,
-        "candidate_subject_macro_mean": candidate_mean,
-        "observed_ratio": observed,
-        "ci95": {
-            "lower": _linear_percentile(draws, 0.025),
-            "upper": _linear_percentile(draws, 0.975),
-        },
-    }
-
-
-def _paired_subject_bootstrap(
-    control: Mapping[str, Mapping[str, Any]],
-    candidate: Mapping[str, Mapping[str, Any]],
-    *,
-    value: Any,
-    repetitions: int,
-    seed: int,
-    metric: str,
-    allow_missing: bool = False,
-) -> dict[str, Any]:
-    if set(control) != set(candidate):
-        raise ValueError("paired bootstrap requires identical anchors")
-    by_subject: dict[str, list[float]] = defaultdict(list)
-    used_anchors = 0
-    for sample_id in sorted(control):
-        control_row = control[sample_id]
-        candidate_row = candidate[sample_id]
-        if str(control_row["subject_id"]) != str(candidate_row["subject_id"]):
-            raise ValueError(f"paired subject changed for {sample_id}")
-        try:
-            delta = float(value(candidate_row)) - float(value(control_row))
-        except (KeyError, TypeError):
-            if allow_missing:
-                continue
-            raise
-        if not math.isfinite(delta):
-            raise ValueError(f"non-finite paired delta for {metric}")
-        by_subject[str(control_row["subject_id"])].append(delta)
-        used_anchors += 1
-    subject_delta = [
-        sum(values) / len(values) for _, values in sorted(by_subject.items()) if values
-    ]
-    if not subject_delta:
-        raise ValueError("no paired subjects with metric support")
-    observed = sum(subject_delta) / len(subject_delta)
-    rng = random.Random(seed)
-    count = len(subject_delta)
-    draws = sorted(
-        sum(subject_delta[rng.randrange(count)] for _ in range(count)) / count
-        for _ in range(repetitions)
-    )
-    return {
-        "metric": metric,
-        "anchors": used_anchors,
-        "subjects": count,
-        "observed_delta": observed,
-        "ci95": {
-            "lower": _linear_percentile(draws, 0.025),
-            "upper": _linear_percentile(draws, 0.975),
-        },
-    }
-
-
-def _add_log_score_units(result: dict[str, Any]) -> None:
-    observed = float(result["observed_delta"])
-    lower = float(result["ci95"]["lower"])
-    upper = float(result["ci95"]["upper"])
-    result["observed_delta_nats_per_block"] = observed / 6.0
-    result["observed_delta_bits_per_block"] = observed / (6.0 * math.log(2.0))
-    result["ci95_nats_per_block"] = {"lower": lower / 6.0, "upper": upper / 6.0}
-    result["ci95_bits_per_block"] = {
-        "lower": lower / (6.0 * math.log(2.0)),
-        "upper": upper / (6.0 * math.log(2.0)),
-    }
-
-
-def _add_log_density_ratios(result: dict[str, Any]) -> None:
-    observed = float(result["observed_delta"])
-    lower = float(result["ci95"]["lower"])
-    upper = float(result["ci95"]["upper"])
-    result["joint_geometric_density_ratio_candidate_over_control"] = math.exp(
-        -observed
-    )
-    result["joint_geometric_density_ratio_ci95"] = {
-        "lower": math.exp(-upper),
-        "upper": math.exp(-lower),
-    }
-    result["per_factor_geometric_density_ratio_candidate_over_control"] = math.exp(
-        -observed / 414.0
-    )
-    result["per_factor_geometric_density_ratio_ci95"] = {
-        "lower": math.exp(-upper / 414.0),
-        "upper": math.exp(-lower / 414.0),
-    }
-
-
-def _coherence_gate(rows: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
-    coherent = sum(int(row["coherent_trajectories"]) for row in rows.values())
-    total = sum(int(row["trajectories"]) for row in rows.values())
-    return {
-        "coherent_trajectories": coherent,
-        "total_trajectories": total,
-        "rate": coherent / total,
-        "passed": coherent == total,
-    }
-
-
-def _assert_matched_identity(groups: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> None:
-    modes = tuple(groups)
-    anchor_ids = set(groups[modes[0]])
-    for mode in modes[1:]:
-        if set(groups[mode]) != anchor_ids:
-            raise ValueError("matched V2 files do not contain identical anchors")
-    for sample_id in anchor_ids:
-        subjects = {str(groups[mode][sample_id]["subject_id"]) for mode in modes}
-        if len(subjects) != 1:
-            raise ValueError(f"subject identity differs across modes for {sample_id}")
-
-
-def _assert_teacher_free_anchor_identity(
-    teacher: Mapping[str, Mapping[str, Mapping[str, Any]]],
-    free: Mapping[str, Mapping[str, Mapping[str, Any]]],
-) -> None:
-    for mode in teacher:
-        teacher_sample_ids = set(teacher[mode])
-        if teacher_sample_ids != set(free[mode]):
-            raise ValueError(f"teacher/free-running anchors differ for {mode}")
-        for sample_id in teacher_sample_ids:
-            teacher_subject = str(teacher[mode][sample_id].get("subject_id") or "")
-            free_subject = str(free[mode][sample_id].get("subject_id") or "")
-            if not teacher_subject or teacher_subject != free_subject:
-                raise ValueError(
-                    "teacher/free-running subject identity differs for "
-                    f"{mode}:{sample_id}"
-                )
-
-
-def _assert_teacher_free_contract_identity(
-    teacher: Mapping[str, Mapping[str, Mapping[str, Any]]],
-    free: Mapping[str, Mapping[str, Mapping[str, Any]]],
-) -> None:
-    keys = (
-        "dataset_id",
-        "contract_bundle_hash",
-        "process_contract_sha256",
-        "emission_contract_sha256",
-        "projection_contract_sha256",
-        "relation_contract_sha256",
-        "sidecar_schema_sha256",
-        "lab_scale_artifact_sha256",
-        "standardized_primitive_scale_sha256",
-        "input_normalization_sha256",
-        "promotion_metric_contract_sha256",
-        "semantic_runtime_identity_sha256",
-        "source_tree_sha256",
-        "source_identity_sha256",
-        "git_commit",
-        "git_head_tree",
-        "matched_design_signature",
-        "selected_checkpoint_step",
-        "selected_checkpoint_model_sha256",
-    )
-    for mode in teacher:
-        for sample_id in teacher[mode]:
-            teacher_identity = teacher[mode][sample_id].get("identity")
-            free_identity = free[mode][sample_id].get("identity")
-            if not isinstance(teacher_identity, Mapping) or not isinstance(
-                free_identity, Mapping
-            ):
-                raise ValueError("teacher/free-running row lacks contract identity")
-            teacher_values = tuple(str(teacher_identity.get(key) or "") for key in keys)
-            free_values = tuple(str(free_identity.get(key) or "") for key in keys)
-            if any(not value for value in teacher_values) or teacher_values != free_values:
-                raise ValueError(
-                    f"teacher/free-running contract identity differs for {mode}:{sample_id}"
-                )
-
-
-def _assert_common_random_contract(
-    groups: Mapping[str, Mapping[str, Mapping[str, Any]]]
-) -> None:
-    identity_keys = (
-        "dataset_id",
-        "contract_bundle_hash",
-        "process_contract_sha256",
-        "emission_contract_sha256",
-        "projection_contract_sha256",
-        "relation_contract_sha256",
-        "sidecar_schema_sha256",
-        "lab_scale_artifact_sha256",
-        "standardized_primitive_scale_sha256",
-        "input_normalization_sha256",
-        "promotion_metric_contract_sha256",
-        "semantic_runtime_identity_sha256",
-        "source_tree_sha256",
-        "source_identity_sha256",
-        "git_commit",
-        "git_head_tree",
-        "matched_design_signature",
-        "crn_contract_sha256",
-    )
-    identities: set[tuple[str, ...]] = set()
-    for rows in groups.values():
-        for row in rows.values():
-            identity = row.get("identity")
-            if not isinstance(identity, Mapping):
-                raise ValueError("free-running row lacks identity")
-            values = tuple(str(identity.get(key) or "") for key in identity_keys)
-            if any(not value for value in values):
-                raise ValueError("free-running row has an incomplete contract identity")
-            identities.add(values)
-    if len(identities) != 1:
-        raise ValueError(
-            "matched free-running modes do not share data/contract/scale/CRN identity"
-        )
-
-
-def _index_rows(
-    rows: Sequence[Mapping[str, Any]], expected_anchors: int
-) -> dict[str, Mapping[str, Any]]:
-    result: dict[str, Mapping[str, Any]] = {}
-    for row in rows:
-        sample_id = str(row.get("sample_id") or "")
-        if not sample_id or sample_id in result:
-            raise ValueError("evaluation rows contain an empty/duplicate sample_id")
-        result[sample_id] = row
-    if len(result) != expected_anchors:
-        raise ValueError(f"promotion requires {expected_anchors} anchors, got {len(result)}")
-    return result
-
-
-def _read_free_running_rows(path: Path) -> list[dict[str, Any]]:
-    if path.is_dir():
-        manifest_path = path / "manifest.json"
-    else:
-        manifest_path = path
-    if manifest_path.name.endswith(".jsonl"):
-        return _read_jsonl(manifest_path)
-    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    shards = payload.get("per_anchor_score_shards")
-    if not isinstance(shards, Sequence):
-        raise ValueError("free-running manifest lacks per_anchor_score_shards")
-    rows: list[dict[str, Any]] = []
-    for shard in shards:
-        if not isinstance(shard, Mapping):
-            raise ValueError("free-running shard manifest row is invalid")
-        shard_path = Path(str(shard["per_anchor_score_path"]))
-        if not shard_path.is_absolute():
-            shard_path = manifest_path.parent / shard_path
-        if sha256_file(shard_path) != str(shard["per_anchor_score_sha256"]):
-            raise ValueError(f"free-running score shard hash mismatch: {shard_path}")
-        rows.extend(_read_jsonl(shard_path))
-    return rows
 
 
 def _scalar_summary(rows: Sequence[Mapping[str, Any]], key: str) -> dict[str, Any]:
@@ -1933,23 +2306,6 @@ def _nested_metric_keys(
     return result
 
 
-def _nested_metric_anchor_support(
-    rows: Mapping[str, Mapping[str, Any]],
-    path: Sequence[str],
-    metric_key: str,
-) -> set[str]:
-    support: set[str] = set()
-    for sample_id, row in rows.items():
-        value: Any = row
-        for part in path:
-            value = value[part]
-        if not isinstance(value, Mapping):
-            raise ValueError(f"metric path {path} is not a mapping")
-        if metric_key in value:
-            support.add(sample_id)
-    return support
-
-
 def _masked_projection_json(values: torch.Tensor, masks: torch.Tensor) -> list[list[float | None]]:
     value_rows = values.detach().cpu().tolist()
     mask_rows = masks.detach().cpu().tolist()
@@ -1984,20 +2340,6 @@ def _string_batch(value: Any) -> list[str]:
     if isinstance(value, Sequence):
         return [str(item) for item in value]
     raise ValueError("evaluation identity must be a string batch")
-
-
-def _linear_percentile(sorted_values: Sequence[float], probability: float) -> float:
-    if not sorted_values:
-        raise ValueError("percentile requires values")
-    position = (len(sorted_values) - 1) * probability
-    lower = int(math.floor(position))
-    upper = int(math.ceil(position))
-    if lower == upper:
-        return float(sorted_values[lower])
-    fraction = position - lower
-    return float(
-        sorted_values[lower] * (1.0 - fraction) + sorted_values[upper] * fraction
-    )
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -2130,11 +2472,13 @@ def _broadcast_object(value: Any) -> Any:
 __all__ = [
     "CRN_SCHEDULE_SCHEMA",
     "FREE_RUNNING_SCHEMA",
+    "FREE_RUNNING_HOSTED_PROGRESS_SCHEMA",
     "PRODUCTION_CRN_SEED",
+    "PRODUCTION_CHUNK_TARGET_ANCHORS",
     "PRODUCTION_TRAJECTORIES_PER_ANCHOR",
     "common_random_seed",
     "evaluate_free_running_v2",
-    "evaluate_multires_event_v2_promotion",
+    "probe_free_running_v2_capacity",
     "validate_rank_local_artifact_preflight",
     "verify_rank_local_artifact_preflight",
 ]

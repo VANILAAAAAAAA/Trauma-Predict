@@ -26,7 +26,11 @@ def repo_files() -> set[str]:
         text=True,
         capture_output=True,
     )
-    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    return {
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip() and (ROOT / line.strip()).exists()
+    }
 
 
 def indexed_files() -> set[str]:

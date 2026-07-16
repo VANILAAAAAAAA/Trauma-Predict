@@ -5,6 +5,7 @@ import unittest
 
 import torch
 
+from trauma_predict.data.multires_event_v2 import MultiresEventV2RelationContract
 from trauma_predict.modeling.multires_event_v2.config import MultiResolutionEventV2Config
 from trauma_predict.modeling.multires_event_v2.field_state import PrimitiveFeedbackEncoder
 from trauma_predict.modeling.multires_event_v2.model import MultiResolutionEventV2Model
@@ -20,7 +21,7 @@ FEEDBACK_DIMS = {
 }
 
 
-def _config(mode: str = "trajectory") -> MultiResolutionEventV2Config:
+def _config() -> MultiResolutionEventV2Config:
     return MultiResolutionEventV2Config(
         hidden_size=8,
         num_attention_heads=2,
@@ -29,9 +30,15 @@ def _config(mode: str = "trajectory") -> MultiResolutionEventV2Config:
         block_compressor_layers=1,
         block_latent_count=2,
         dropout=0.0,
-        mode=mode,
         primitive_head_dims=PARAMETER_DIMS,
         primitive_feedback_dims=FEEDBACK_DIMS,
+    )
+
+
+def _model() -> MultiResolutionEventV2Model:
+    return MultiResolutionEventV2Model(
+        _config(),
+        MultiresEventV2RelationContract.from_default_config(),
     )
 
 
@@ -46,6 +53,7 @@ def _batch(batch_size: int = 2) -> dict[str, torch.Tensor]:
         "event_value_mask": torch.ones(batch_size, event_count, dtype=torch.bool),
         "event_study_slot_ids": torch.zeros(batch_size, event_count, dtype=torch.long),
         "block_index": torch.tensor([[0, 0, 1, 2, 2]]).expand(batch_size, -1),
+        "latest_input_block_index": torch.full((batch_size,), 2, dtype=torch.long),
         "event_mask": torch.ones(batch_size, event_count, dtype=torch.bool),
         "block_role_ids": torch.ones(batch_size, input_blocks, dtype=torch.long),
         "resolution_ids": torch.ones(batch_size, input_blocks, dtype=torch.long),
@@ -60,7 +68,10 @@ def _batch(batch_size: int = 2) -> dict[str, torch.Tensor]:
 
 
 def _teacher_targets(batch_size: int = 2):
-    values = {key: torch.randn(batch_size, 6, 29, width) for key, width in FEEDBACK_DIMS.items()}
+    values = {
+        key: torch.randn(batch_size, 6, 29, width)
+        for key, width in FEEDBACK_DIMS.items()
+    }
     masks = {
         key: torch.ones(batch_size, 6, 29, width, dtype=torch.bool)
         for key, width in FEEDBACK_DIMS.items()
@@ -68,130 +79,136 @@ def _teacher_targets(batch_size: int = 2):
     return values, masks
 
 
-def test_v2_forward_is_six_blocks_by_29_fields_with_likelihood_metadata() -> None:
-    torch.manual_seed(23)
-    model = MultiResolutionEventV2Model(_config()).eval()
-    targets, target_masks = _teacher_targets()
-    output = model(
-        **_batch(),
-        target_primitives=targets,
-        target_primitive_masks=target_masks,
-    )
-
-    assert output["field_states"].shape == (2, 6, 29, 8)
-    assert output["primitive_parameter_dims"] == PARAMETER_DIMS
-    assert output["primitive_feedback_dims"] == FEEDBACK_DIMS
-    assert set(output["primitive_parameters"]) == set(PARAMETER_DIMS)
-    assert output["primitive_parameters"]["categorical_hours_0_4"].shape == (
-        2,
-        6,
-        29,
-        5,
-    )
-    assert output["primitive_parameters"]["respiratory_block_evidence"].shape == (
-        2,
-        6,
-        29,
-        1,
-    )
-    assert tuple(model.target_field_ids.tolist()) == (
-        1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 7,
-        *range(14, 29), 35,
-    )
-
-
-def test_three_modes_have_identical_parameter_structure_and_count() -> None:
-    models = {
-        mode: MultiResolutionEventV2Model(_config(mode))
-        for mode in ("block", "trajectory", "relational")
-    }
-    state_keys = {mode: tuple(model.state_dict()) for mode, model in models.items()}
-    counts = {
-        mode: sum(parameter.numel() for parameter in model.parameters())
-        for mode, model in models.items()
-    }
-    assert state_keys["block"] == state_keys["trajectory"] == state_keys["relational"]
-    assert len(set(counts.values())) == 1
-
-
-def test_teacher_encoder_rejects_opaque_or_incomplete_primitive_contract() -> None:
-    model = MultiResolutionEventV2Model(_config())
-    targets, masks = _teacher_targets(batch_size=1)
-    targets.pop("respiratory_block_evidence")
-    try:
-        model.encode_teacher_targets(targets, masks, batch_size=1)
-    except ValueError as error:
-        assert "likelihood ids" in str(error)
-    else:
-        raise AssertionError("an incomplete target primitive dictionary must be rejected")
-
-
-def test_feedback_encoder_is_finite_for_wide_physical_unit_scales() -> None:
-    encoder = PrimitiveFeedbackEncoder(8, {"lab_joint_value_state": 3}, dropout=0.0)
-    values = torch.tensor([[[[-250.0, 0.0, 1_000_000.0]]]])
-    masks = {"lab_joint_value_state": torch.ones_like(values, dtype=torch.bool)}
-    state, valid = encoder(
-        {"lab_joint_value_state": values},
-        masks,
-        leading_shape=(1, 1, 1),
-    )
-    assert valid.all()
-    assert torch.isfinite(state).all()
-
-
-def test_cached_rollout_api_reuses_encoded_history_and_accepts_no_future_truth() -> None:
-    model = MultiResolutionEventV2Model(_config(mode="block")).eval()
-    batch = _batch(batch_size=1)
-    memory, memory_mask, queries = model.encode_for_rollout(**batch)
-
-    assert "target_primitives" not in inspect.signature(model.encode_for_rollout).parameters
-    assert "target_primitives" not in inspect.signature(model.rollout_from_encoded).parameters
-
-    def sampler(_block: int, _field: int, parameters: dict[str, torch.Tensor]):
-        batch_size = next(iter(parameters.values())).shape[0]
-        values = {
-            name: torch.zeros(batch_size, width)
-            for name, width in FEEDBACK_DIMS.items()
-        }
-        masks = {
-            name: torch.ones(batch_size, width, dtype=torch.bool)
-            for name, width in FEEDBACK_DIMS.items()
-        }
-        return values, masks
-
-    def forbidden_reencode(**_kwargs):
-        raise AssertionError("cached rollout must not re-run the input encoder")
-
-    model._encode_input = forbidden_reencode  # type: ignore[method-assign]
-    output = model.rollout_from_encoded(
-        memory,
-        memory_mask,
-        queries,
-        sampler=sampler,
-        mode="block",
-    )
-    assert output["field_states"].shape == (1, 6, 29, 8)
-    assert output["generated_primitives"]["categorical_hours_0_4"].shape == (
-        1,
-        6,
-        29,
-        1,
-    )
-
-
 class MultiresEventV2ModelTest(unittest.TestCase):
-    test_forward_shape_and_metadata = staticmethod(
-        test_v2_forward_is_six_blocks_by_29_fields_with_likelihood_metadata
-    )
-    test_matched_parameter_structure = staticmethod(
-        test_three_modes_have_identical_parameter_structure_and_count
-    )
-    test_teacher_contract_rejection = staticmethod(
-        test_teacher_encoder_rejects_opaque_or_incomplete_primitive_contract
-    )
-    test_feedback_scale_transform = staticmethod(
-        test_feedback_encoder_is_finite_for_wide_physical_unit_scales
-    )
-    test_cached_rollout = staticmethod(
-        test_cached_rollout_api_reuses_encoded_history_and_accepts_no_future_truth
-    )
+    def test_forward_is_six_blocks_by_29_fields_with_relation_v2_metadata(self) -> None:
+        torch.manual_seed(23)
+        model = _model().eval()
+        targets, target_masks = _teacher_targets()
+        output = model(
+            **_batch(),
+            target_primitives=targets,
+            target_primitive_masks=target_masks,
+        )
+
+        self.assertEqual(output["field_states"].shape, (2, 6, 29, 8))
+        self.assertEqual(output["primitive_parameter_dims"], PARAMETER_DIMS)
+        self.assertEqual(output["primitive_feedback_dims"], FEEDBACK_DIMS)
+        self.assertEqual(set(output["primitive_parameters"]), set(PARAMETER_DIMS))
+        self.assertEqual(
+            output["primitive_parameters"]["categorical_hours_0_4"].shape,
+            (2, 6, 29, 5),
+        )
+        self.assertEqual(
+            output["primitive_parameters"]["respiratory_block_evidence"].shape,
+            (2, 6, 29, 1),
+        )
+        self.assertEqual(model.target_relation_adjacency.shape, (52, 29, 29))
+        self.assertEqual(model.input_target_relation_adjacency.shape, (39, 29, 37))
+        self.assertEqual(model.target_decoder.target_relation_bias.relation_count, 52)
+        self.assertEqual(model.target_decoder.input_target_relation_bias.relation_count, 39)
+        self.assertEqual(
+            tuple(model.target_field_ids.tolist()),
+            (1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 7, *range(14, 29), 35),
+        )
+
+    def test_single_route_state_dict_contains_both_edge_specific_parameter_banks(self) -> None:
+        model = _model()
+        state = model.state_dict()
+        target_key = "target_decoder.target_relation_bias.edge_head_bias"
+        input_key = "target_decoder.input_target_relation_bias.edge_head_bias"
+        self.assertEqual(state[target_key].shape, (52, 2))
+        self.assertEqual(state[input_key].shape, (39, 2))
+        self.assertEqual(
+            state["input_field_memory.input_only_temporal_weight"].shape,
+            (8, 6),
+        )
+        self.assertEqual(
+            len(model.target_decoder.target_relation_bias.parameter_keys),
+            len(set(model.target_decoder.target_relation_bias.parameter_keys)),
+        )
+        self.assertEqual(
+            len(model.target_decoder.input_target_relation_bias.parameter_keys),
+            len(set(model.target_decoder.input_target_relation_bias.parameter_keys)),
+        )
+
+    def test_teacher_encoder_rejects_incomplete_primitive_contract(self) -> None:
+        model = _model()
+        targets, masks = _teacher_targets(batch_size=1)
+        targets.pop("respiratory_block_evidence")
+        with self.assertRaisesRegex(ValueError, "likelihood ids"):
+            model.encode_teacher_targets(targets, masks, batch_size=1)
+
+    def test_feedback_encoder_is_finite_for_wide_physical_unit_scales(self) -> None:
+        encoder = PrimitiveFeedbackEncoder(8, {"lab_joint_value_state": 3}, dropout=0.0)
+        values = torch.tensor([[[[-250.0, 0.0, 1_000_000.0]]]])
+        masks = {"lab_joint_value_state": torch.ones_like(values, dtype=torch.bool)}
+        state, valid = encoder(
+            {"lab_joint_value_state": values},
+            masks,
+            leading_shape=(1, 1, 1),
+        )
+        self.assertTrue(valid.all())
+        self.assertTrue(torch.isfinite(state).all())
+
+    def test_runtime_relation_or_mode_overrides_fail_closed(self) -> None:
+        model = _model().eval()
+        targets, masks = _teacher_targets(batch_size=1)
+        for key, value in (
+            ("mode", "block"),
+            ("relation_adjacency", torch.zeros(1)),
+            ("disable_relation", True),
+        ):
+            with self.subTest(key=key), self.assertRaisesRegex(
+                ValueError, "does not accept undeclared runtime inputs"
+            ):
+                model(
+                    **_batch(batch_size=1),
+                    target_primitives=targets,
+                    target_primitive_masks=masks,
+                    **{key: value},
+                )
+
+    def test_cached_rollout_reuses_encoded_history_and_accepts_no_future_truth(self) -> None:
+        model = _model().eval()
+        batch = _batch(batch_size=1)
+        memory, memory_mask, queries = model.encode_for_rollout(**batch)
+
+        self.assertNotIn(
+            "target_primitives", inspect.signature(model.encode_for_rollout).parameters
+        )
+        self.assertNotIn(
+            "target_primitives", inspect.signature(model.rollout_from_encoded).parameters
+        )
+        self.assertNotIn("mode", inspect.signature(model.rollout_from_encoded).parameters)
+
+        def sampler(_block: int, _field: int, parameters: dict[str, torch.Tensor]):
+            generated_batch = next(iter(parameters.values())).shape[0]
+            values = {
+                name: torch.zeros(generated_batch, width)
+                for name, width in FEEDBACK_DIMS.items()
+            }
+            masks = {
+                name: torch.ones(generated_batch, width, dtype=torch.bool)
+                for name, width in FEEDBACK_DIMS.items()
+            }
+            return values, masks
+
+        def forbidden_reencode(**_kwargs):
+            raise AssertionError("cached rollout must not re-run the input encoder")
+
+        model._encode_input = forbidden_reencode  # type: ignore[method-assign]
+        output = model.rollout_from_encoded(
+            memory,
+            memory_mask,
+            queries,
+            sampler=sampler,
+        )
+        self.assertEqual(output["field_states"].shape, (1, 6, 29, 8))
+        self.assertEqual(
+            output["generated_primitives"]["categorical_hours_0_4"].shape,
+            (1, 6, 29, 1),
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

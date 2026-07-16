@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import copy
-import gc
 import hashlib
 import importlib.metadata
 import json
@@ -16,7 +14,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import torch
 
@@ -30,6 +28,11 @@ from trauma_predict.data.multires_event_v2 import (
     MultiresEventV2Collator,
     MultiresEventV2Contract,
     MultiresEventV2Dataset,
+    MultiresEventV2RelationContract,
+)
+from trauma_predict.data.multires_event_v2.relation_contract import (
+    EXPECTED_RELATION_FILE_HASHES,
+    RELATION_CONTRACT_VERSION,
 )
 from trauma_predict.eval.multires_event_v2 import (
     evaluate_teacher_forced,
@@ -39,10 +42,11 @@ from trauma_predict.eval.multires_event_v2 import (
 from trauma_predict.eval.multires_event_v2_free_running import (
     _collect_distributed_phase,
     evaluate_free_running_v2,
+    probe_free_running_v2_capacity,
     verify_rank_local_artifact_preflight,
 )
-from trauma_predict.eval.multires_event_v2_promotion_contract import (
-    load_promotion_metric_contract,
+from trauma_predict.eval.multires_event_v2_metric_contract import (
+    load_trajectory_metric_contract,
 )
 from trauma_predict.eval.multires_event_v2_projections import (
     load_standardized_primitive_scale_artifact,
@@ -60,6 +64,7 @@ from trauma_predict.training.multires_event import (
     _restore_rng_state,
     _seed_everything,
     _set_sampler_epoch,
+    _torch_load,
     _unwrapped_model,
     _world_size,
 )
@@ -79,23 +84,17 @@ from trauma_predict.training.observability import (
 )
 
 
-ROUTE = "multires_event_v2_m4_relational_primary"
-MATCHED_MODES = ("block", "trajectory", "relational")
+ROUTE = "multires_event_v2_m4_relation_v2"
 TRAINING_AUTHORIZED = True
 AUTHORIZED_TRAINING_RUN_NAMES: tuple[str, ...] = (
-    "t4x2_multires_event_v2_relational",
+    "p100_multires_event_v2_relation_v2",
 )
 TRAINING_AUTHORIZATION_REASON = (
-    "the frozen primary is the 47,801,855-parameter relational six-M4 model; "
-    "block and trajectory are optional later ablations and cannot gate it"
-)
-VERIFICATION_AUTHORIZED = True
-AUTHORIZED_VERIFICATION_RUN_NAMES = ("t4x2_multires_event_v2_relational",)
-VERIFICATION_AUTHORIZATION_REASON = (
-    "verification must exercise the exact relational primary model and training state"
+    "the active six-M4 route is frozen to relation contract V2 and starts from scratch"
 )
 EXPECTED_BASE_DATASET_ID = "multires_event_v1_c4_full_20260712"
 EXPECTED_BASE_FINGERPRINT = "d58d003b6a9b2dd7c1f8d269a1867b534ea475a91118d7d4d44804bee69f9e47"
+EXPECTED_BASE_SOURCE_FINGERPRINT = "ed578cf6b6e82c96f3aef71d58d6c176c794c9e8fbd37a468a709d64e94739b9"
 EXPECTED_BASE_MANIFEST_SHA256 = "4e7742900907e0e2f774099ba1dd485468210ff3da9ddaef3ec3bf67957000c3"
 EXPECTED_BASE_SAMPLE_MANIFEST_SHA256 = "b3d4305353997320fe310c4df6e15619026db6f229a124b0c9a5e1d89898f05e"
 EXPECTED_SUBJECT_SPLIT_SHA256 = "89deb50c2c6415dff5ce00338a980e25531433e8dee835b004a27d561e7adb6d"
@@ -106,8 +105,18 @@ EXPECTED_CONTRACT_BUNDLE_HASH = "ee4786d5141c5e0a4abfd1780bbca93244c3b2c8323f3ef
 EXPECTED_PROCESS_CONTRACT_SHA256 = "2cd5fd86e42f2dc582080a1d147495a24ac6eebb5c9b007f9575918a79f2b33b"
 EXPECTED_EMISSION_CONTRACT_SHA256 = "d41a0965e0ba2170c28c35c0320fc5c78247982548ba354cb8c137113ae6f48c"
 EXPECTED_PROJECTION_CONTRACT_SHA256 = "3974797e7001e0292a89885a3edc81d09134c4ea44e25ea91bf07e18eaf06b65"
-EXPECTED_RELATION_CONTRACT_SHA256 = "65286cd9fb7e1038270de39ea17daafffb160cf9c5ab7bb3beb2556a9aa8eea0"
+EXPECTED_EMBEDDED_HISTORICAL_RELATION_CONTRACT_SHA256 = (
+    "65286cd9fb7e1038270de39ea17daafffb160cf9c5ab7bb3beb2556a9aa8eea0"
+)
 EXPECTED_SIDECAR_SCHEMA_SHA256 = "58d3673b6e232344709555a7bff2186047b08ea7932b6685553ee1b526d7e0dd"
+EXPECTED_RELATION_CONFIG_DIR = "configs/contracts/multires_event_v2"
+EXPECTED_RELATION_BUNDLE_SHA256 = (
+    "0331ec0d552e47790d1dc4f8bae3520062c9e6f5fa62cf62e87c187f6783c033"
+)
+EXPECTED_SUPERVISION_SHA256 = "722cae631ca2b7cf801514cccdfd6cf18be9742f0cb94c9a1e89fb3696d095f6"
+EXPECTED_INPUT_NORMALIZATION_SHA256 = (
+    "4f54dbeaab4b2becd349d1d8fcaac7b6bdea2567a20874ee7d29338c1f930add"
+)
 EXPECTED_LAB_SCALE_ARTIFACT = "configs/dataset/multires_event_v2_c4_lab_affine_scale_r9.json"
 EXPECTED_LAB_SCALE_ARTIFACT_HASH = "cae827b1f8b1c6a156da4bad340af1b9b0411ca2f5fbe0b9aa8d36ed06cb87bb"
 EXPECTED_STANDARDIZED_PRIMITIVE_SCALE_ARTIFACT = (
@@ -116,14 +125,14 @@ EXPECTED_STANDARDIZED_PRIMITIVE_SCALE_ARTIFACT = (
 EXPECTED_STANDARDIZED_PRIMITIVE_SCALE_ARTIFACT_HASH = (
     "f075a9d2d415028845026b06e746cecf382102dfc0ed2c31631000506030665f"
 )
-EXPECTED_PROMOTION_METRIC_CONTRACT = (
-    "configs/evaluation/multires_event_v2_promotion_v2.json"
+EXPECTED_TRAJECTORY_METRIC_CONTRACT = (
+    "configs/evaluation/multires_event_v2_relation_v2_metrics.json"
 )
-EXPECTED_PROMOTION_METRIC_CONTRACT_HASH = (
-    "7b5b85d5d3b3604308e1fe8b1471bc6c5c0c20bb16e3b9aaffd0c5e3afb53f3f"
+EXPECTED_TRAJECTORY_METRIC_CONTRACT_HASH = (
+    "2d8f9c2c421e9d69e18470a37b3c6ae7696fff0664c6083df8a7e2de1745123e"
 )
 EXPECTED_COUNTS = {"samples": 50350, "train": 37734, "val": 6309, "test": 6307, "shards": 52}
-EXPECTED_FORMAL_MODEL_PARAMETER_COUNT = 47_801_855
+EXPECTED_FORMAL_MODEL_PARAMETER_COUNT = 48_728_439
 OPTIMIZER_CONTRACT_VERSION = "trauma_predict.multires_event_v2_optimizer.v1"
 RAW_JOINT_NLL_REDUCTION = "raw_414_factor_joint_nll_batch_mean"
 OPTIMIZER_HEALTH_SUMMARY_SCHEMA = (
@@ -143,22 +152,9 @@ EXPECTED_OPTIMIZER_CONTRACT = {
     "adamw_fused": False,
     "gradient_clipping": "disabled",
 }
-CAPACITY_PROBE_SCHEMA = "trauma_predict.multires_event_v2_capacity_probe.v3"
-CAPACITY_PROBE_OPTIMIZER_STEPS = 2
-CAPACITY_PROBE_VALIDATION_ANCHORS = 100
-CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR = 100
-CAPACITY_SEMANTIC_CANARY_ANCHORS = 2
-CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR = 100
 V2_DISTRIBUTED_TIMEOUT_SECONDS = 600
 V2_NCCL_MONITOR_HEARTBEAT_TIMEOUT_SECONDS = 120
 V2_EARLY_CANARY_PROCESS_GROUP_TIMEOUT_SECONDS = 60
-CAPACITY_RUNTIME_POLICY = "background_save_and_run_informational_only"
-CAPACITY_STRUCTURAL_METRICS = (
-    "field_macro_lag1_variogram_score_p0_5",
-    "relation_edge_macro_variogram_score_p0_5",
-    "marginal_value_crps",
-    "marginal_state_crps",
-)
 EXPECTED_FORMAL_ARCHITECTURE = {
     "hidden_size": 480,
     "num_attention_heads": 8,
@@ -168,20 +164,30 @@ EXPECTED_FORMAL_ARCHITECTURE = {
     "block_latent_count": 8,
     "future_block_count": 6,
     "target_field_count": 29,
-    "relation_type_count": 14,
 }
 BEST_CHECKPOINT_SCHEMA = "trauma_predict.multires_event_v2_best_checkpoint.v1"
 V2_CHECKPOINT_SCHEMA = "trauma_predict.multires_event_v2_checkpoint.v2"
 SELECTED_MODEL_SCHEMA = "trauma_predict.multires_event_v2_selected_model.v1"
+HOSTED_STOP_READINESS_SCHEMA = (
+    "trauma_predict.multires_event_v2_hosted_stop_readiness.v1"
+)
+FINAL_TEACHER_CACHE_SCHEMA = (
+    "trauma_predict.multires_event_v2_final_teacher_cache.v1"
+)
+AUTHORIZED_HOSTED_STOP_STEPS = (2, 250, 1500, 2750, 4000)
 RUN_ARTIFACT_PATHS = {
     "input_normalization": "artifacts/input_normalization.json",
     "lab_affine_scale": "artifacts/lab_affine_scale.json",
     "standardized_primitive_scale": "artifacts/standardized_primitive_scale.json",
-    "promotion_metric_contract": "artifacts/promotion_metric_contract.json",
+    "trajectory_metric_contract": "artifacts/trajectory_metric_contract.json",
     "runtime_environment": "artifacts/runtime_environment.json",
     "train_config": "artifacts/config/train.yaml",
     "dataset_config": "artifacts/config/dataset.yaml",
     "model_config": "artifacts/config/model.yaml",
+    "relation_field_registry": "artifacts/relation_contract/field_category_matrix_v1.csv",
+    "relation_target_target": "artifacts/relation_contract/target_target_relation_edges_v2.csv",
+    "relation_input_target": "artifacts/relation_contract/input_target_relation_edges_v2.csv",
+    "relation_evidence_registry": "artifacts/relation_contract/relation_evidence_registry_v2.json",
 }
 
 
@@ -194,6 +200,7 @@ class MultiresEventV2Runtime:
     train_dataset: MultiresEventV2Dataset
     eval_dataset: MultiresEventV2Dataset
     contract: MultiresEventV2Contract
+    relation_contract: MultiresEventV2RelationContract
     normalization: Any
     identity: Mapping[str, Any]
 
@@ -204,21 +211,6 @@ class _OptimizerUpdateProbe:
     parameter: torch.nn.Parameter
     flat_index: int
     value_before: torch.Tensor
-
-
-_CAPACITY_AUTHORIZATION_GUARD = object()
-_VERIFICATION_AUTHORIZATION_GUARD = object()
-
-
-@dataclass(frozen=True)
-class _CapacityAuthorization:
-    guard: object
-    config_path: str
-    config_file_sha256: str
-    train_config_sha256: str
-    mode: str
-    capacity_report_path: str
-    capacity_report_sha256: str
 
 
 class _LabScaleBoundCollator:
@@ -264,23 +256,135 @@ def validate_multires_event_v2_configs(
     dataset: Mapping[str, Any],
     model: Mapping[str, Any],
 ) -> None:
+    _require_exact_keys(
+        train,
+        {
+            "schema_version", "route", "run_name", "seed", "lab_scale_artifact",
+            "lab_scale_artifact_hash", "standardized_primitive_scale_artifact",
+            "standardized_primitive_scale_artifact_hash", "trajectory_metric_contract",
+            "trajectory_metric_contract_hash", "dataset", "model", "objective",
+            "evaluation", "training", "outputs",
+        },
+        "train",
+    )
+    _require_exact_keys(
+        dataset,
+        {
+            "schema_version", "route", "base", "target", "expected_counts",
+            "split_authority", "split_key", "join_key", "join_guards",
+            "supervision_path", "supervision_sha256", "normalization", "loader",
+            "preflight",
+        },
+        "dataset",
+    )
+    _require_exact_keys(
+        model,
+        {
+            "schema_version", "route", "role", "initialization", "text_backbone",
+            "tokenizer", "architecture", "relation_contract", "primitive_contract",
+            "formal_contract",
+        },
+        "model",
+    )
     for label, payload in (("train", train), ("dataset", dataset), ("model", model)):
         if payload.get("route") != ROUTE:
             raise ValueError(f"{label} route must be {ROUTE!r}")
-    mode = str(train.get("mode"))
-    if mode not in MATCHED_MODES:
-        raise ValueError(f"V2 matched mode must be one of {MATCHED_MODES}")
+    if train.get("schema_version") != "trauma_predict.multires_event_v2_train_config.v2":
+        raise ValueError("train schema_version differs from relation V2")
+    if dataset.get("schema_version") != "trauma_predict.multires_event_v2_dataset_config.v2":
+        raise ValueError("dataset schema_version differs from relation V2")
+    if model.get("schema_version") != "trauma_predict.multires_event_v2_model_config.v2":
+        raise ValueError("model schema_version differs from relation V2")
+    if int(train.get("seed", -1)) != 20260713:
+        raise ValueError("relation V2 seed must equal 20260713")
+    _require_exact_keys(_mapping(train.get("dataset"), "train.dataset"), {"config_path"}, "train.dataset")
+    _require_exact_keys(_mapping(train.get("model"), "train.model"), {"config_path"}, "train.model")
+    _require_exact_keys(
+        _mapping(train.get("outputs"), "train.outputs"),
+        {"output_dir", "metrics_jsonl"},
+        "train.outputs",
+    )
+    if {"mode", "comparison"}.intersection(train):
+        raise ValueError("relation V2 train config cannot contain mode/comparison switches")
+    architecture_payload = _mapping(model.get("architecture"), "model.architecture")
+    if {"mode", "relation_type_count", "relation_types"}.intersection(
+        architecture_payload
+    ):
+        raise ValueError("relation V2 architecture cannot contain relation-off switches")
+    _validate_relation_config(_mapping(model.get("relation_contract"), "model.relation_contract"))
+    primitive_contract = _mapping(model.get("primitive_contract"), "model.primitive_contract")
+    expected_primitive_contract = {
+        "parameter_dims_source": (
+            "trauma_predict.training.multires_event_v2_loss.V2_PRIMITIVE_HEAD_DIMS"
+        ),
+        "feedback_dims_source": (
+            "trauma_predict.training.multires_event_v2_loss.V2_PRIMITIVE_FEEDBACK_DIMS"
+        ),
+        "stochastic_factors_per_anchor": 414,
+        "output_resolution": "M4",
+        "output_blocks": 6,
+        "registered_fields": 29,
+    }
+    _require_exact_keys(
+        primitive_contract,
+        set(expected_primitive_contract),
+        "model.primitive_contract",
+    )
+    if dict(primitive_contract) != expected_primitive_contract:
+        raise ValueError("model.primitive_contract differs from the 414-factor contract")
+    formal_contract = _mapping(model.get("formal_contract"), "model.formal_contract")
+    expected_formal_contract = {
+        "exact_parameter_count": EXPECTED_FORMAL_MODEL_PARAMETER_COUNT,
+        "relation_contract_required": True,
+        "runtime_relation_override": "forbidden",
+        "causal_cross_block_attention": True,
+        "target_target_registered_bias": True,
+        "input_target_registered_bias": True,
+        "silent_capacity_fallback": "forbidden",
+        "legacy_checkpoint_loading": "forbidden",
+        "h1_head": False,
+        "f24_head": False,
+    }
+    _require_exact_keys(
+        formal_contract,
+        set(expected_formal_contract),
+        "model.formal_contract",
+    )
+    if dict(formal_contract) != expected_formal_contract:
+        raise ValueError("model.formal_contract differs from strict relation V2")
 
     base = _mapping(dataset.get("base"), "dataset.base")
     target = _mapping(dataset.get("target"), "dataset.target")
     expected_base = {
+        "root": "${TRAUMA_PREDICT_DATA_ROOT}",
         "dataset_id": EXPECTED_BASE_DATASET_ID,
         "fingerprint": EXPECTED_BASE_FINGERPRINT,
+        "source_fingerprint": EXPECTED_BASE_SOURCE_FINGERPRINT,
         "dataset_manifest_sha256": EXPECTED_BASE_MANIFEST_SHA256,
         "sample_manifest_sha256": EXPECTED_BASE_SAMPLE_MANIFEST_SHA256,
         "subject_split_sha256": EXPECTED_SUBJECT_SPLIT_SHA256,
     }
+    _require_exact_keys(
+        base,
+        {
+            "root", "dataset_id", "fingerprint", "source_fingerprint",
+            "dataset_manifest_sha256", "sample_manifest_sha256",
+            "subject_split_sha256",
+        },
+        "dataset.base",
+    )
+    _require_exact_keys(
+        target,
+        {
+            "root", "dataset_id", "dataset_manifest_sha256", "sample_manifest_sha256",
+            "contract_bundle_hash", "process_contract_sha256",
+            "emission_contract_sha256", "projection_contract_sha256",
+            "embedded_historical_relation_contract_sha256", "sidecar_schema_sha256",
+        },
+        "dataset.target",
+    )
     expected_target = {
+        "root": "${TRAUMA_PREDICT_V2_TARGET_ROOT}",
         "dataset_id": EXPECTED_TARGET_DATASET_ID,
         "dataset_manifest_sha256": EXPECTED_TARGET_MANIFEST_SHA256,
         "sample_manifest_sha256": EXPECTED_TARGET_SAMPLE_MANIFEST_SHA256,
@@ -288,7 +392,9 @@ def validate_multires_event_v2_configs(
         "process_contract_sha256": EXPECTED_PROCESS_CONTRACT_SHA256,
         "emission_contract_sha256": EXPECTED_EMISSION_CONTRACT_SHA256,
         "projection_contract_sha256": EXPECTED_PROJECTION_CONTRACT_SHA256,
-        "relation_contract_sha256": EXPECTED_RELATION_CONTRACT_SHA256,
+        "embedded_historical_relation_contract_sha256": (
+            EXPECTED_EMBEDDED_HISTORICAL_RELATION_CONTRACT_SHA256
+        ),
         "sidecar_schema_sha256": EXPECTED_SIDECAR_SCHEMA_SHA256,
     }
     for key, expected in expected_base.items():
@@ -299,6 +405,56 @@ def validate_multires_event_v2_configs(
             raise ValueError(f"dataset.target.{key} differs from full_r9 authority")
     if dict(dataset.get("expected_counts", {})) != EXPECTED_COUNTS:
         raise ValueError("V2 dataset expected_counts must match the persisted C4 rows")
+    _require_exact_keys(
+        _mapping(dataset.get("expected_counts"), "dataset.expected_counts"),
+        set(EXPECTED_COUNTS),
+        "dataset.expected_counts",
+    )
+    expected_dataset_scalars = {
+        "split_authority": "base/sample_manifest.csv",
+        "split_key": "subject_id",
+        "join_key": "sample_id",
+        "join_guards": ["base_content_hash", "target_content_hash"],
+        "supervision_path": "configs/model/multires_event_v1_supervision.json",
+        "supervision_sha256": EXPECTED_SUPERVISION_SHA256,
+    }
+    for key, expected in expected_dataset_scalars.items():
+        if dataset.get(key) != expected:
+            raise ValueError(f"dataset.{key} differs from the frozen input contract")
+    normalization = _mapping(dataset.get("normalization"), "dataset.normalization")
+    expected_normalization = {
+        "path": "${TRAUMA_PREDICT_OUTPUT_ROOT}/contracts/multires_event_v1_input_normalization.json",
+        "artifact_sha256": EXPECTED_INPUT_NORMALIZATION_SHA256,
+        "fit_if_missing": False,
+        "fit_split": "train",
+        "fit_by_subject_only": True,
+        "clip_value": 10.0,
+        "epsilon": 1.0e-6,
+        "max_values_per_key": 200000,
+        "seed": 20260713,
+    }
+    _require_exact_keys(normalization, set(expected_normalization), "dataset.normalization")
+    if dict(normalization) != expected_normalization:
+        raise ValueError("dataset.normalization differs from the frozen V1 input contract")
+    loader = _mapping(dataset.get("loader"), "dataset.loader")
+    expected_loader = {
+        "cache_shards": 1,
+        "num_workers": 0,
+        "pin_memory": True,
+        "persistent_workers": False,
+    }
+    _require_exact_keys(loader, set(expected_loader), "dataset.loader")
+    if dict(loader) != expected_loader:
+        raise ValueError("dataset.loader differs from the formal route")
+    preflight = _mapping(dataset.get("preflight"), "dataset.preflight")
+    expected_preflight = {
+        "verify_all_shard_headers": True,
+        "verify_shard_sha256": False,
+        "verify_target_shard_sha256": False,
+    }
+    _require_exact_keys(preflight, set(expected_preflight), "dataset.preflight")
+    if dict(preflight) != expected_preflight:
+        raise ValueError("dataset.preflight differs from the formal route")
     if str(train.get("lab_scale_artifact")) != EXPECTED_LAB_SCALE_ARTIFACT:
         raise ValueError("V2 training must use the frozen train-only lab scale artifact")
     if str(train.get("lab_scale_artifact_hash")) != EXPECTED_LAB_SCALE_ARTIFACT_HASH:
@@ -313,13 +469,13 @@ def validate_multires_event_v2_configs(
         != EXPECTED_STANDARDIZED_PRIMITIVE_SCALE_ARTIFACT_HASH
     ):
         raise ValueError("V2 phi scale artifact hash differs from the frozen identity")
-    if str(train.get("promotion_metric_contract")) != EXPECTED_PROMOTION_METRIC_CONTRACT:
-        raise ValueError("V2 training must use the frozen promotion metric contract")
+    if str(train.get("trajectory_metric_contract")) != EXPECTED_TRAJECTORY_METRIC_CONTRACT:
+        raise ValueError("V2 evaluation must use the frozen trajectory metric contract")
     if (
-        str(train.get("promotion_metric_contract_hash"))
-        != EXPECTED_PROMOTION_METRIC_CONTRACT_HASH
+        str(train.get("trajectory_metric_contract_hash"))
+        != EXPECTED_TRAJECTORY_METRIC_CONTRACT_HASH
     ):
-        raise ValueError("V2 promotion metric contract hash differs from the frozen identity")
+        raise ValueError("V2 trajectory metric contract hash differs from the frozen identity")
 
     objective = _mapping(train.get("objective"), "train.objective")
     required_objective = {
@@ -336,6 +492,7 @@ def validate_multires_event_v2_configs(
         "auxiliary_training_loss": False,
         "family_weights": None,
     }
+    _require_exact_keys(objective, set(required_objective), "train.objective")
     for key, expected in required_objective.items():
         if objective.get(key) != expected:
             raise ValueError(f"objective.{key} must equal {expected!r}")
@@ -344,9 +501,49 @@ def validate_multires_event_v2_configs(
         raise ValueError("V2 must initialize from scratch")
     if model.get("text_backbone") is not None or model.get("tokenizer") is not None:
         raise ValueError("V2 structured process model cannot use a text backbone/tokenizer")
-    if model.get("role") != "primary":
-        raise ValueError("V2 formal model config must declare role=primary")
-    architecture = _mapping(model.get("architecture"), "model.architecture")
+    if model.get("role") != "relation_v2":
+        raise ValueError("V2 formal model config must declare role=relation_v2")
+    architecture = architecture_payload
+    _require_exact_keys(
+        architecture,
+        {
+            "hidden_size", "num_attention_heads", "trajectory_encoder_layers",
+            "target_decoder_layers", "block_compressor_layers", "block_latent_count",
+            "dropout", "field_vocab_size", "operator_vocab_size",
+            "condition_vocab_size", "role_vocab_size", "resolution_vocab_size",
+            "static_numeric_fields", "static_categorical_fields",
+            "static_categorical_vocab_size", "study_slot_vocab_size",
+            "time_scale_hours", "input_only_temporal_fusion",
+            "future_block_count", "target_field_count",
+            "target_field_ids",
+        },
+        "model.architecture",
+    )
+    expected_architecture = {
+        "hidden_size": 480,
+        "num_attention_heads": 8,
+        "trajectory_encoder_layers": 6,
+        "target_decoder_layers": 6,
+        "block_compressor_layers": 1,
+        "block_latent_count": 8,
+        "dropout": 0.1,
+        "field_vocab_size": 38,
+        "operator_vocab_size": 11,
+        "condition_vocab_size": 64,
+        "role_vocab_size": 8,
+        "resolution_vocab_size": 4,
+        "static_numeric_fields": 4,
+        "static_categorical_fields": 5,
+        "static_categorical_vocab_size": 32,
+        "study_slot_vocab_size": 16,
+        "time_scale_hours": 24.0,
+        "input_only_temporal_fusion": "block_geometry_softmax_v1",
+        "future_block_count": 6,
+        "target_field_count": 29,
+        "target_field_ids": list(REGISTERED_CORE_FIELD_IDS),
+    }
+    if dict(architecture) != expected_architecture:
+        raise ValueError("model.architecture differs from the frozen relation V2 model")
     for key, expected in EXPECTED_FORMAL_ARCHITECTURE.items():
         if int(architecture.get(key, -1)) != expected:
             raise ValueError(f"model.architecture.{key} must equal {expected}")
@@ -358,6 +555,17 @@ def validate_multires_event_v2_configs(
         )
 
     evaluation = _mapping(train.get("evaluation"), "train.evaluation")
+    _require_exact_keys(
+        evaluation,
+        {
+            "checkpoint_metric", "interval_anchor_policy", "interval_expected_samples",
+            "final_anchor_policy", "final_expected_samples", "subject_macro",
+            "no_ddp_padding_duplicates", "free_running_final",
+            "free_running_trajectories_per_anchor",
+            "free_running_trajectory_batch_size", "free_running_crn_seed",
+        },
+        "train.evaluation",
+    )
     if evaluation.get("checkpoint_metric") != "joint_nll_subject_macro":
         raise ValueError("V2 checkpoints must be selected by subject-macro joint NLL")
     if evaluation.get("interval_anchor_policy") != "all_validation_anchors":
@@ -372,12 +580,8 @@ def validate_multires_event_v2_configs(
         raise ValueError("V2 validation must report subject macro")
     if evaluation.get("no_ddp_padding_duplicates") is not True:
         raise ValueError("V2 validation cannot pad duplicate anchors across ranks")
-    expected_free_running = str(train.get("run_name")) != "t4x2_multires_event_v2_smoke"
-    if evaluation.get("free_running_final") is not expected_free_running:
-        raise ValueError(
-            "V2 free-running evaluation must be enabled for matched modes and disabled "
-            "only for the route smoke run"
-        )
+    if evaluation.get("free_running_final") is not True:
+        raise ValueError("relation V2 formal evaluation requires free-running trajectories")
     required_free_running = {
         "free_running_trajectories_per_anchor": 100,
         "free_running_trajectory_batch_size": 100,
@@ -386,44 +590,99 @@ def validate_multires_event_v2_configs(
     for key, expected in required_free_running.items():
         if int(evaluation.get(key, -1)) != expected:
             raise ValueError(f"evaluation.{key} must equal {expected}")
-    comparison = _mapping(train.get("comparison"), "train.comparison")
-    required_comparison = {
-        "primary_mode": "relational",
-        "primary_training_order": ["relational"],
-        "optional_ablation_modes": ["trajectory", "block"],
-        "ablations_are_prerequisites": False,
-        "paired_rows": "all_6309_persisted_validation_anchors",
-        "paired_unit": "subject_id",
-        "estimands": [
-            "candidate_minus_control_subject_macro_joint_nll",
-            "candidate_over_control_subject_macro_score_ratio",
-        ],
-        "bootstrap_repetitions": 2000,
-        "bootstrap_seed": 20260713,
-        "shared_subject_bootstrap_schedule": True,
-        "physical_metrics_decision_role": "report_only",
-        "coherence_required_rate": 1.0,
-        "promotion_gate": "none_for_primary_training",
-        "decision_authority": "relational_primary_then_optional_matched_ablations",
+    expected_evaluation = {
+        "checkpoint_metric": "joint_nll_subject_macro",
+        "interval_anchor_policy": "all_validation_anchors",
+        "interval_expected_samples": 6309,
+        "final_anchor_policy": "all_validation_anchors",
+        "final_expected_samples": 6309,
+        "subject_macro": True,
+        "no_ddp_padding_duplicates": True,
+        "free_running_final": True,
+        "free_running_trajectories_per_anchor": 100,
+        "free_running_trajectory_batch_size": 100,
+        "free_running_crn_seed": 20260713,
     }
-    for key, expected in required_comparison.items():
-        if comparison.get(key) != expected:
-            raise ValueError(f"comparison.{key} must equal {expected!r}")
-
+    if dict(evaluation) != expected_evaluation:
+        raise ValueError("train.evaluation differs from the frozen relation V2 evaluator")
     training = _mapping(train.get("training"), "train.training")
-    if int(training.get("required_world_size", -1)) != 2:
-        raise ValueError("matched hosted V2 runs require two DDP ranks")
-    if int(training.get("required_cuda_devices", -1)) != 2:
-        raise ValueError("matched hosted V2 runs require two CUDA devices")
+    _require_exact_keys(
+        training,
+        {
+            "required_cuda_devices", "required_world_size",
+            "required_device_name_substring", "precision",
+            "per_device_train_batch_size", "per_device_eval_batch_size",
+            "gradient_accumulation_steps", "grad_scaler_initial_scale",
+            "grad_scaler_growth_factor", "grad_scaler_backoff_factor",
+            "grad_scaler_growth_interval", "max_consecutive_scaler_skips",
+            "grad_scaler_overflow_policy", "train_samples_per_epoch", "max_steps",
+            "optimizer_contract_version", "loss_reduction", "optimizer",
+            "learning_rate", "warmup_steps", "weight_decay", "adamw_betas",
+            "adamw_eps", "adamw_amsgrad", "adamw_maximize", "adamw_foreach",
+            "adamw_fused", "gradient_clipping", "dataloader_num_workers",
+            "logging_steps", "eval_steps", "save_steps", "initial_checkpoint_step",
+            "keep_last_checkpoints", "max_train_subjects", "max_eval_subjects",
+            "resume", "ddp_find_unused_parameters",
+        },
+        "train.training",
+    )
+    expected_training = {
+        "required_cuda_devices": 1,
+        "required_world_size": 1,
+        "required_device_name_substring": "P100",
+        "precision": "fp16",
+        "per_device_train_batch_size": 64,
+        "per_device_eval_batch_size": 32,
+        "gradient_accumulation_steps": 1,
+        "grad_scaler_initial_scale": 32.0,
+        "grad_scaler_growth_factor": 2.0,
+        "grad_scaler_backoff_factor": 0.5,
+        "grad_scaler_growth_interval": 1_000_000,
+        "max_consecutive_scaler_skips": 0,
+        "grad_scaler_overflow_policy": "fail_run_preserve_rows",
+        "train_samples_per_epoch": 3072,
+        "max_steps": 4000,
+        "optimizer_contract_version": OPTIMIZER_CONTRACT_VERSION,
+        "loss_reduction": RAW_JOINT_NLL_REDUCTION,
+        "optimizer": "AdamW",
+        "learning_rate": 2.0e-4,
+        "warmup_steps": 400,
+        "weight_decay": 0.01,
+        "adamw_betas": [0.9, 0.999],
+        "adamw_eps": 1.0e-8,
+        "adamw_amsgrad": False,
+        "adamw_maximize": False,
+        "adamw_foreach": False,
+        "adamw_fused": False,
+        "gradient_clipping": "disabled",
+        "dataloader_num_workers": 0,
+        "logging_steps": 100,
+        "eval_steps": 250,
+        "save_steps": 500,
+        "initial_checkpoint_step": 2,
+        "keep_last_checkpoints": 3,
+        "max_train_subjects": None,
+        "max_eval_subjects": None,
+        "resume": True,
+        "ddp_find_unused_parameters": False,
+    }
+    if dict(training) != expected_training:
+        raise ValueError("train.training differs from the frozen relation V2 optimizer route")
+    if int(training.get("required_world_size", -1)) != 1:
+        raise ValueError("relation V2 P100 hosted training requires one process")
+    if int(training.get("required_cuda_devices", -1)) != 1:
+        raise ValueError("relation V2 P100 hosted training requires one CUDA device")
+    if training.get("required_device_name_substring") != "P100":
+        raise ValueError("relation V2 hosted hardware must be a P100")
     if training.get("precision") != "fp16":
-        raise ValueError("matched T4 runs require fp16 neural forward")
-    if int(training.get("per_device_train_batch_size", -1)) != 32:
-        raise ValueError("matched T4 runs freeze per-device train batch size at 32")
+        raise ValueError("relation V2 P100 training requires fp16 neural forward")
+    if int(training.get("per_device_train_batch_size", -1)) != 64:
+        raise ValueError("relation V2 freezes the single-P100 train batch size at 64")
     if int(training.get("gradient_accumulation_steps", -1)) != 1:
-        raise ValueError("matched T4 runs freeze gradient accumulation at one")
+        raise ValueError("relation V2 freezes gradient accumulation at one")
     if int(training.get("train_samples_per_epoch", -1)) != 3072:
         raise ValueError(
-            "matched V2 runs freeze 3,072 uniform-subject replacement draws per epoch"
+            "relation V2 freezes 3,072 uniform-subject replacement draws per epoch"
         )
     if (
         int(training["per_device_train_batch_size"])
@@ -431,10 +690,10 @@ def validate_multires_event_v2_configs(
         * int(training["gradient_accumulation_steps"])
         != 64
     ):
-        raise ValueError("matched V2 runs require effective batch size 64")
+        raise ValueError("relation V2 requires effective batch size 64")
     if int(training.get("per_device_eval_batch_size", -1)) != 32:
         raise ValueError(
-            "matched T4 runs freeze eval batch size at 32; subject macro is row-wise"
+            "relation V2 freezes eval batch size at 32; subject macro is row-wise"
         )
     required_scaler = {
         "grad_scaler_initial_scale": 32.0,
@@ -442,7 +701,7 @@ def validate_multires_event_v2_configs(
         "grad_scaler_backoff_factor": 0.5,
         "grad_scaler_growth_interval": 1_000_000,
         "max_consecutive_scaler_skips": 0,
-        "grad_scaler_overflow_policy": "fail_run_preserve_matched_rows",
+        "grad_scaler_overflow_policy": "fail_run_preserve_rows",
     }
     for key, expected in required_scaler.items():
         observed = training.get(key)
@@ -457,7 +716,24 @@ def validate_multires_event_v2_configs(
     _validate_optimizer_contract(training)
     _validate_run_profile(train, training=training, evaluation=evaluation)
     if training.get("ddp_find_unused_parameters") is not False:
-        raise ValueError("neutral relation parameters must use zero gradients, not DDP unused search")
+        raise ValueError("relation V2 requires every registered relation path to be trainable")
+
+
+def _validate_relation_config(configuration: Mapping[str, Any]) -> None:
+    expected = {
+        "config_dir": EXPECTED_RELATION_CONFIG_DIR,
+        "version": RELATION_CONTRACT_VERSION,
+        "bundle_sha256": EXPECTED_RELATION_BUNDLE_SHA256,
+        "files": dict(EXPECTED_RELATION_FILE_HASHES),
+        "runtime_override": "forbidden",
+        "target_target_edges": 52,
+        "input_target_edges": 39,
+    }
+    if set(configuration) != set(expected):
+        raise ValueError("relation V2 model config keys differ from the frozen contract")
+    for key, value in expected.items():
+        if configuration.get(key) != value:
+            raise ValueError(f"model.relation_contract.{key} differs from relation V2")
 
 
 def _validate_run_profile(
@@ -467,59 +743,32 @@ def _validate_run_profile(
     evaluation: Mapping[str, Any],
 ) -> None:
     run_name = str(train.get("run_name") or "")
-    mode = str(train.get("mode") or "")
-    smoke_name = "t4x2_multires_event_v2_smoke"
-    if run_name == smoke_name:
-        expected = {
-            "mode": "relational",
-            "max_steps": 2,
-            "warmup_steps": 1,
-            "eval_steps": 1,
-            "save_steps": 1,
-            "logging_steps": 1,
-            "resume": False,
-            "max_train_subjects": 16,
-            "free_running_final": False,
-            "output_basename": smoke_name,
-        }
-    else:
-        if mode not in MATCHED_MODES:
-            raise ValueError("formal V2 profile mode is invalid")
-        expected_name = f"t4x2_multires_event_v2_{mode}"
-        if run_name != expected_name:
-            raise ValueError(
-                "formal V2 run_name must exactly identify its declared mode: "
-                f"expected {expected_name!r}"
-            )
-        expected = {
-            "mode": mode,
-            "max_steps": 4000,
-            "warmup_steps": 400,
-            "eval_steps": 250,
-            "save_steps": 500,
-            "initial_checkpoint_step": 2,
-            "logging_steps": 100,
-            "resume": True,
-            "max_train_subjects": None,
-            "free_running_final": True,
-            "output_basename": expected_name,
-        }
-    if mode != expected["mode"]:
-        raise ValueError(f"V2 profile mode must equal {expected['mode']!r}")
+    expected_name = "p100_multires_event_v2_relation_v2"
+    if run_name != expected_name:
+        raise ValueError(f"relation V2 run_name must equal {expected_name!r}")
+    expected = {
+        "max_steps": 4000,
+        "warmup_steps": 400,
+        "eval_steps": 250,
+        "save_steps": 500,
+        "initial_checkpoint_step": 2,
+        "logging_steps": 100,
+        "resume": True,
+        "max_train_subjects": None,
+        "free_running_final": True,
+        "output_basename": expected_name,
+    }
     for key in ("max_steps", "warmup_steps", "eval_steps", "save_steps", "logging_steps"):
         observed = training.get(key)
         if isinstance(observed, bool) or not isinstance(observed, int) or observed != expected[key]:
             raise ValueError(f"training.{key} must equal {expected[key]!r} for {run_name}")
-    if run_name != smoke_name:
-        observed_initial = training.get("initial_checkpoint_step")
-        if (
-            isinstance(observed_initial, bool)
-            or not isinstance(observed_initial, int)
-            or observed_initial != expected["initial_checkpoint_step"]
-        ):
-            raise ValueError(
-                "training.initial_checkpoint_step must equal 2 for the primary run"
-            )
+    observed_initial = training.get("initial_checkpoint_step")
+    if (
+        isinstance(observed_initial, bool)
+        or not isinstance(observed_initial, int)
+        or observed_initial != expected["initial_checkpoint_step"]
+    ):
+        raise ValueError("training.initial_checkpoint_step must equal 2")
     if training.get("resume") is not expected["resume"]:
         raise ValueError(f"training.resume must equal {expected['resume']!r} for {run_name}")
     if training.get("max_train_subjects") != expected["max_train_subjects"]:
@@ -582,28 +831,36 @@ def _validate_optimizer_contract(training: Mapping[str, Any]) -> None:
         raise ValueError("training.weight_decay must be finite and nonnegative")
 
 
-def matched_design_signature(
+def run_contract_signature(
     train: Mapping[str, Any],
     dataset: Mapping[str, Any],
     model: Mapping[str, Any],
 ) -> str:
-    """Hash every matched-run factor except the declared access/bias mode and paths."""
+    """Hash the complete single-model run contract."""
 
-    payload = copy.deepcopy(dict(train))
-    payload.pop("mode", None)
-    payload.pop("run_name", None)
-    payload.pop("outputs", None)
-    return sha256_payload({"train": payload, "dataset": dataset, "model": model})
+    return sha256_payload({"train": train, "dataset": dataset, "model": model})
 
 
-def build_multires_event_v2_model(model: Mapping[str, Any], *, mode: str) -> MultiResolutionEventV2Model:
+def build_multires_event_v2_model(
+    model: Mapping[str, Any],
+    *,
+    relation_contract: MultiresEventV2RelationContract,
+) -> MultiResolutionEventV2Model:
+    if (
+        relation_contract.version != RELATION_CONTRACT_VERSION
+        or relation_contract.bundle_hash != EXPECTED_RELATION_BUNDLE_SHA256
+        or dict(relation_contract.file_hashes) != dict(EXPECTED_RELATION_FILE_HASHES)
+    ):
+        raise ValueError("formal model builder requires the exact relation V2 bundle")
     architecture = dict(_mapping(model.get("architecture"), "model.architecture"))
     architecture.update(
-        mode=mode,
         primitive_head_dims=V2_PRIMITIVE_HEAD_DIMS,
         primitive_feedback_dims=V2_PRIMITIVE_FEEDBACK_DIMS,
     )
-    built = MultiResolutionEventV2Model(MultiResolutionEventV2Config.from_mapping(architecture))
+    built = MultiResolutionEventV2Model(
+        MultiResolutionEventV2Config.from_mapping(architecture),
+        relation_contract,
+    )
     if _is_formal_model_architecture(architecture):
         validate_formal_model_parameter_count(built)
     return built
@@ -613,7 +870,7 @@ def build_multires_event_v2_optimizer(
     model: torch.nn.Module,
     training: Mapping[str, Any],
 ) -> torch.optim.AdamW:
-    """Build the one frozen AdamW implementation used by probe and formal runs."""
+    """Build the one frozen AdamW implementation used by the formal route."""
 
     _validate_optimizer_contract(training)
     parameters = [
@@ -907,13 +1164,20 @@ def _validate_optimizer_health_event(
     probe_after = float(state.get("probe_value_after", math.nan))
     probe_changed = state.get("probe_parameter_changed")
     expected = EXPECTED_OPTIMIZER_CONTRACT
+    expected_local_anchors = int(training["per_device_train_batch_size"])
+    expected_world_size = int(training["required_world_size"])
+    expected_global_anchors = (
+        expected_local_anchors
+        * expected_world_size
+        * int(training["gradient_accumulation_steps"])
+    )
     valid = (
         row.get("event") == "v2_optimizer_health"
         and row.get("optimizer_contract_version") == OPTIMIZER_CONTRACT_VERSION
         and row.get("loss_reduction") == RAW_JOINT_NLL_REDUCTION
-        and int(row.get("local_anchors", -1)) == 32
-        and int(row.get("world_size", -1)) == 2
-        and int(row.get("global_anchors", -1)) == 64
+        and int(row.get("local_anchors", -1)) == expected_local_anchors
+        and int(row.get("world_size", -1)) == expected_world_size
+        and int(row.get("global_anchors", -1)) == expected_global_anchors
         and int(row.get("expected_optimizer_step", -1)) == step
         and float(row.get("observed_optimizer_step_min", math.nan)) == float(step)
         and float(row.get("observed_optimizer_step_max", math.nan)) == float(step)
@@ -1077,13 +1341,37 @@ def validate_formal_target_field_order(
         )
 
 
+def validate_relation_runtime_axes(
+    relation_contract: MultiresEventV2RelationContract,
+    target_contract: MultiresEventV2Contract,
+    templates: Any,
+) -> None:
+    """Bind relation target/history axes to the mounted r9 and V1 registries."""
+
+    relation_contract.assert_target_field_order(target_contract.core_fields)
+    by_id: dict[int, str] = {}
+    for template in templates.by_key.values():
+        field_id = int(template.field_id)
+        field = str(template.field)
+        existing = by_id.get(field_id)
+        if existing is not None and existing != field:
+            raise ValueError(f"V1 template field_id={field_id} has conflicting names")
+        by_id[field_id] = field
+    observed = tuple((field_id, by_id.get(field_id)) for field_id in range(1, 38))
+    expected = tuple((field.field_id, field.field) for field in relation_contract.fields)
+    if observed != expected:
+        raise ValueError(
+            "relation V2 37-field history axis differs from the V1 event-template registry"
+        )
+
+
 def validate_formal_model_parameter_count(model: torch.nn.Module) -> int:
     """Reject any formal model whose total parameterization drifted from the freeze."""
 
     observed = sum(parameter.numel() for parameter in model.parameters())
     if observed != EXPECTED_FORMAL_MODEL_PARAMETER_COUNT:
         raise ValueError(
-            "formal V2 model parameter count differs from the frozen matched design: "
+            "formal V2 model parameter count differs from the frozen relation V2 design: "
             f"{observed:,} != {EXPECTED_FORMAL_MODEL_PARAMETER_COUNT:,}"
         )
     return observed
@@ -1124,6 +1412,20 @@ def build_multires_event_v2_runtime(
     supervision_path = resolve_repo_path(str(dataset["supervision_path"]), root)
     normalization_path = resolve_repo_path(str(dataset["normalization"]["path"]), root)
     _verify_artifact_files(base_root, target_root, supervision_path, dataset)
+    expected_normalization_sha256 = str(
+        dataset["normalization"]["artifact_sha256"]
+    )
+    if not normalization_path.is_file():
+        raise FileNotFoundError(
+            "formal relation V2 requires the frozen input normalization artifact; "
+            f"refusing to refit missing {normalization_path}"
+        )
+    observed_normalization_sha256 = sha256_file(normalization_path)
+    if observed_normalization_sha256 != expected_normalization_sha256:
+        raise ValueError(
+            "formal relation V2 input normalization hash mismatch: "
+            f"{observed_normalization_sha256} != {expected_normalization_sha256}"
+        )
 
     evaluation = _mapping(train.get("evaluation"), "train.evaluation")
     training = _mapping(train.get("training"), "train.training")
@@ -1170,6 +1472,27 @@ def build_multires_event_v2_runtime(
     )
     runtime_model_config = load_yaml_config(runtime_model_path)
     validate_formal_target_field_order(runtime_model_config, contract)
+    relation_configuration = _mapping(
+        runtime_model_config.get("relation_contract"),
+        "model.relation_contract",
+    )
+    _validate_relation_config(relation_configuration)
+    relation_root = resolve_repo_path(
+        str(relation_configuration["config_dir"]),
+        root,
+    )
+    relation_contract = MultiresEventV2RelationContract.from_config_dir(relation_root)
+    if (
+        relation_contract.version != RELATION_CONTRACT_VERSION
+        or relation_contract.bundle_hash != EXPECTED_RELATION_BUNDLE_SHA256
+        or dict(relation_contract.file_hashes) != dict(EXPECTED_RELATION_FILE_HASHES)
+    ):
+        raise ValueError("loaded relation V2 bundle differs from the model contract")
+    validate_relation_runtime_axes(
+        relation_contract,
+        contract,
+        base_runtime.train_dataset.templates,
+    )
     validate_emission_registry_head_contract(contract.emission_registry)
     lab_scale_path = resolve_repo_path(str(train.get("lab_scale_artifact", "")), root)
     lab_scale_metadata = load_lab_scale_artifact(
@@ -1188,13 +1511,13 @@ def build_multires_event_v2_runtime(
         contract=contract,
         expected_lab_scale_artifact_hash=str(train.get("lab_scale_artifact_hash", "")),
     )
-    promotion_contract_path = resolve_repo_path(
-        str(train.get("promotion_metric_contract", "")), root
+    trajectory_metric_contract_path = resolve_repo_path(
+        str(train.get("trajectory_metric_contract", "")), root
     )
-    load_promotion_metric_contract(
-        promotion_contract_path,
-        expected_sha256=str(train.get("promotion_metric_contract_hash", "")),
-        data_contract=contract,
+    load_trajectory_metric_contract(
+        trajectory_metric_contract_path,
+        expected_sha256=str(train.get("trajectory_metric_contract_hash", "")),
+        relation_contract=relation_contract,
     )
     train_dataset = MultiresEventV2Dataset(
         base_runtime.train_dataset,
@@ -1297,7 +1620,11 @@ def build_multires_event_v2_runtime(
         "process_contract_sha256": contract.contract_hashes["process"],
         "emission_contract_sha256": contract.contract_hashes["emission"],
         "projection_contract_sha256": contract.contract_hashes["projection"],
-        "relation_contract_sha256": contract.contract_hashes["relation"],
+        "target_sidecar_relation_contract_sha256": contract.contract_hashes["relation"],
+        "relation_contract_version": relation_contract.version,
+        "relation_contract_sha256": relation_contract.bundle_hash,
+        "relation_contract_bundle_sha256": relation_contract.bundle_hash,
+        "relation_contract_file_sha256": dict(relation_contract.file_hashes),
         "sidecar_schema_sha256": contract.contract_hashes["sidecar_schema"],
         "counts": dict(EXPECTED_COUNTS),
         "phase": phase,
@@ -1317,9 +1644,9 @@ def build_multires_event_v2_runtime(
         "standardized_primitive_scale_sha256": str(
             train["standardized_primitive_scale_artifact_hash"]
         ),
-        "promotion_metric_contract": str(promotion_contract_path),
-        "promotion_metric_contract_sha256": str(
-            train["promotion_metric_contract_hash"]
+        "trajectory_metric_contract": str(trajectory_metric_contract_path),
+        "trajectory_metric_contract_sha256": str(
+            train["trajectory_metric_contract_hash"]
         ),
     }
     return MultiresEventV2Runtime(
@@ -1330,6 +1657,7 @@ def build_multires_event_v2_runtime(
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         contract=contract,
+        relation_contract=relation_contract,
         normalization=base_runtime.normalization,
         identity=identity,
     )
@@ -1356,7 +1684,7 @@ def _evaluation_contract_identity(
         "lab_scale_artifact_sha256",
         "standardized_primitive_scale_sha256",
         "input_normalization_sha256",
-        "promotion_metric_contract_sha256",
+        "trajectory_metric_contract_sha256",
     )
     result = {key: str(identity.get(key) or "") for key in keys}
     missing = [key for key, value in result.items() if not value]
@@ -1403,76 +1731,21 @@ def _evaluation_contract_identity(
             or not _is_sha256(selected_sha)
         ):
             raise ValueError("V2 selected-model identity is incomplete")
-        matched_design = str(identity_hashes.get("matched_design") or "")
-        if not _is_sha256(matched_design):
-            raise ValueError("V2 matched-design identity is not SHA-256")
+        run_contract = str(identity_hashes.get("run_contract") or "")
+        if not _is_sha256(run_contract):
+            raise ValueError("V2 run-contract identity is not SHA-256")
         result.update(
             {
                 "source_tree_sha256": expected_source["source_tree"],
                 "source_identity_sha256": source_sha,
                 "git_commit": expected_source["git_commit"],
                 "git_head_tree": expected_source["git_head_tree"],
-                "matched_design_signature": matched_design,
+                "run_contract_signature": run_contract,
                 "selected_checkpoint_step": selected_step,
                 "selected_checkpoint_model_sha256": selected_sha,
             }
         )
     return result
-
-
-def project_multires_event_v2_capacity_runtime(
-    training: Mapping[str, Any],
-    *,
-    optimizer_step_seconds: tuple[float, ...],
-    teacher_probe_seconds: float,
-    free_running_probe_seconds: float,
-) -> dict[str, Any]:
-    """Conservatively project the complete formal mode from the frozen probe.
-
-    The slower of the two real optimizer steps is extrapolated.  Teacher-forced
-    time includes every 250-step checkpoint evaluation plus the final selected-
-    checkpoint pass; free-running time remains exactly one 6,309-anchor pass.
-    """
-
-    if len(optimizer_step_seconds) != CAPACITY_PROBE_OPTIMIZER_STEPS:
-        raise ValueError("capacity projection requires exactly two optimizer timings")
-    timings = tuple(float(value) for value in optimizer_step_seconds)
-    scalar_timings = (*timings, float(teacher_probe_seconds), float(free_running_probe_seconds))
-    if any(not math.isfinite(value) or value <= 0.0 for value in scalar_timings):
-        raise ValueError("capacity projection timings must be finite and positive")
-    max_steps = int(training.get("max_steps", 0))
-    eval_steps = int(training.get("eval_steps", 0))
-    if max_steps < 1 or eval_steps < 1:
-        raise ValueError("capacity projection requires positive formal max_steps/eval_steps")
-    interval_teacher_passes = math.ceil(max_steps / eval_steps)
-    final_teacher_passes = 1
-    teacher_passes = interval_teacher_passes + final_teacher_passes
-    optimizer_seconds_per_step = max(timings)
-    teacher_seconds_per_anchor = (
-        float(teacher_probe_seconds) / CAPACITY_PROBE_VALIDATION_ANCHORS
-    )
-    free_seconds_per_anchor = (
-        float(free_running_probe_seconds) / CAPACITY_PROBE_VALIDATION_ANCHORS
-    )
-    components = {
-        "optimizer": optimizer_seconds_per_step * max_steps,
-        "teacher_forced": (
-            teacher_seconds_per_anchor * EXPECTED_COUNTS["val"] * teacher_passes
-        ),
-        "free_running": free_seconds_per_anchor * EXPECTED_COUNTS["val"],
-    }
-    return {
-        "formal_max_steps": max_steps,
-        "formal_eval_steps": eval_steps,
-        "interval_teacher_passes": interval_teacher_passes,
-        "final_teacher_passes": final_teacher_passes,
-        "total_teacher_passes": teacher_passes,
-        "optimizer_seconds_per_step": optimizer_seconds_per_step,
-        "teacher_seconds_per_anchor": teacher_seconds_per_anchor,
-        "free_running_seconds_per_anchor": free_seconds_per_anchor,
-        "components_seconds": components,
-        "projected_formal_runtime_seconds": sum(components.values()),
-    }
 
 
 def require_multires_event_v2_training_authorization(
@@ -1494,191 +1767,51 @@ def require_multires_event_v2_training_authorization(
         )
 
 
-def require_multires_event_v2_verification_authorization(
-    train: Mapping[str, Any] | None,
-) -> None:
-    if not VERIFICATION_AUTHORIZED:
-        raise RuntimeError(
-            "V2 verification is source-gated. Reason: "
-            f"{VERIFICATION_AUTHORIZATION_REASON}."
-        )
-    if not isinstance(train, Mapping):
-        raise RuntimeError("V2 verification authorization requires one train config")
-    run_name = str(train.get("run_name") or "")
-    if run_name not in AUTHORIZED_VERIFICATION_RUN_NAMES:
-        raise RuntimeError(
-            f"V2 verification is not authorized for run_name={run_name!r}; "
-            f"authorized={AUTHORIZED_VERIFICATION_RUN_NAMES!r}. Reason: "
-            f"{VERIFICATION_AUTHORIZATION_REASON}."
-        )
-
-
-def _capacity_authorization_from_report(
-    train_config_path: str | Path,
-    train: Mapping[str, Any],
-    report: Mapping[str, Any],
-) -> _CapacityAuthorization:
-    config_path = Path(train_config_path).resolve()
-    report_path = Path(str(report.get("report_path") or "")).resolve()
-    if report.get("status") != "PASSED" or not report_path.is_file():
-        raise RuntimeError("internal capacity authorization requires one persisted PASS report")
-    return _CapacityAuthorization(
-        guard=_CAPACITY_AUTHORIZATION_GUARD,
-        config_path=str(config_path),
-        config_file_sha256=sha256_file(config_path),
-        train_config_sha256=sha256_payload(train),
-        mode=str(train["mode"]),
-        capacity_report_path=str(report_path),
-        capacity_report_sha256=sha256_file(report_path),
-    )
-
-
-def _validate_capacity_authorization(
-    authorization: _CapacityAuthorization | None,
-    *,
-    train_config_path: str | Path,
-    train: Mapping[str, Any],
-) -> None:
-    if str(train.get("run_name")) == "t4x2_multires_event_v2_smoke":
-        return
-    config_path = Path(train_config_path).resolve()
-    if (
-        not isinstance(authorization, _CapacityAuthorization)
-        or authorization.guard is not _CAPACITY_AUTHORIZATION_GUARD
-        or authorization.config_path != str(config_path)
-        or authorization.config_file_sha256 != sha256_file(config_path)
-        or authorization.train_config_sha256 != sha256_payload(train)
-        or authorization.mode != str(train.get("mode"))
-    ):
-        raise RuntimeError(
-            "formal V2 training requires an internal same-process capacity PASS "
-            "authorization bound to this config and mode"
-        )
-    report_path = Path(authorization.capacity_report_path)
-    if (
-        not report_path.is_file()
-        or sha256_file(report_path) != authorization.capacity_report_sha256
-    ):
-        raise RuntimeError("formal V2 capacity authorization report bytes changed")
-
-
-def run_multires_event_v2_capacity_gated_training(
-    train_config_path: str | Path,
-    *,
-    repo_root: str | Path,
-    capacity_output_dir: str | Path,
-    elapsed_before_capacity_seconds: float,
-) -> dict[str, Any]:
-    """Run one attempt-local capacity gate and then one formal mode.
-
-    Both phases live inside the same torchrun process group.  The probe model is
-    destroyed before the formal runner re-seeds and rebuilds the model, so probe
-    RNG consumption and optimizer state cannot alter the matched experiment.
-    """
-
-    train, _, _, _, _ = load_multires_event_v2_configs(
-        train_config_path, repo_root=repo_root
-    )
-    require_multires_event_v2_training_authorization(train)
-    completed = False
-    try:
-        report = run_multires_event_v2_capacity_probe(
-            train_config_path,
-            repo_root=repo_root,
-            output_dir=capacity_output_dir,
-            elapsed_before_capacity_seconds=elapsed_before_capacity_seconds,
-        )
-        if report.get("status") != "PASSED":
-            raise RuntimeError("V2 capacity probe did not authorize formal training")
-        if is_rank_zero():
-            print(
-                "MULTIRES_EVENT_V2_CAPACITY_PROBE_OK "
-                f"mode={report['mode']} path={report['report_path']}",
-                flush=True,
-            )
-            print(
-                "MULTIRES_EVENT_V2_HOSTED_SMOKE_OK "
-                f"mode={report['mode']} optimizer_steps="
-                f"{CAPACITY_PROBE_OPTIMIZER_STEPS} trajectories="
-                f"{CAPACITY_PROBE_VALIDATION_ANCHORS}x"
-                f"{CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR}",
-                flush=True,
-            )
-        result = run_multires_event_v2_training(
-            train_config_path,
-            repo_root=repo_root,
-        )
-        completed = True
-        return result
-    finally:
-        # On failure the worker must exit immediately so torchelastic can kill
-        # a peer blocked in a collective.  A best-effort "graceful" destroy on
-        # the failing rank can itself wait for the peer until the process-group
-        # timeout, which caused the r3 failure to waste an additional 600 s.
-        if (
-            completed
-            and torch.distributed.is_available()
-            and torch.distributed.is_initialized()
-        ):
-            torch.distributed.destroy_process_group()
-
-
 def run_multires_event_v2_rank_artifact_preflight_only(
     *,
     output_dir: str | Path,
-    mode: str,
 ) -> dict[str, Any]:
-    """Run exact distributed artifact paths before Dataset loading.
+    """Run exact single-P100 artifact paths before Dataset loading.
 
     This route accepts no model or data config and performs no Dataset scan. It
-    exercises both rank-local writer/hash/gather and the production
-    best-checkpoint save/load boundary.  The checkpoint canary uses a
+    exercises the rank-local writer/hash path and the production best-checkpoint
+    save/load boundary.  The checkpoint canary uses a
     zero-parameter Identity module; it is an I/O/collective contract check, not
-    a capacity model or optimization attempt.  A hosted attempt can therefore
+    a model or optimization attempt.  A hosted attempt can therefore
     reject deterministic collective-order defects before materializing the
     50,350-anchor runtime.
     """
 
-    if mode not in MATCHED_MODES:
-        raise ValueError("early rank artifact preflight mode is invalid")
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-    if world_size != 2:
+    if world_size != 1 or local_rank != 0:
+        raise RuntimeError("early V2 P100 artifact preflight requires one process")
+    if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
+        raise RuntimeError("early V2 P100 artifact preflight requires one visible GPU")
+    if "P100" not in torch.cuda.get_device_name(0):
         raise RuntimeError(
-            "early V2 rank artifact preflight requires torchrun --nproc_per_node=2"
+            "early V2 hosted preflight requires a P100; observed "
+            f"{torch.cuda.get_device_name(0)!r}"
         )
-    if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
-        raise RuntimeError("early V2 rank artifact preflight requires two visible GPUs")
     output_root = Path(output_dir).resolve()
     if output_root.exists() and any(output_root.iterdir()):
         raise FileExistsError("early rank artifact preflight output is not empty")
     torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
-    if not torch.distributed.is_initialized():
-        torch.distributed.init_process_group(
-            backend="nccl",
-            init_method="env://",
-            timeout=timedelta(
-                seconds=V2_EARLY_CANARY_PROCESS_GROUP_TIMEOUT_SECONDS
-            ),
-            device_id=device,
-        )
     completed = False
     try:
         result = verify_rank_local_artifact_preflight(
             output_dir=output_root,
-            mode=mode,
         )
         if int(result.get("world_size", -1)) != world_size:
             raise RuntimeError("early rank artifact preflight world size changed")
         _run_v2_best_checkpoint_collective_canary(
             output_root=output_root / "best-checkpoint-collective-canary",
-            mode=mode,
             world_size=world_size,
         )
         if is_rank_zero():
             print(
-                "MULTIRES_EVENT_V2_RANK_ARTIFACT_CANARY_OK "
+                "MULTIRES_EVENT_V2_P100_ARTIFACT_CANARY_OK "
                 f"phase=predata world_size={world_size} best_checkpoint=verified "
                 f"sha256={result['manifest_sha256']}",
                 flush=True,
@@ -1686,763 +1819,10 @@ def run_multires_event_v2_rank_artifact_preflight_only(
         completed = True
         return result
     finally:
-        # Match the formal failure policy: do not enter a graceful destroy after
-        # an asymmetric failure because it can hide the original traceback.
+        # Keep the cleanup compatible with the historical distributed helper,
+        # although the active P100 route intentionally has no process group.
         if completed and torch.distributed.is_initialized():
             torch.distributed.destroy_process_group()
-
-
-def run_multires_event_v2_verification_probe(
-    train_config_path: str | Path,
-    *,
-    repo_root: str | Path,
-    output_dir: str | Path,
-    elapsed_before_capacity_seconds: float,
-) -> dict[str, Any]:
-    """Run the full capacity/failure-path probe and stop before formal training."""
-
-    train, _, _, _, _ = load_multires_event_v2_configs(
-        train_config_path,
-        repo_root=repo_root,
-    )
-    require_multires_event_v2_verification_authorization(train)
-    completed = False
-    try:
-        report = run_multires_event_v2_capacity_probe(
-            train_config_path,
-            repo_root=repo_root,
-            output_dir=output_dir,
-            elapsed_before_capacity_seconds=elapsed_before_capacity_seconds,
-            _verification_guard=_VERIFICATION_AUTHORIZATION_GUARD,
-        )
-        if report.get("status") != "PASSED":
-            raise RuntimeError("V2 verification probe did not produce a PASS report")
-        output_root = Path(output_dir).resolve()
-        completion_path = output_root / "verification_complete.json"
-        if is_rank_zero():
-            atomic_write_json(
-                completion_path,
-                {
-                    "schema_version": (
-                        "trauma_predict.multires_event_v2_verification_complete.v1"
-                    ),
-                    "created_at": utc_now(),
-                    "status": "PASSED_STOPPED_BEFORE_FORMAL_TRAINING",
-                    "formal_training_authorized": False,
-                    "formal_optimizer_steps": 0,
-                    "mode": str(train["mode"]),
-                    "run_name": str(train["run_name"]),
-                    "capacity_report_path": str(report["report_path"]),
-                    "capacity_report_sha256": sha256_file(
-                        Path(str(report["report_path"]))
-                    ),
-                },
-            )
-        _barrier()
-        result = {
-            **report,
-            "verification_complete_path": str(completion_path),
-            "verification_complete_sha256": sha256_file(completion_path),
-            "formal_optimizer_steps": 0,
-        }
-        if is_rank_zero():
-            print(
-                "MULTIRES_EVENT_V2_VERIFICATION_ONLY_COMPLETE "
-                f"mode={train['mode']} path={completion_path}",
-                flush=True,
-            )
-        completed = True
-        return result
-    finally:
-        if completed and torch.distributed.is_available() and torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-
-
-def run_multires_event_v2_capacity_probe(
-    train_config_path: str | Path,
-    *,
-    repo_root: str | Path,
-    output_dir: str | Path,
-    elapsed_before_capacity_seconds: float,
-    _verification_guard: object | None = None,
-) -> dict[str, Any]:
-    """Exercise the exact hosted path without writing into the formal run root."""
-
-    root = Path(repo_root).resolve()
-    train, dataset, model_config, _, _ = load_multires_event_v2_configs(
-        train_config_path,
-        repo_root=root,
-    )
-    if _verification_guard is None:
-        require_multires_event_v2_training_authorization(train)
-    else:
-        if _verification_guard is not _VERIFICATION_AUTHORIZATION_GUARD:
-            raise RuntimeError("invalid V2 verification authorization guard")
-        require_multires_event_v2_verification_authorization(train)
-    mode = str(train["mode"])
-    if mode not in MATCHED_MODES or str(train.get("run_name")) == "t4x2_multires_event_v2_smoke":
-        raise ValueError("capacity probe is defined only for a formal matched mode")
-    elapsed_before = float(elapsed_before_capacity_seconds)
-    if not math.isfinite(elapsed_before) or elapsed_before < 0.0:
-        raise ValueError("elapsed_before_capacity_seconds must be finite and nonnegative")
-    probe_root = Path(output_dir).resolve()
-    formal_root = resolve_repo_path(str(train["outputs"]["output_dir"]), root)
-    if _paths_overlap(probe_root, formal_root):
-        raise ValueError("capacity probe output must not overlap the formal run root")
-    if probe_root.exists() and any(probe_root.iterdir()):
-        raise FileExistsError("capacity probe output directory is not empty")
-
-    rank, world_size, local_rank, device = _initialize_v2_distributed(train)
-    probe_started = time.monotonic()
-    _seed_everything(int(train["seed"]), rank)
-    if is_rank_zero():
-        probe_root.mkdir(parents=True, exist_ok=True)
-    _barrier()
-
-    rank_artifact_canary = verify_rank_local_artifact_preflight(
-        output_dir=probe_root / "ddp_rank_artifact_canary",
-        mode=mode,
-    )
-    if is_rank_zero():
-        print(
-            "MULTIRES_EVENT_V2_RANK_ARTIFACT_CANARY_OK "
-            f"world_size={rank_artifact_canary['world_size']} "
-            f"sha256={rank_artifact_canary['manifest_sha256']}",
-            flush=True,
-        )
-
-    runtime = build_multires_event_v2_runtime(
-        train,
-        dataset,
-        repo_root=root,
-        rank=rank,
-        world_size=world_size,
-        phase="final",
-    )
-    validate_formal_target_field_order(model_config, runtime.contract)
-    expected_sample_ids = tuple(
-        str(value)
-        for value in runtime.eval_dataset.sample_ids[:CAPACITY_PROBE_VALIDATION_ANCHORS]
-    )
-    if (
-        len(expected_sample_ids) != CAPACITY_PROBE_VALIDATION_ANCHORS
-        or len(set(expected_sample_ids)) != CAPACITY_PROBE_VALIDATION_ANCHORS
-    ):
-        raise RuntimeError("capacity probe cannot resolve the first 100 persisted val anchors")
-    probe_loader = _capacity_probe_eval_loader(
-        runtime,
-        rank=rank,
-        world_size=world_size,
-    )
-    semantic_canary_loader = _capacity_probe_eval_loader(
-        runtime,
-        rank=rank,
-        world_size=world_size,
-        validation_anchors=CAPACITY_SEMANTIC_CANARY_ANCHORS,
-    )
-
-    torch.cuda.reset_peak_memory_stats(device)
-    model = build_multires_event_v2_model(model_config, mode=mode).to(device)
-    if world_size > 1:
-        model = torch.nn.parallel.DistributedDataParallel(
-            model,
-            device_ids=[local_rank],
-            output_device=local_rank,
-            find_unused_parameters=False,
-            broadcast_buffers=False,
-        )
-    training = _mapping(train["training"], "train.training")
-    promotion_contract = load_promotion_metric_contract(
-        resolve_repo_path(str(train["promotion_metric_contract"]), root),
-        expected_sha256=str(train["promotion_metric_contract_hash"]),
-        data_contract=runtime.contract,
-    )
-
-    semantic_canary_root = probe_root / "ddp_semantic_canary"
-    _barrier()
-    torch.cuda.synchronize(device)
-    semantic_canary_started = time.monotonic()
-    semantic_canary_result = evaluate_free_running_v2(
-        model=model,
-        loader=semantic_canary_loader,
-        contract=runtime.contract,
-        device=device,
-        mode=mode,
-        expected_samples=CAPACITY_SEMANTIC_CANARY_ANCHORS,
-        step=0,
-        output_dir=semantic_canary_root,
-        expected_lab_scale_artifact_hash=str(train["lab_scale_artifact_hash"]),
-        standardized_primitive_scale_path=resolve_repo_path(
-            str(train["standardized_primitive_scale_artifact"]), root
-        ),
-        expected_standardized_primitive_scale_hash=str(
-            train["standardized_primitive_scale_artifact_hash"]
-        ),
-        input_normalization_sha256=str(runtime.identity["input_normalization_sha256"]),
-        promotion_metric_contract=promotion_contract,
-        trajectories_per_anchor=CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR,
-        trajectory_batch_size=CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR,
-        crn_seed=int(train["evaluation"]["free_running_crn_seed"]),
-        metrics_path=None,
-        precision=str(training["precision"]),
-    )
-    torch.cuda.synchronize(device)
-    _barrier()
-    semantic_canary_seconds = _distributed_max_float(
-        time.monotonic() - semantic_canary_started,
-        device,
-    )
-    semantic_coherence = _mapping(
-        semantic_canary_result.get("coherence"),
-        "semantic canary coherence",
-    )
-    semantic_shards = semantic_canary_result.get("shards")
-    if (
-        int(semantic_canary_result.get("anchors", -1))
-        != CAPACITY_SEMANTIC_CANARY_ANCHORS
-        or int(semantic_canary_result.get("trajectories_per_anchor", -1))
-        != CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR
-        or float(semantic_coherence.get("rate", -1.0)) != 1.0
-        or int(semantic_coherence.get("coherent_trajectories", -1))
-        != CAPACITY_SEMANTIC_CANARY_ANCHORS
-        * CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR
-        or not isinstance(semantic_shards, list)
-        or len(semantic_shards) != world_size
-        or sorted(int(row.get("rank", -1)) for row in semantic_shards) != [0, 1]
-        or any(int(row.get("anchors", -1)) != 1 for row in semantic_shards)
-    ):
-        raise RuntimeError("V2 semantic DDP canary did not close the exact 2x100 path")
-    semantic_canary = {
-        "status": "PASSED",
-        "anchors": CAPACITY_SEMANTIC_CANARY_ANCHORS,
-        "trajectories_per_anchor": (
-            CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR
-        ),
-        "world_size": world_size,
-        "wall_seconds": semantic_canary_seconds,
-        "coherence_rate": float(semantic_coherence["rate"]),
-        "manifest_path": str(
-            (semantic_canary_root / str(semantic_canary_result["manifest_path"])).resolve()
-        ),
-        "manifest_sha256": str(semantic_canary_result["manifest_sha256"]),
-    }
-    if is_rank_zero():
-        print(
-            "MULTIRES_EVENT_V2_SEMANTIC_CANARY_OK "
-            f"anchors={semantic_canary['anchors']} "
-            f"trajectories={semantic_canary['trajectories_per_anchor']} "
-            f"elapsed={semantic_canary_seconds:.3f}s",
-            flush=True,
-        )
-
-    optimizer = build_multires_event_v2_optimizer(model, training)
-    scheduler = _build_scheduler(optimizer, training)
-    scaler = _build_grad_scaler(torch, device, training)
-    optimizer_rows = _run_capacity_optimizer_steps(
-        model=model,
-        runtime=runtime,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        scaler=scaler,
-        train=train,
-        device=device,
-        world_size=world_size,
-    )
-
-    checkpoint_canary_root = probe_root / "checkpoint_canary"
-    checkpoint_identity = {
-        "hosted_smoke_identity": sha256_payload(
-            {
-                "dataset_id": runtime.identity["dataset_id"],
-                "contract_bundle_hash": runtime.identity["contract_bundle_hash"],
-                "mode": mode,
-                "optimizer_steps": CAPACITY_PROBE_OPTIMIZER_STEPS,
-            }
-        )
-    }
-    _save_v2_checkpoint(
-        output_dir=checkpoint_canary_root,
-        model=model,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        scaler=scaler,
-        trainer_state={
-            "global_step": CAPACITY_PROBE_OPTIMIZER_STEPS,
-            "epoch": 0,
-            "batches_in_epoch": CAPACITY_PROBE_OPTIMIZER_STEPS,
-            "micro_in_accum": 0,
-            "best_metric": None,
-            "best_step": None,
-            "scaler_skipped_steps": 0,
-        },
-        identity_hashes=checkpoint_identity,
-        runtime=runtime,
-        rank=rank,
-        keep_last=1,
-    )
-    checkpoint_path = (
-        checkpoint_canary_root
-        / "checkpoints"
-        / f"checkpoint-{CAPACITY_PROBE_OPTIMIZER_STEPS:08d}"
-    )
-    checkpoint_manifest = _validate_v2_checkpoint_directory(
-        checkpoint_path,
-        expected_world_size=world_size,
-        expected_step=CAPACITY_PROBE_OPTIMIZER_STEPS,
-    )
-    resume_config = copy.deepcopy(train)
-    resume_config["training"]["resume"] = True
-    resumed_state, _ = _maybe_resume(
-        output_dir=checkpoint_canary_root,
-        model=model,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        scaler=scaler,
-        identity_hashes=checkpoint_identity,
-        device=device,
-        rank=rank,
-        config=resume_config,
-        runtime=runtime,
-    )
-    resume_alignment = _validate_resume_optimizer_alignment(
-        optimizer,
-        scheduler,
-        training,
-        global_step=int(resumed_state["global_step"]),
-    )
-    if int(resumed_state["global_step"]) != CAPACITY_PROBE_OPTIMIZER_STEPS:
-        raise RuntimeError("hosted smoke checkpoint did not restore exact optimizer step two")
-
-    metrics_path = probe_root / "metrics.jsonl"
-    _barrier()
-    torch.cuda.synchronize(device)
-    started = time.monotonic()
-    teacher = evaluate_teacher_forced(
-        model=model,
-        loader=probe_loader,
-        registry=runtime.contract.process_registry,
-        device=device,
-        mode=mode,
-        expected_samples=CAPACITY_PROBE_VALIDATION_ANCHORS,
-        phase="final",
-        step=CAPACITY_PROBE_OPTIMIZER_STEPS,
-        precision=str(training["precision"]),
-        metrics_path=metrics_path,
-        expected_lab_scale_artifact_hash=train.get("lab_scale_artifact_hash"),
-        evaluation_identity=_evaluation_contract_identity(runtime),
-    )
-    torch.cuda.synchronize(device)
-    _barrier()
-    teacher_seconds = _distributed_max_float(time.monotonic() - started, device)
-
-    free_root = probe_root / "free_running"
-    _barrier()
-    torch.cuda.synchronize(device)
-    started = time.monotonic()
-    free_running = evaluate_free_running_v2(
-        model=model,
-        loader=probe_loader,
-        contract=runtime.contract,
-        device=device,
-        mode=mode,
-        expected_samples=CAPACITY_PROBE_VALIDATION_ANCHORS,
-        step=CAPACITY_PROBE_OPTIMIZER_STEPS,
-        output_dir=free_root,
-        expected_lab_scale_artifact_hash=str(train["lab_scale_artifact_hash"]),
-        standardized_primitive_scale_path=resolve_repo_path(
-            str(train["standardized_primitive_scale_artifact"]), root
-        ),
-        expected_standardized_primitive_scale_hash=str(
-            train["standardized_primitive_scale_artifact_hash"]
-        ),
-        input_normalization_sha256=str(runtime.identity["input_normalization_sha256"]),
-        promotion_metric_contract=promotion_contract,
-        trajectories_per_anchor=CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR,
-        trajectory_batch_size=CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR,
-        crn_seed=int(train["evaluation"]["free_running_crn_seed"]),
-        metrics_path=metrics_path,
-        precision=str(training["precision"]),
-    )
-    torch.cuda.synchronize(device)
-    _barrier()
-    free_seconds = _distributed_max_float(time.monotonic() - started, device)
-
-    device_properties = torch.cuda.get_device_properties(device)
-    local_hardware = {
-        "rank": rank,
-        "local_rank": local_rank,
-        "device_name": str(device_properties.name),
-        "compute_capability": [
-            int(device_properties.major),
-            int(device_properties.minor),
-        ],
-        "total_memory_bytes": int(device_properties.total_memory),
-        "peak_allocated_bytes": int(torch.cuda.max_memory_allocated(device)),
-        "peak_reserved_bytes": int(torch.cuda.max_memory_reserved(device)),
-    }
-    hardware = _all_gather_objects(local_hardware)
-    probe_elapsed = _distributed_max_float(time.monotonic() - probe_started, device)
-    projection = project_multires_event_v2_capacity_runtime(
-        training,
-        optimizer_step_seconds=tuple(float(row["wall_seconds"]) for row in optimizer_rows),
-        teacher_probe_seconds=teacher_seconds,
-        free_running_probe_seconds=free_seconds,
-    )
-
-    report: dict[str, Any] | None = None
-    if is_rank_zero():
-        observed_sample_ids = _capacity_free_running_sample_ids(free_root, free_running)
-        structural_metrics = {
-            key: float(_mapping(free_running.get(key), key).get("subject_macro", math.nan))
-            for key in CAPACITY_STRUCTURAL_METRICS
-        }
-        coherence = _mapping(free_running.get("coherence"), "free_running.coherence")
-        projected_background_runtime_seconds = (
-            elapsed_before
-            + probe_elapsed
-            + float(projection["projected_formal_runtime_seconds"])
-        )
-        failures: list[str] = []
-        if len(hardware) != 2 or any(
-            "T4" not in str(row.get("device_name", "")).upper() for row in hardware
-        ):
-            failures.append("capacity probe requires exactly two T4 devices")
-        if len(optimizer_rows) != CAPACITY_PROBE_OPTIMIZER_STEPS or any(
-            int(row.get("global_anchors", -1)) != 64
-            or not math.isfinite(float(row.get("joint_nll_anchor_mean", math.nan)))
-            or row.get("optimizer_updated") is not True
-            for row in optimizer_rows
-        ):
-            failures.append("two exact B32/GPU optimizer updates were not completed")
-        if int(teacher.get("samples", -1)) != CAPACITY_PROBE_VALIDATION_ANCHORS:
-            failures.append("teacher probe did not cover exactly 100 anchors")
-        if (
-            int(free_running.get("anchors", -1)) != CAPACITY_PROBE_VALIDATION_ANCHORS
-            or int(free_running.get("trajectories_per_anchor", -1))
-            != CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR
-        ):
-            failures.append("free-running probe did not preserve the frozen 100x100 contract")
-        if tuple(sorted(observed_sample_ids)) != tuple(sorted(expected_sample_ids)):
-            failures.append("free-running probe did not use the first 100 persisted val anchors")
-        if any(not math.isfinite(value) for value in structural_metrics.values()):
-            failures.append("one or more structural capacity metrics are non-finite")
-        if (
-            float(coherence.get("rate", -1.0)) != 1.0
-            or int(coherence.get("coherent_trajectories", -1))
-            != CAPACITY_PROBE_VALIDATION_ANCHORS
-            * CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR
-        ):
-            failures.append("capacity trajectories are not 100% coherent")
-        if any(
-            int(row["peak_allocated_bytes"]) <= 0
-            or int(row["peak_reserved_bytes"]) > int(row["total_memory_bytes"])
-            for row in hardware
-        ):
-            failures.append("capacity probe GPU memory accounting is invalid")
-        if list(probe_root.rglob("SUCCESS")):
-            failures.append("capacity probe emitted a forbidden formal SUCCESS marker")
-        status = "PASSED" if not failures else "FAILED"
-        report_path = probe_root / "capacity_probe.json"
-        report = {
-            "schema_version": CAPACITY_PROBE_SCHEMA,
-            "created_at": utc_now(),
-            "status": status,
-            "mode": mode,
-            "report_path": str(report_path),
-            "contract": {
-                "optimizer_steps": CAPACITY_PROBE_OPTIMIZER_STEPS,
-                "per_device_train_batch_size": 32,
-                "world_size": 2,
-                "precision": "fp16",
-                "validation_selection": "persisted_val_manifest_prefix",
-                "validation_anchors": CAPACITY_PROBE_VALIDATION_ANCHORS,
-                "trajectories_per_anchor": CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR,
-                "formal_validation_anchors": EXPECTED_COUNTS["val"],
-                "formal_trajectories_per_anchor": 100,
-            },
-            "identity": {
-                "dataset_id": runtime.identity["dataset_id"],
-                "contract_bundle_hash": runtime.identity["contract_bundle_hash"],
-                "relation_contract_sha256": runtime.identity[
-                    "relation_contract_sha256"
-                ],
-                "sidecar_schema_sha256": runtime.identity[
-                    "sidecar_schema_sha256"
-                ],
-                "input_normalization_sha256": runtime.identity[
-                    "input_normalization_sha256"
-                ],
-                "promotion_metric_contract_sha256": train[
-                    "promotion_metric_contract_hash"
-                ],
-                "first_100_sample_ids_sha256": sha256_payload(expected_sample_ids),
-                "first_100_sample_id_set_sha256": sha256_payload(
-                    tuple(sorted(expected_sample_ids))
-                ),
-            },
-            "hardware": hardware,
-            "distributed_canaries": {
-                "rank_artifact": rank_artifact_canary,
-                "semantic_rollout": semantic_canary,
-            },
-            "optimizer": {
-                "optimizer_contract_version": OPTIMIZER_CONTRACT_VERSION,
-                "loss_reduction": RAW_JOINT_NLL_REDUCTION,
-                "gradient_clipping": "disabled",
-                "configured_contract": copy.deepcopy(EXPECTED_OPTIMIZER_CONTRACT),
-                "steps": optimizer_rows,
-                "scaler_skipped_steps": 0,
-            },
-            "checkpoint_resume_canary": {
-                "schema_version": V2_CHECKPOINT_SCHEMA,
-                "checkpoint_path": str(checkpoint_path),
-                "checkpoint_manifest_sha256": sha256_file(
-                    checkpoint_path / "checkpoint_manifest.json"
-                ),
-                "manifest_file_count": len(checkpoint_manifest["files"]),
-                "restored_global_step": int(resumed_state["global_step"]),
-                "resume_alignment": resume_alignment,
-            },
-            "teacher_probe": {
-                "anchors": int(teacher["samples"]),
-                "subjects": int(teacher["subjects"]),
-                "wall_seconds": teacher_seconds,
-                "joint_nll_subject_macro": float(teacher["joint_nll_subject_macro"]),
-            },
-            "free_running_probe": {
-                "anchors": int(free_running["anchors"]),
-                "trajectories_per_anchor": int(
-                    free_running["trajectories_per_anchor"]
-                ),
-                "wall_seconds": free_seconds,
-                "structural_subject_macro": structural_metrics,
-                "coherence_rate": float(coherence["rate"]),
-                "coherent_trajectories": int(coherence["coherent_trajectories"]),
-                "observed_sample_ids_sha256": sha256_payload(
-                    tuple(sorted(observed_sample_ids))
-                ),
-                "selection_verified": tuple(sorted(observed_sample_ids))
-                == tuple(sorted(expected_sample_ids)),
-            },
-            "projection": projection,
-            "runtime_projection": {
-                "policy": CAPACITY_RUNTIME_POLICY,
-                "hard_limit_seconds": None,
-                "gates_capacity_status": False,
-                "elapsed_before_capacity_seconds": elapsed_before,
-                "capacity_probe_elapsed_seconds": probe_elapsed,
-                "projected_formal_runtime_seconds": float(
-                    projection["projected_formal_runtime_seconds"]
-                ),
-                "projected_background_runtime_seconds": (
-                    projected_background_runtime_seconds
-                ),
-            },
-            "failures": failures,
-        }
-        atomic_write_json(report_path, report)
-    report = _broadcast_object(report)
-    if not isinstance(report, Mapping):
-        raise RuntimeError("capacity probe report broadcast failed")
-
-    del (
-        probe_loader,
-        semantic_canary_loader,
-        optimizer,
-        scheduler,
-        scaler,
-        model,
-        runtime,
-    )
-    gc.collect()
-    torch.cuda.empty_cache()
-    _barrier()
-    if report.get("status") != "PASSED":
-        raise RuntimeError(
-            "V2 capacity probe blocked formal training: "
-            + "; ".join(str(value) for value in report.get("failures", ()))
-        )
-    return dict(report)
-
-
-def _capacity_probe_eval_loader(
-    runtime: MultiresEventV2Runtime,
-    *,
-    rank: int,
-    world_size: int,
-    validation_anchors: int = CAPACITY_PROBE_VALIDATION_ANCHORS,
-) -> Any:
-    from torch.utils.data import DataLoader
-
-    if world_size != 2 or rank not in {0, 1}:
-        raise ValueError("capacity probe requires two DDP ranks")
-    validation_anchors = int(validation_anchors)
-    if validation_anchors < world_size or validation_anchors % world_size != 0:
-        raise ValueError("capacity probe anchors must be positive and evenly split")
-    indices = tuple(range(rank, validation_anchors, world_size))
-    if len(indices) != validation_anchors // world_size:
-        raise AssertionError("capacity probe did not split anchors evenly")
-    return DataLoader(
-        runtime.eval_dataset,
-        batch_size=32,
-        sampler=indices,
-        num_workers=0,
-        pin_memory=bool(getattr(runtime.eval_loader, "pin_memory", True)),
-        persistent_workers=False,
-        drop_last=False,
-        collate_fn=runtime.eval_loader.collate_fn,
-    )
-
-
-def _run_capacity_optimizer_steps(
-    *,
-    model: Any,
-    runtime: MultiresEventV2Runtime,
-    optimizer: Any,
-    scheduler: Any,
-    scaler: Any,
-    train: Mapping[str, Any],
-    device: torch.device,
-    world_size: int,
-) -> list[dict[str, Any]]:
-    training = _mapping(train["training"], "train.training")
-    iterator = iter(runtime.train_loader)
-    autocast = _autocast_factory(device, str(training["precision"]))
-    optimizer.zero_grad(set_to_none=True)
-    model.train()
-    rows: list[dict[str, Any]] = []
-    for step in range(1, CAPACITY_PROBE_OPTIMIZER_STEPS + 1):
-        _barrier()
-        torch.cuda.synchronize(device)
-        started = time.monotonic()
-        try:
-            raw_batch = next(iterator)
-        except StopIteration as exc:
-            raise RuntimeError("capacity probe train loader ended before two steps") from exc
-        local_anchors = len(raw_batch.get("sample_id") or ())
-        if local_anchors != 32:
-            raise RuntimeError("capacity probe requires B32 on every rank and optimizer step")
-        batch = move_to_device(raw_batch, device)
-        _, loss_result = exact_teacher_forced_loss(
-            model,
-            batch,
-            runtime.contract.process_registry,
-            mode=str(train["mode"]),
-            expected_lab_scale_artifact_hash=train.get("lab_scale_artifact_hash"),
-            autocast=autocast,
-        )
-        loss = _validated_optimizer_loss(
-            loss_result, expected_local_batch=local_anchors
-        )
-        scaler.scale(loss).backward()
-        scaler.unscale_(optimizer)
-        (
-            optimizer_updated,
-            scale_before,
-            scale_after,
-            gradient_health,
-            optimizer_state_health,
-        ) = _audited_optimizer_step(
-            model,
-            optimizer,
-            scaler,
-            expected_optimizer_step=step,
-        )
-        if not optimizer_updated:
-            raise FloatingPointError(
-                "capacity probe FP16 overflow blocks the matched formal run"
-            )
-        if optimizer_state_health is None:
-            raise AssertionError("successful capacity optimizer step lacks state health")
-        step_health_payload = _optimizer_step_health_payload(
-            optimizer,
-            gradient_health,
-            optimizer_state_health,
-            training=training,
-        )
-        optimizer.zero_grad(set_to_none=True)
-        scheduler.step()
-        torch.cuda.synchronize(device)
-        _barrier()
-        wall_seconds = _distributed_max_float(time.monotonic() - started, device)
-        total_nll, total_anchors = _distributed_sum_count(
-            float(loss_result["per_sample_nll"].detach().sum().cpu().item()),
-            local_anchors,
-            device,
-        )
-        if int(total_anchors) != 32 * world_size:
-            raise RuntimeError("capacity probe global optimizer batch is not exactly 64")
-        rows.append(
-            {
-                "event": "v2_optimizer_health",
-                "step": step,
-                "local_anchors": local_anchors,
-                "world_size": world_size,
-                "global_anchors": int(total_anchors),
-                "wall_seconds": wall_seconds,
-                "joint_nll_anchor_mean": total_nll / total_anchors,
-                **step_health_payload,
-                "scaler_scale_before": scale_before,
-                "scaler_scale_after": scale_after,
-                "optimizer_updated": True,
-            }
-        )
-    return rows
-
-
-def _capacity_free_running_sample_ids(
-    root: Path,
-    result: Mapping[str, Any],
-) -> list[str]:
-    values: list[str] = []
-    shards = result.get("shards")
-    if not isinstance(shards, list) or len(shards) != 2:
-        raise ValueError("capacity free-running result must expose two rank shards")
-    for shard in shards:
-        row = _mapping(shard, "capacity free-running shard")
-        path = root / str(row.get("per_anchor_score_path") or "")
-        if not path.is_file():
-            raise FileNotFoundError(path)
-        with path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                if line.strip():
-                    values.append(str(json.loads(line)["sample_id"]))
-    if len(values) != CAPACITY_PROBE_VALIDATION_ANCHORS or len(set(values)) != len(values):
-        raise RuntimeError("capacity free-running shards do not contain 100 unique anchors")
-    return sorted(values)
-
-
-def _distributed_max_float(value: float, device: torch.device) -> float:
-    tensor = torch.tensor(float(value), dtype=torch.float64, device=device)
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
-        torch.distributed.all_reduce(tensor, op=torch.distributed.ReduceOp.MAX)
-    return float(tensor.item())
-
-
-def _all_gather_objects(value: Any) -> list[Any]:
-    if not (torch.distributed.is_available() and torch.distributed.is_initialized()):
-        return [value]
-    result: list[Any] = [None] * torch.distributed.get_world_size()
-    torch.distributed.all_gather_object(result, value)
-    return result
-
-
-def _broadcast_object(value: Any) -> Any:
-    if not (torch.distributed.is_available() and torch.distributed.is_initialized()):
-        return value
-    payload = [value]
-    torch.distributed.broadcast_object_list(payload, src=0)
-    return payload[0]
-
-
-def _paths_overlap(left: Path, right: Path) -> bool:
-    for candidate, parent in ((left, right), (right, left)):
-        try:
-            candidate.relative_to(parent)
-            return True
-        except ValueError:
-            pass
-    return False
 
 
 def run_multires_event_v2_training(
@@ -2450,7 +1830,7 @@ def run_multires_event_v2_training(
     *,
     repo_root: str | Path,
 ) -> dict[str, Any]:
-    """Run the authorized relational primary, including its formal step-2 checkpoint."""
+    """Run the authorized relation V2 model from a fresh initialization."""
 
     root = Path(repo_root).resolve()
     train, dataset, model_config, dataset_path, model_path = load_multires_event_v2_configs(
@@ -2470,7 +1850,6 @@ def run_multires_event_v2_training(
     )
     _run_v2_best_checkpoint_collective_canary(
         output_root=output_dir / "preflight/best-checkpoint-collective-canary",
-        mode=str(train["mode"]),
         world_size=world_size,
     )
     runtime = build_multires_event_v2_runtime(
@@ -2497,7 +1876,10 @@ def run_multires_event_v2_training(
         else None,
     )
     runtime = _bind_runtime_to_run_artifacts(output_dir, runtime)
-    model = build_multires_event_v2_model(model_config, mode=str(train["mode"])).to(device)
+    model = build_multires_event_v2_model(
+        model_config,
+        relation_contract=runtime.relation_contract,
+    ).to(device)
     source_identity = _source_tree_identity(root)
     identity_hashes = {
         "train_config": sha256_payload(train),
@@ -2511,7 +1893,7 @@ def run_multires_event_v2_training(
         "source_identity": sha256_payload(source_identity),
         "git_commit": str(source_identity.get("git_commit") or "unavailable"),
         "git_head_tree": str(source_identity.get("git_head_tree") or "unavailable"),
-        "matched_design": matched_design_signature(train, dataset, model_config),
+        "run_contract": run_contract_signature(train, dataset, model_config),
     }
     _collect_distributed_phase(
         "formal identity materialization",
@@ -2530,6 +1912,14 @@ def run_multires_event_v2_training(
         )
         if is_rank_zero()
         else None,
+    )
+    _load_or_run_free_running_capacity_probe(
+        output_dir=output_dir,
+        model=model,
+        runtime=runtime,
+        device=device,
+        train=train,
+        identity_hashes=identity_hashes,
     )
     if world_size > 1:
         model = torch.nn.parallel.DistributedDataParallel(
@@ -2591,7 +1981,7 @@ def run_multires_event_v2_training(
         rank=rank,
         world_size=world_size,
     )
-    if isinstance(result.get("hosted_verification_stop_after_step"), int):
+    if isinstance(result.get("hosted_stop_after_step"), int):
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             torch.distributed.destroy_process_group()
         return result
@@ -2620,34 +2010,31 @@ def run_multires_event_v2_training(
         selected_model_identity=selected_model_identity,
     )
     selected_step = int(selected_model_identity["selected_checkpoint_step"])
-    final_evaluation = evaluate_teacher_forced(
+    final_evaluation = _load_or_evaluate_final_teacher(
+        output_dir=output_dir,
         model=model,
-        loader=final_runtime.eval_loader,
-        registry=final_runtime.contract.process_registry,
+        runtime=final_runtime,
         device=device,
-        mode=str(train["mode"]),
-        expected_samples=int(train["evaluation"]["final_expected_samples"]),
-        phase="final",
         step=selected_step,
         precision=str(training["precision"]),
         metrics_path=metrics_path,
-        expected_lab_scale_artifact_hash=train.get("lab_scale_artifact_hash"),
-        per_anchor_output_path=output_dir / "val_per_anchor_joint_nll.jsonl",
+        expected_lab_scale_artifact_hash=str(train["lab_scale_artifact_hash"]),
         evaluation_identity=final_evaluation_identity,
+        expected_samples=int(train["evaluation"]["final_expected_samples"]),
     )
     free_running_evaluation: dict[str, Any] | None = None
     if bool(train["evaluation"]["free_running_final"]):
-        promotion_metric_contract = load_promotion_metric_contract(
-            output_dir / RUN_ARTIFACT_PATHS["promotion_metric_contract"],
-            expected_sha256=str(train["promotion_metric_contract_hash"]),
-            data_contract=final_runtime.contract,
+        trajectory_metric_contract = load_trajectory_metric_contract(
+            output_dir / RUN_ARTIFACT_PATHS["trajectory_metric_contract"],
+            expected_sha256=str(train["trajectory_metric_contract_hash"]),
+            relation_contract=final_runtime.relation_contract,
         )
         free_running_evaluation = evaluate_free_running_v2(
             model=model,
             loader=final_runtime.eval_loader,
             contract=final_runtime.contract,
+            relation_contract=final_runtime.relation_contract,
             device=device,
-            mode=str(train["mode"]),
             expected_samples=int(train["evaluation"]["final_expected_samples"]),
             step=selected_step,
             output_dir=output_dir / "free_running",
@@ -2661,7 +2048,7 @@ def run_multires_event_v2_training(
             input_normalization_sha256=str(
                 final_runtime.identity["input_normalization_sha256"]
             ),
-            promotion_metric_contract=promotion_metric_contract,
+            trajectory_metric_contract=trajectory_metric_contract,
             evaluation_identity=final_evaluation_identity,
             trajectories_per_anchor=int(
                 train["evaluation"]["free_running_trajectories_per_anchor"]
@@ -2672,7 +2059,36 @@ def run_multires_event_v2_training(
             crn_seed=int(train["evaluation"]["free_running_crn_seed"]),
             metrics_path=metrics_path,
             precision=str(training["precision"]),
+            max_new_anchors=_hosted_free_running_max_new_anchors(),
         )
+        if free_running_evaluation.get("status") == "INCOMPLETE":
+            completed = int(free_running_evaluation.get("anchors", -1))
+            expected = int(
+                free_running_evaluation.get("expected_anchors", -1)
+            )
+            new_anchors = int(
+                free_running_evaluation.get("new_anchors_this_invocation", -1)
+            )
+            if (
+                completed < 1
+                or completed >= expected
+                or expected != int(train["evaluation"]["final_expected_samples"])
+                or new_anchors < 1
+            ):
+                raise ValueError("free-running hosted partial result is invalid")
+            print(
+                "MULTIRES_EVENT_V2_FREE_RUNNING_HOSTED_STOP_OK "
+                f"completed={completed} expected={expected} new={new_anchors}",
+                flush=True,
+            )
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                torch.distributed.destroy_process_group()
+            return {
+                **result,
+                "final_evaluation": final_evaluation,
+                "free_running_evaluation": free_running_evaluation,
+                "hosted_free_running_incomplete": True,
+            }
     _collect_distributed_phase(
         "formal final export",
         lambda: _export_run(
@@ -2720,14 +2136,18 @@ def _train_loop(
     expected_local_batch = int(training["per_device_train_batch_size"])
     expected_world_size = int(training["required_world_size"])
     if (
-        expected_local_batch != 32
-        or expected_world_size != 2
+        expected_local_batch != 64
+        or expected_world_size != 1
         or world_size != expected_world_size
+        or accumulation != 1
         or expected_local_batch * expected_world_size * accumulation != 64
     ):
-        raise RuntimeError("formal V2 optimizer loop requires exact B32/rank, world size 2, B64")
+        raise RuntimeError(
+            "formal V2 optimizer loop requires exact single-P100 B64, "
+            "world size 1, accumulation 1"
+        )
     global_step = int(state.get("global_step", 0))
-    verification_stop_step = _hosted_verification_stop_step(
+    hosted_stop_step = _hosted_verification_stop_step(
         starting_global_step=global_step
     )
     epoch = int(state.get("epoch", 0))
@@ -2766,7 +2186,7 @@ def _train_loop(
         batch = move_to_device(raw_batch, device)
         local_anchors = len(raw_batch.get("sample_id") or ())
         if local_anchors != expected_local_batch:
-            raise RuntimeError("formal V2 training requires exactly 32 local anchors per rank")
+            raise RuntimeError("formal V2 training requires exactly 64 local anchors")
         micro_in_accum += 1
         synchronize = micro_in_accum == accumulation
         sync_context = (
@@ -2779,7 +2199,6 @@ def _train_loop(
                 model,
                 batch,
                 runtime.contract.process_registry,
-                mode=str(train["mode"]),
                 expected_lab_scale_artifact_hash=train.get("lab_scale_artifact_hash"),
                 autocast=autocast,
             )
@@ -2827,8 +2246,8 @@ def _train_loop(
                 )
             if consecutive_scaler_skips > int(training["max_consecutive_scaler_skips"]):
                 raise FloatingPointError(
-                    "V2 FP16 gradient overflow invalidates the matched run: retrying "
-                    "would consume a different stochastic row/RNG schedule across modes; "
+                    "V2 FP16 gradient overflow invalidates the formal run: retrying "
+                    "would consume a different stochastic row/RNG schedule; "
                     "no nominal training step was counted"
                 )
             continue
@@ -2880,13 +2299,13 @@ def _train_loop(
                 })
             interval_sum, interval_count = 0.0, 0
 
+        interval_evaluation: dict[str, Any] | None = None
         if global_step % int(training["eval_steps"]) == 0 or global_step == max_steps:
-            evaluation = evaluate_teacher_forced(
+            interval_evaluation = evaluate_teacher_forced(
                 model=model,
                 loader=runtime.eval_loader,
                 registry=runtime.contract.process_registry,
                 device=device,
-                mode=str(train["mode"]),
                 expected_samples=int(train["evaluation"]["interval_expected_samples"]),
                 phase="interval",
                 step=global_step,
@@ -2895,7 +2314,7 @@ def _train_loop(
                 expected_lab_scale_artifact_hash=train.get("lab_scale_artifact_hash"),
                 evaluation_identity=_evaluation_contract_identity(runtime),
             )
-            candidate = float(evaluation["joint_nll_subject_macro"])
+            candidate = float(interval_evaluation["joint_nll_subject_macro"])
             if best_metric is None or candidate < float(best_metric):
                 best_metric, best_step = candidate, global_step
                 _materialize_v2_best_model(
@@ -2916,23 +2335,24 @@ def _train_loop(
                 and not isinstance(initial_checkpoint_step, bool)
                 and global_step == initial_checkpoint_step
             )
-            or global_step == verification_stop_step
+            or global_step == hosted_stop_step
         ):
+            checkpoint_trainer_state = {
+                "global_step": global_step,
+                "epoch": epoch,
+                "batches_in_epoch": batches_in_epoch,
+                "micro_in_accum": micro_in_accum,
+                "best_metric": best_metric,
+                "best_step": best_step,
+                "scaler_skipped_steps": scaler_skipped_steps,
+            }
             _save_v2_checkpoint(
                 output_dir=output_dir,
                 model=model,
                 optimizer=optimizer,
                 scheduler=scheduler,
                 scaler=scaler,
-                trainer_state={
-                    "global_step": global_step,
-                    "epoch": epoch,
-                    "batches_in_epoch": batches_in_epoch,
-                    "micro_in_accum": micro_in_accum,
-                    "best_metric": best_metric,
-                    "best_step": best_step,
-                    "scaler_skipped_steps": scaler_skipped_steps,
-                },
+                trainer_state=checkpoint_trainer_state,
                 identity_hashes=identity_hashes,
                 runtime=runtime,
                 rank=rank,
@@ -2945,7 +2365,7 @@ def _train_loop(
                     "schema_version": "trauma_predict.multires_event_v2_formal_step2_readiness.v1",
                     "status": "PASSED",
                     "created_at": utc_now(),
-                    "mode": str(train["mode"]),
+                    "model_contract": "relation_v2",
                     "run_name": str(train["run_name"]),
                     "global_step": global_step,
                     "checkpoint": str(checkpoint.relative_to(output_dir)),
@@ -2953,71 +2373,53 @@ def _train_loop(
                     "model_parameter_count": EXPECTED_FORMAL_MODEL_PARAMETER_COUNT,
                     "target_dataset_id": EXPECTED_TARGET_DATASET_ID,
                     "contract_bundle_hash": EXPECTED_CONTRACT_BUNDLE_HASH,
+                    "relation_contract_sha256": EXPECTED_RELATION_BUNDLE_SHA256,
                     "identity_hashes": dict(identity_hashes),
                 }
                 atomic_write_json(output_dir / "formal_step2_readiness.json", readiness)
                 print(
                     "MULTIRES_EVENT_V2_FORMAL_STEP2_CHECKPOINT_OK "
-                    f"mode={train['mode']} parameters={EXPECTED_FORMAL_MODEL_PARAMETER_COUNT} "
+                    f"model_contract=relation_v2 parameters={EXPECTED_FORMAL_MODEL_PARAMETER_COUNT} "
                     f"path={checkpoint}",
                     flush=True,
                 )
-            if global_step == 3 and verification_stop_step == 3 and is_rank_zero():
-                checkpoint = output_dir / "checkpoints/checkpoint-00000003"
-                manifest_path = checkpoint / "checkpoint_manifest.json"
-                atomic_write_json(
-                    output_dir / "formal_resume_step3_readiness.json",
-                    {
-                        "schema_version": (
-                            "trauma_predict.multires_event_v2_formal_resume_step3_readiness.v1"
-                        ),
-                        "status": "PASSED",
-                        "created_at": utc_now(),
-                        "mode": str(train["mode"]),
-                        "run_name": str(train["run_name"]),
-                        "restored_from_step": 2,
-                        "global_step": 3,
-                        "checkpoint": str(checkpoint.relative_to(output_dir)),
-                        "checkpoint_manifest_sha256": sha256_file(manifest_path),
-                        "model_parameter_count": EXPECTED_FORMAL_MODEL_PARAMETER_COUNT,
-                        "target_dataset_id": EXPECTED_TARGET_DATASET_ID,
-                        "contract_bundle_hash": EXPECTED_CONTRACT_BUNDLE_HASH,
-                        "identity_hashes": dict(identity_hashes),
-                    },
+            if global_step == initial_checkpoint_step:
+                _reopen_v2_checkpoint_in_place(
+                    output_dir=output_dir,
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    scaler=scaler,
+                    runtime=runtime,
+                    device=device,
+                    rank=rank,
+                    expected_trainer_state=checkpoint_trainer_state,
+                    expected_identity_hashes=identity_hashes,
+                    training=training,
                 )
-                print(
-                    "MULTIRES_EVENT_V2_FORMAL_RESUME_STEP3_CHECKPOINT_OK "
-                    f"mode={train['mode']} parameters={EXPECTED_FORMAL_MODEL_PARAMETER_COUNT} "
-                    f"path={checkpoint}",
-                    flush=True,
+            if hosted_stop_step is not None and global_step == hosted_stop_step:
+                readiness = _materialize_hosted_stop_readiness(
+                    output_dir=output_dir,
+                    model=model,
+                    device=device,
+                    identity_hashes=identity_hashes,
+                    stop_step=global_step,
+                    best_step=best_step,
+                    interval_evaluation=interval_evaluation,
                 )
-            if verification_stop_step is not None and global_step == verification_stop_step:
-                _collect_distributed_phase(
-                    f"formal hosted-verification step-{global_step} close",
-                    lambda: (
-                        _validate_formal_step2_readiness(
-                            output_dir,
-                            expected_step=global_step,
-                            expected_mode=str(train["mode"]),
-                        )
-                        if global_step == 2
-                        else _validate_formal_resume_step3_readiness(
-                            output_dir,
-                            expected_mode=str(train["mode"]),
-                        )
-                    )
-                    if is_rank_zero()
-                    else None,
-                )
-                return {
+                stopped = {
                     "global_step": global_step,
                     "epochs_started": epoch + 1,
                     "best_metric": best_metric,
                     "best_step": best_step,
                     "max_steps": max_steps,
                     "scaler_skipped_steps": scaler_skipped_steps,
-                    "hosted_verification_stop_after_step": global_step,
+                    "hosted_stop_after_step": global_step,
+                    "hosted_stop_readiness": readiness,
                 }
+                if global_step == 2:
+                    stopped["hosted_verification_stop_after_step"] = global_step
+                return stopped
     return {
         "global_step": global_step,
         "epochs_started": epoch + 1,
@@ -3025,6 +2427,258 @@ def _train_loop(
         "best_step": best_step,
         "max_steps": max_steps,
         "scaler_skipped_steps": scaler_skipped_steps,
+    }
+
+
+def _load_or_run_free_running_capacity_probe(
+    *,
+    output_dir: Path,
+    model: Any,
+    runtime: MultiresEventV2Runtime,
+    device: torch.device,
+    train: Mapping[str, Any],
+    identity_hashes: Mapping[str, str],
+) -> dict[str, Any]:
+    """Prove the production 100-trajectory path before creating AdamW state."""
+
+    evidence_path = output_dir / "formal_free_running_capacity_probe.json"
+    expected_device_name = torch.cuda.get_device_name(device)
+    if evidence_path.is_symlink():
+        raise ValueError("formal capacity evidence cannot be a symlink")
+    if evidence_path.is_file():
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        if (
+            evidence.get("schema_version")
+            != "trauma_predict.multires_event_v2_free_running_capacity_probe.v1"
+            or evidence.get("status") != "PASSED"
+            or evidence.get("identity_hashes") != dict(identity_hashes)
+            or int(evidence.get("model_parameter_count", -1))
+            != EXPECTED_FORMAL_MODEL_PARAMETER_COUNT
+            or evidence.get("device_name") != expected_device_name
+            or int(evidence.get("trajectories_per_anchor", -1)) != 100
+            or int(evidence.get("trajectory_batch_size", -1)) != 100
+            or int(evidence.get("encode_calls", -1)) != 1
+            or evidence.get("parameter_state_unchanged") is not True
+            or evidence.get("parameter_state_sha256_before")
+            != evidence.get("parameter_state_sha256_after")
+        ):
+            raise ValueError("formal free-running capacity evidence is invalid")
+        print(
+            "MULTIRES_EVENT_V2_FREE_RUNNING_CAPACITY_REUSED "
+            f"sample_id={evidence['sample_id']} device={expected_device_name}",
+            flush=True,
+        )
+        return evidence
+
+    checkpoint_root = output_dir / "checkpoints"
+    if checkpoint_root.is_dir() and any(checkpoint_root.glob("checkpoint-*")):
+        raise FileNotFoundError(
+            "resumed training lacks the pre-optimizer free-running capacity evidence"
+        )
+    try:
+        validation_batch = next(iter(runtime.eval_loader))
+    except StopIteration as exc:  # pragma: no cover - frozen val set is nonempty
+        raise RuntimeError("formal capacity probe found no validation batch") from exc
+    evaluation = _mapping(train.get("evaluation"), "train.evaluation")
+    probe = probe_free_running_v2_capacity(
+        model=model,
+        validation_batch=validation_batch,
+        contract=runtime.contract,
+        device=device,
+        expected_lab_scale_artifact_hash=str(train["lab_scale_artifact_hash"]),
+        crn_seed=int(evaluation["free_running_crn_seed"]),
+        precision=str(train["training"]["precision"]),
+        trajectories_per_anchor=int(
+            evaluation["free_running_trajectories_per_anchor"]
+        ),
+        trajectory_batch_size=int(
+            evaluation["free_running_trajectory_batch_size"]
+        ),
+    )
+    evidence = {
+        **probe,
+        "created_at": utc_now(),
+        "device_name": expected_device_name,
+        "model_parameter_count": EXPECTED_FORMAL_MODEL_PARAMETER_COUNT,
+        "identity_hashes": dict(identity_hashes),
+    }
+    atomic_write_json(evidence_path, evidence)
+    persisted = json.loads(evidence_path.read_text(encoding="utf-8"))
+    if persisted != evidence:
+        raise RuntimeError("formal capacity evidence persistence failed")
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+    print(
+        "MULTIRES_EVENT_V2_FREE_RUNNING_CAPACITY_OK "
+        f"sample_id={evidence['sample_id']} device={expected_device_name} "
+        f"peak_allocated={evidence['cuda_memory']['peak_allocated_bytes']}",
+        flush=True,
+    )
+    return evidence
+
+
+def _load_or_evaluate_final_teacher(
+    *,
+    output_dir: Path,
+    model: Any,
+    runtime: MultiresEventV2Runtime,
+    device: torch.device,
+    step: int,
+    precision: str,
+    metrics_path: Path,
+    expected_lab_scale_artifact_hash: str,
+    evaluation_identity: Mapping[str, Any],
+    expected_samples: int,
+) -> dict[str, Any]:
+    """Persist final teacher evaluation before the resumable free-running phase."""
+
+    cache_dir = output_dir / "teacher_forced_final"
+    cache_path = cache_dir / "evaluation_cache.json"
+    rows_path = output_dir / "val_per_anchor_joint_nll.jsonl"
+    expected_sample_ids = tuple(str(item) for item in runtime.eval_dataset.sample_ids)
+    if len(expected_sample_ids) != expected_samples:
+        raise ValueError("final teacher runtime does not expose the frozen validation set")
+
+    if cache_path.is_symlink():
+        raise ValueError("final teacher cache cannot be a symlink")
+    if cache_path.is_file():
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        evaluation = cache.get("evaluation")
+        if (
+            cache.get("schema_version") != FINAL_TEACHER_CACHE_SCHEMA
+            or cache.get("status") != "COMPLETE"
+            or cache.get("per_anchor_path") != "val_per_anchor_joint_nll.jsonl"
+            or not isinstance(evaluation, Mapping)
+            or evaluation.get("phase") != "final"
+            or int(evaluation.get("step", -1)) != step
+            or int(evaluation.get("samples", -1)) != expected_samples
+            or evaluation.get("identity") != dict(evaluation_identity)
+        ):
+            raise ValueError("final teacher cache contract is invalid")
+        row_evidence = _validate_final_teacher_rows(
+            rows_path,
+            expected_sample_ids=expected_sample_ids,
+            step=step,
+            evaluation_identity=evaluation_identity,
+        )
+        if (
+            cache.get("per_anchor_sha256") != row_evidence["sha256"]
+            or cache.get("sample_ids_sha256")
+            != row_evidence["sample_ids_sha256"]
+            or int(cache.get("row_count", -1)) != expected_samples
+        ):
+            raise ValueError("final teacher cache rows differ from their frozen evidence")
+        reused = dict(evaluation)
+        reused["per_anchor_output_path"] = str(rows_path)
+        reused["per_anchor_output_sha256"] = row_evidence["sha256"]
+        append_jsonl(
+            metrics_path,
+            {
+                "event": "v2_final_evaluation_reused",
+                "created_at": utc_now(),
+                "step": step,
+                "samples": expected_samples,
+                "cache_sha256": sha256_file(cache_path),
+            },
+        )
+        print(
+            "MULTIRES_EVENT_V2_FINAL_TEACHER_REUSED "
+            f"step={step} samples={expected_samples} sha256={row_evidence['sha256']}",
+            flush=True,
+        )
+        return reused
+
+    if rows_path.exists():
+        if rows_path.is_symlink() or not rows_path.is_file():
+            raise ValueError("incomplete final teacher rows are not a regular file")
+        incomplete_dir = cache_dir / "incomplete"
+        incomplete_dir.mkdir(parents=True, exist_ok=True)
+        rows_path.replace(
+            incomplete_dir
+            / f"val_per_anchor_joint_nll-{utc_now().replace(':', '-')}.jsonl"
+        )
+
+    evaluation = evaluate_teacher_forced(
+        model=model,
+        loader=runtime.eval_loader,
+        registry=runtime.contract.process_registry,
+        device=device,
+        expected_samples=expected_samples,
+        phase="final",
+        step=step,
+        precision=precision,
+        metrics_path=metrics_path,
+        expected_lab_scale_artifact_hash=expected_lab_scale_artifact_hash,
+        per_anchor_output_path=rows_path,
+        evaluation_identity=evaluation_identity,
+    )
+    row_evidence = _validate_final_teacher_rows(
+        rows_path,
+        expected_sample_ids=expected_sample_ids,
+        step=step,
+        evaluation_identity=evaluation_identity,
+    )
+    portable_evaluation = dict(evaluation)
+    portable_evaluation["per_anchor_output_path"] = "val_per_anchor_joint_nll.jsonl"
+    portable_evaluation["per_anchor_output_sha256"] = row_evidence["sha256"]
+    cache = {
+        "schema_version": FINAL_TEACHER_CACHE_SCHEMA,
+        "status": "COMPLETE",
+        "created_at": utc_now(),
+        "evaluation": portable_evaluation,
+        "per_anchor_path": "val_per_anchor_joint_nll.jsonl",
+        "per_anchor_sha256": row_evidence["sha256"],
+        "row_count": row_evidence["row_count"],
+        "sample_ids_sha256": row_evidence["sample_ids_sha256"],
+    }
+    atomic_write_json(cache_path, cache)
+    if sha256_file(cache_path) == "":  # pragma: no cover - defensive filesystem guard
+        raise RuntimeError("final teacher cache hash is empty")
+    return evaluation
+
+
+def _validate_final_teacher_rows(
+    path: Path,
+    *,
+    expected_sample_ids: Sequence[str],
+    step: int,
+    evaluation_identity: Mapping[str, Any],
+) -> dict[str, Any]:
+    if path.is_symlink() or not path.is_file():
+        raise FileNotFoundError("final teacher per-anchor rows are absent")
+    rows: list[Mapping[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, raw in enumerate(handle, start=1):
+            if not raw.strip():
+                raise ValueError(f"blank final teacher row at line {line_number}")
+            row = json.loads(raw)
+            if not isinstance(row, Mapping):
+                raise ValueError("final teacher row must be an object")
+            if (
+                not str(row.get("sample_id") or "")
+                or not str(row.get("subject_id") or "")
+                or int(row.get("step", -1)) != step
+                or int(row.get("primitive_factors", -1)) != 414
+                or row.get("model_contract") != "relation_v2"
+                or row.get("identity") != dict(evaluation_identity)
+            ):
+                raise ValueError("final teacher row identity is invalid")
+            try:
+                nll = float(row.get("joint_nll"))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("final teacher row NLL is invalid") from exc
+            if not math.isfinite(nll):
+                raise ValueError("final teacher row NLL is non-finite")
+            rows.append(row)
+    sample_ids = tuple(str(row["sample_id"]) for row in rows)
+    if len(sample_ids) != len(set(sample_ids)):
+        raise ValueError("final teacher cache contains duplicate sample IDs")
+    if set(sample_ids) != set(str(item) for item in expected_sample_ids):
+        raise ValueError("final teacher cache does not match the persisted validation anchors")
+    return {
+        "row_count": len(rows),
+        "sha256": sha256_file(path),
+        "sample_ids_sha256": sha256_payload(sorted(sample_ids)),
     }
 
 
@@ -3039,38 +2693,169 @@ def _verification_stop_after_formal_step2_requested() -> bool:
     return value == "1"
 
 
-def _verification_stop_after_resume_step3_requested() -> bool:
-    value = os.environ.get(
-        "TRAUMA_PREDICT_V2_HOSTED_VERIFY_STOP_AFTER_RESUME_STEP3", "0"
+def _hosted_free_running_max_new_anchors() -> int | None:
+    raw = os.environ.get(
+        "TRAUMA_PREDICT_V2_FREE_RUNNING_MAX_NEW_ANCHORS", "0"
     ).strip()
-    if value not in {"0", "1"}:
+    try:
+        value = int(raw or "0")
+    except ValueError as exc:
         raise ValueError(
-            "TRAUMA_PREDICT_V2_HOSTED_VERIFY_STOP_AFTER_RESUME_STEP3 must be 0 or 1"
+            "TRAUMA_PREDICT_V2_FREE_RUNNING_MAX_NEW_ANCHORS must be an integer"
+        ) from exc
+    if value < 0:
+        raise ValueError(
+            "TRAUMA_PREDICT_V2_FREE_RUNNING_MAX_NEW_ANCHORS cannot be negative"
         )
-    return value == "1"
+    return value or None
 
 
 def _hosted_verification_stop_step(*, starting_global_step: int) -> int | None:
     stop_at_2 = _verification_stop_after_formal_step2_requested()
-    stop_at_3 = _verification_stop_after_resume_step3_requested()
-    if stop_at_2 and stop_at_3:
-        raise ValueError("hosted verification stop modes are mutually exclusive")
+    raw_stop_step = os.environ.get("TRAUMA_PREDICT_V2_HOSTED_STOP_STEP", "0").strip()
+    try:
+        requested_step = int(raw_stop_step or "0")
+    except ValueError as exc:
+        raise ValueError(
+            "TRAUMA_PREDICT_V2_HOSTED_STOP_STEP must be an integer"
+        ) from exc
+    if requested_step not in {0, *AUTHORIZED_HOSTED_STOP_STEPS}:
+        raise ValueError(
+            "TRAUMA_PREDICT_V2_HOSTED_STOP_STEP must be 0 or one of "
+            f"{AUTHORIZED_HOSTED_STOP_STEPS}"
+        )
     if stop_at_2:
-        if starting_global_step != 0:
-            raise ValueError("formal step-2 verification must start from optimizer step 0")
-        return 2
-    if stop_at_3:
-        if starting_global_step != 2:
-            raise ValueError("resume step-3 verification must restore optimizer step 2")
-        return 3
-    return None
+        if requested_step not in {0, 2}:
+            raise ValueError(
+                "formal step-2 verification conflicts with the hosted stop step"
+            )
+        requested_step = 2
+    if requested_step == 0:
+        return None
+    if requested_step <= starting_global_step:
+        raise ValueError(
+            "hosted stop step must be strictly greater than the restored optimizer step"
+        )
+    return requested_step
+
+
+def _materialize_hosted_stop_readiness(
+    *,
+    output_dir: Path,
+    model: Any,
+    device: torch.device,
+    identity_hashes: Mapping[str, str],
+    stop_step: int,
+    best_step: Any,
+    interval_evaluation: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Verify and persist one atomic hosted training-stage boundary."""
+
+    if stop_step not in AUTHORIZED_HOSTED_STOP_STEPS:
+        raise ValueError("hosted readiness received an unauthorized stop step")
+    checkpoint = output_dir / "checkpoints" / f"checkpoint-{stop_step:08d}"
+    manifest_path = checkpoint / "checkpoint_manifest.json"
+    manifest = _validate_v2_checkpoint_directory(
+        checkpoint,
+        expected_world_size=1,
+        expected_step=stop_step,
+    )
+    checkpoint_model_sha256 = str(manifest["sha256"]["model.pt"])
+    if stop_step == 2:
+        _validate_formal_step2_readiness(output_dir, expected_step=stop_step)
+        if best_step is not None or interval_evaluation is not None:
+            raise ValueError("formal step-2 stop cannot contain evaluation selection state")
+        best_model_sha256: str | None = None
+    else:
+        if (
+            isinstance(best_step, bool)
+            or not isinstance(best_step, int)
+            or best_step < 1
+            or best_step > stop_step
+        ):
+            raise ValueError("hosted post-evaluation stop requires a valid best step")
+        if (
+            not isinstance(interval_evaluation, Mapping)
+            or interval_evaluation.get("phase") != "interval"
+            or int(interval_evaluation.get("step", -1)) != stop_step
+            or int(interval_evaluation.get("samples", -1)) != EXPECTED_COUNTS["val"]
+        ):
+            raise ValueError(
+                "hosted post-evaluation stop requires the complete 6,309-anchor interval result"
+            )
+        if stop_step == 250 and best_step != 250:
+            raise ValueError("the first full validation must select the step-250 model")
+        if stop_step == 250:
+            selected = _load_v2_best_model(
+                output_dir,
+                model,
+                device,
+                expected_identity_hashes=identity_hashes,
+                expected_best_step=best_step,
+            )
+            best_model_sha256 = str(
+                selected["selected_checkpoint_model_sha256"]
+            )
+        else:
+            pointer_path = output_dir / "best_checkpoint.json"
+            if pointer_path.is_symlink() or not pointer_path.is_file():
+                raise FileNotFoundError("hosted stop lacks a best-checkpoint pointer")
+            pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+            best_path = output_dir / "best_checkpoint/model.pt"
+            best_model_sha256 = str(pointer.get("model_sha256") or "")
+            if (
+                pointer.get("schema_version") != BEST_CHECKPOINT_SCHEMA
+                or pointer.get("step") != best_step
+                or pointer.get("identity_hashes") != dict(identity_hashes)
+                or not _is_sha256(best_model_sha256)
+                or best_path.is_symlink()
+                or not best_path.is_file()
+                or sha256_file(best_path) != best_model_sha256
+            ):
+                raise ValueError("hosted stop best-checkpoint identity is invalid")
+    readiness = {
+        "schema_version": HOSTED_STOP_READINESS_SCHEMA,
+        "status": "PASSED",
+        "created_at": utc_now(),
+        "run_name": "p100_multires_event_v2_relation_v2",
+        "model_contract": "relation_v2",
+        "stop_step": stop_step,
+        "global_step": stop_step,
+        "model_parameter_count": EXPECTED_FORMAL_MODEL_PARAMETER_COUNT,
+        "checkpoint": str(checkpoint.relative_to(output_dir)),
+        "checkpoint_manifest_sha256": sha256_file(manifest_path),
+        "checkpoint_model_sha256": checkpoint_model_sha256,
+        "best_step": best_step,
+        "best_model_sha256": best_model_sha256,
+        "identity_hashes": dict(identity_hashes),
+        "interval_evaluation": (
+            dict(interval_evaluation) if interval_evaluation is not None else None
+        ),
+    }
+    stable_path = output_dir / "formal_hosted_stop_readiness.json"
+    history_path = output_dir / "hosted_stages" / f"step-{stop_step:08d}.json"
+    atomic_write_json(stable_path, readiness)
+    atomic_write_json(history_path, readiness)
+    persisted = json.loads(stable_path.read_text(encoding="utf-8"))
+    if persisted != readiness or sha256_file(stable_path) != sha256_file(history_path):
+        raise RuntimeError("hosted stop readiness persistence failed")
+    marker = (
+        "MULTIRES_EVENT_V2_FORMAL_STEP250_OK"
+        if stop_step == 250
+        else "MULTIRES_EVENT_V2_HOSTED_STOP_OK"
+    )
+    print(
+        f"{marker} step={stop_step} checkpoint_model_sha256={checkpoint_model_sha256} "
+        f"best_model_sha256={best_model_sha256}",
+        flush=True,
+    )
+    return readiness
 
 
 def _validate_formal_step2_readiness(
     output_dir: Path,
     *,
     expected_step: int,
-    expected_mode: str,
 ) -> dict[str, Any]:
     readiness_path = output_dir / "formal_step2_readiness.json"
     if readiness_path.is_symlink() or not readiness_path.is_file():
@@ -3080,20 +2865,22 @@ def _validate_formal_step2_readiness(
     manifest_path = checkpoint / "checkpoint_manifest.json"
     manifest = _validate_v2_checkpoint_directory(
         checkpoint,
-        expected_world_size=2,
+        expected_world_size=1,
         expected_step=expected_step,
     )
     if (
         readiness.get("schema_version")
         != "trauma_predict.multires_event_v2_formal_step2_readiness.v1"
         or readiness.get("status") != "PASSED"
-        or readiness.get("mode") != expected_mode
-        or readiness.get("run_name") != "t4x2_multires_event_v2_relational"
+        or readiness.get("model_contract") != "relation_v2"
+        or readiness.get("run_name") != "p100_multires_event_v2_relation_v2"
         or int(readiness.get("global_step", -1)) != expected_step
         or int(readiness.get("model_parameter_count", -1))
         != EXPECTED_FORMAL_MODEL_PARAMETER_COUNT
         or readiness.get("target_dataset_id") != EXPECTED_TARGET_DATASET_ID
         or readiness.get("contract_bundle_hash") != EXPECTED_CONTRACT_BUNDLE_HASH
+        or readiness.get("relation_contract_sha256")
+        != EXPECTED_RELATION_BUNDLE_SHA256
         or readiness.get("checkpoint_manifest_sha256") != sha256_file(manifest_path)
         or readiness.get("identity_hashes") != manifest.get("identity_hashes")
     ):
@@ -3101,39 +2888,89 @@ def _validate_formal_step2_readiness(
     return readiness
 
 
-def _validate_formal_resume_step3_readiness(
-    output_dir: Path,
+def _reopen_v2_checkpoint_in_place(
     *,
-    expected_mode: str,
-) -> dict[str, Any]:
-    readiness_path = output_dir / "formal_resume_step3_readiness.json"
-    if readiness_path.is_symlink() or not readiness_path.is_file():
-        raise FileNotFoundError("formal resume step-3 readiness evidence is absent")
-    readiness = json.loads(readiness_path.read_text(encoding="utf-8"))
-    checkpoint = output_dir / str(readiness.get("checkpoint") or "")
-    manifest_path = checkpoint / "checkpoint_manifest.json"
+    output_dir: Path,
+    model: Any,
+    optimizer: Any,
+    scheduler: Any,
+    scaler: Any,
+    runtime: MultiresEventV2Runtime,
+    device: torch.device,
+    rank: int,
+    expected_trainer_state: Mapping[str, Any],
+    expected_identity_hashes: Mapping[str, str],
+    training: Mapping[str, Any],
+) -> None:
+    """Load the step-2 checkpoint immediately and prove every resume payload."""
+
+    expected_step = int(expected_trainer_state["global_step"])
+    checkpoint = output_dir / "checkpoints" / f"checkpoint-{expected_step:08d}"
     manifest = _validate_v2_checkpoint_directory(
         checkpoint,
-        expected_world_size=2,
-        expected_step=3,
+        expected_world_size=1,
+        expected_step=expected_step,
+    )
+    persisted_identity = json.loads(
+        (checkpoint / "identity_hashes.json").read_text(encoding="utf-8")
     )
     if (
-        readiness.get("schema_version")
-        != "trauma_predict.multires_event_v2_formal_resume_step3_readiness.v1"
-        or readiness.get("status") != "PASSED"
-        or readiness.get("mode") != expected_mode
-        or readiness.get("run_name") != "t4x2_multires_event_v2_relational"
-        or int(readiness.get("restored_from_step", -1)) != 2
-        or int(readiness.get("global_step", -1)) != 3
-        or int(readiness.get("model_parameter_count", -1))
-        != EXPECTED_FORMAL_MODEL_PARAMETER_COUNT
-        or readiness.get("target_dataset_id") != EXPECTED_TARGET_DATASET_ID
-        or readiness.get("contract_bundle_hash") != EXPECTED_CONTRACT_BUNDLE_HASH
-        or readiness.get("checkpoint_manifest_sha256") != sha256_file(manifest_path)
-        or readiness.get("identity_hashes") != manifest.get("identity_hashes")
+        persisted_identity != dict(expected_identity_hashes)
+        or manifest.get("identity_hashes") != dict(expected_identity_hashes)
     ):
-        raise ValueError("formal resume step-3 evidence does not bind its checkpoint")
-    return readiness
+        raise RuntimeError("formal step-2 checkpoint identity cannot be reopened")
+    _unwrapped_model(model).load_state_dict(
+        _torch_load(checkpoint / "model.pt", map_location=device, weights_only=True),
+        strict=True,
+    )
+    optimizer.load_state_dict(
+        _torch_load(
+            checkpoint / "optimizer.pt", map_location=device, weights_only=True
+        )
+    )
+    scheduler.load_state_dict(
+        _torch_load(
+            checkpoint / "scheduler.pt", map_location=device, weights_only=True
+        )
+    )
+    scaler.load_state_dict(
+        _torch_load(checkpoint / "scaler.pt", map_location=device, weights_only=True)
+    )
+    trainer_state = json.loads(
+        (checkpoint / "trainer_state.json").read_text(encoding="utf-8")
+    )
+    if trainer_state != dict(expected_trainer_state):
+        raise RuntimeError("formal step-2 trainer state changed during reopen")
+    sampler_state = _torch_load(
+        checkpoint / f"sampler-rank-{rank:04d}.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
+    if sampler_state is not None:
+        if not hasattr(runtime.train_sampler, "load_state_dict"):
+            raise RuntimeError("formal step-2 sampler state cannot be reopened")
+        runtime.train_sampler.load_state_dict(sampler_state)
+    rng_state = _torch_load(
+        checkpoint / f"rng-rank-{rank:04d}.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
+    if not isinstance(rng_state, Mapping):
+        raise ValueError("formal step-2 RNG state cannot be reopened")
+    _restore_rng_state(rng_state)
+    _validate_resume_optimizer_alignment(
+        optimizer,
+        scheduler,
+        training,
+        global_step=expected_step,
+    )
+    _validate_formal_step2_readiness(output_dir, expected_step=expected_step)
+    print(
+        "MULTIRES_EVENT_V2_FORMAL_STEP2_REOPEN_OK "
+        f"step={expected_step} checkpoint_manifest_sha256="
+        f"{sha256_file(checkpoint / 'checkpoint_manifest.json')}",
+        flush=True,
+    )
 
 
 def _save_v2_checkpoint(
@@ -3788,6 +3625,13 @@ def _initialize_v2_distributed(
             f"V2 matched run requires {required_devices} visible CUDA devices; "
             f"found {torch.cuda.device_count()}"
         )
+    required_name = str(training["required_device_name_substring"])
+    observed_name = torch.cuda.get_device_name(local_rank)
+    if required_name not in observed_name:
+        raise RuntimeError(
+            f"V2 requires CUDA device containing {required_name!r}; "
+            f"observed {observed_name!r}"
+        )
     torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
     if world_size > 1 and not torch.distributed.is_initialized():
@@ -3855,14 +3699,20 @@ def _runtime_environment_artifact(
     """Capture diagnostics while hashing only path/time-independent runtime facts."""
 
     required_devices = int(train["training"]["required_cuda_devices"])
-    if world_size != 2 or required_devices != 2:
-        raise ValueError("formal V2 runtime identity requires world_size=2 and two devices")
+    required_name = str(train["training"]["required_device_name_substring"])
+    if world_size != 1 or required_devices != 1:
+        raise ValueError("formal V2 runtime identity requires one P100 process/device")
     if not torch.cuda.is_available() or torch.cuda.device_count() < required_devices:
-        raise RuntimeError("formal V2 runtime identity requires two visible CUDA devices")
+        raise RuntimeError("formal V2 runtime identity requires one visible CUDA device")
     devices: list[dict[str, Any]] = []
     diagnostic_devices: list[dict[str, Any]] = []
     for index in range(required_devices):
         properties = torch.cuda.get_device_properties(index)
+        if required_name not in str(properties.name):
+            raise RuntimeError(
+                f"formal V2 runtime requires device containing {required_name!r}; "
+                f"observed {str(properties.name)!r}"
+            )
         semantic_device = {
             "name": str(properties.name),
             "compute_capability": [
@@ -3948,12 +3798,24 @@ def _materialize_run_artifacts(
         "standardized_primitive_scale": resolve_repo_path(
             str(train["standardized_primitive_scale_artifact"]), repo_root
         ),
-        "promotion_metric_contract": resolve_repo_path(
-            str(train["promotion_metric_contract"]), repo_root
+        "trajectory_metric_contract": resolve_repo_path(
+            str(train["trajectory_metric_contract"]), repo_root
         ),
         "train_config": train_path,
         "dataset_config": dataset_path,
         "model_config": model_path,
+        "relation_field_registry": (
+            runtime.relation_contract.config_dir / "field_category_matrix_v1.csv"
+        ),
+        "relation_target_target": (
+            runtime.relation_contract.config_dir / "target_target_relation_edges_v2.csv"
+        ),
+        "relation_input_target": (
+            runtime.relation_contract.config_dir / "input_target_relation_edges_v2.csv"
+        ),
+        "relation_evidence_registry": (
+            runtime.relation_contract.config_dir / "relation_evidence_registry_v2.json"
+        ),
     }
     entries: dict[str, Any] = {}
     for name, source in sources.items():
@@ -3993,9 +3855,20 @@ def _materialize_run_artifacts(
     entries["standardized_primitive_scale"]["semantic_sha256"] = str(
         runtime.identity["standardized_primitive_scale_sha256"]
     )
-    entries["promotion_metric_contract"]["semantic_sha256"] = str(
-        runtime.identity["promotion_metric_contract_sha256"]
+    entries["trajectory_metric_contract"]["semantic_sha256"] = str(
+        runtime.identity["trajectory_metric_contract_sha256"]
     )
+    relation_entry_files = {
+        "relation_field_registry": "field_category_matrix_v1.csv",
+        "relation_target_target": "target_target_relation_edges_v2.csv",
+        "relation_input_target": "input_target_relation_edges_v2.csv",
+        "relation_evidence_registry": "relation_evidence_registry_v2.json",
+    }
+    for entry_name, filename in relation_entry_files.items():
+        expected = runtime.relation_contract.file_hashes[filename]
+        if entries[entry_name]["file_sha256"] != expected:
+            raise ValueError(f"copied relation V2 artifact differs for {filename}")
+        entries[entry_name]["semantic_sha256"] = expected
     payload = {
         "schema_version": "trauma_predict.multires_event_v2_run_artifacts.v1",
         "artifacts": entries,
@@ -4046,13 +3919,22 @@ def _bind_runtime_to_run_artifacts(
         "standardized_primitive_scale": str(
             identity["standardized_primitive_scale_sha256"]
         ),
-        "promotion_metric_contract": str(
-            identity["promotion_metric_contract_sha256"]
+        "trajectory_metric_contract": str(
+            identity["trajectory_metric_contract_sha256"]
         ),
     }
     for name, expected in semantic_checks.items():
         if entries[name].get("semantic_sha256") != expected:
             raise ValueError(f"V2 portable artifact semantic identity mismatch for {name}")
+    portable_relation_contract = MultiresEventV2RelationContract.from_config_dir(
+        output_dir / "artifacts/relation_contract"
+    )
+    if (
+        portable_relation_contract.bundle_hash != runtime.relation_contract.bundle_hash
+        or dict(portable_relation_contract.file_hashes)
+        != dict(runtime.relation_contract.file_hashes)
+    ):
+        raise ValueError("V2 portable relation bundle differs from the runtime contract")
     runtime_environment_path = output_dir / RUN_ARTIFACT_PATHS["runtime_environment"]
     runtime_environment = json.loads(runtime_environment_path.read_text(encoding="utf-8"))
     semantic_runtime_identity = runtime_environment.get("semantic_runtime_identity")
@@ -4082,11 +3964,11 @@ def _bind_runtime_to_run_artifacts(
             "standardized_primitive_scale_artifact_file_sha256": entries[
                 "standardized_primitive_scale"
             ]["file_sha256"],
-            "promotion_metric_contract": RUN_ARTIFACT_PATHS[
-                "promotion_metric_contract"
+            "trajectory_metric_contract": RUN_ARTIFACT_PATHS[
+                "trajectory_metric_contract"
             ],
-            "promotion_metric_contract_file_sha256": entries[
-                "promotion_metric_contract"
+            "trajectory_metric_contract_file_sha256": entries[
+                "trajectory_metric_contract"
             ]["file_sha256"],
             "runtime_environment_artifact": RUN_ARTIFACT_PATHS[
                 "runtime_environment"
@@ -4095,9 +3977,16 @@ def _bind_runtime_to_run_artifacts(
                 "runtime_environment"
             ]["file_sha256"],
             "semantic_runtime_identity_sha256": semantic_runtime_sha,
+            "relation_contract_artifact_dir": "artifacts/relation_contract",
+            "relation_contract_bundle_sha256": portable_relation_contract.bundle_hash,
+            "relation_contract_file_sha256": dict(portable_relation_contract.file_hashes),
         }
     )
-    return replace(runtime, identity=identity)
+    return replace(
+        runtime,
+        identity=identity,
+        relation_contract=portable_relation_contract,
+    )
 
 
 def _completed_training_result(
@@ -4203,7 +4092,6 @@ def _materialize_v2_best_model(
 def _run_v2_best_checkpoint_collective_canary(
     *,
     output_root: Path,
-    mode: str,
     world_size: int,
 ) -> dict[str, Any]:
     """Exercise the production best-checkpoint save/load order before data loading."""
@@ -4212,7 +4100,7 @@ def _run_v2_best_checkpoint_collective_canary(
         "canary": sha256_payload(
             {
                 "schema": "multires_event_v2_best_checkpoint_collective_canary_v1",
-                "mode": mode,
+                "model_contract": "relation_v2",
                 "world_size": world_size,
             }
         )
@@ -4366,11 +4254,14 @@ def _write_identity(
         "process_contract": runtime.contract.process_registry,
         "contract_bundle_hash": runtime.contract.contract_bundle_hash,
         "contract_hashes": dict(runtime.contract.contract_hashes),
+        "relation_contract_version": runtime.relation_contract.version,
+        "relation_contract_bundle_sha256": runtime.relation_contract.bundle_hash,
+        "relation_contract_file_sha256": dict(runtime.relation_contract.file_hashes),
     })
     atomic_write_json(output_dir / "model_identity.json", {
-        "mode": train["mode"],
+        "model_contract": "relation_v2",
         "parameter_count": int(parameter_count),
-        "matched_design_signature": identity_hashes["matched_design"],
+        "run_contract_signature": identity_hashes["run_contract"],
         "initialization": "from_scratch",
         "text_backbone": None,
         "tokenizer": None,
@@ -4432,7 +4323,7 @@ def _export_run(
         "source_identity_sha256",
         "git_commit",
         "git_head_tree",
-        "matched_design_signature",
+        "run_contract_signature",
         "selected_checkpoint_step",
         "selected_checkpoint_model_sha256",
     )
@@ -4463,7 +4354,7 @@ def _export_run(
     atomic_write_json(model_manifest_path, {
         "schema_version": "trauma_predict.multires_event_v2_model_manifest.v1",
         "created_at": utc_now(),
-        "mode": train["mode"],
+        "model_contract": "relation_v2",
         "model_file": "final_model/model.pt",
         "model_sha256": copied_model_sha,
         "selected_checkpoint_step": selected_step,
@@ -4536,7 +4427,7 @@ def _export_run(
         "status": "SUCCEEDED",
         "route": ROUTE,
         "run_name": train["run_name"],
-        "mode": train["mode"],
+        "model_contract": "relation_v2",
         "training": dict(training),
         "evaluation": portable_evaluation,
         "free_running_evaluation": free_running_pointer,
@@ -4654,13 +4545,14 @@ def _normalization_identity(normalization: Any) -> dict[str, Any]:
 
 
 def _source_tree_identity(repo_root: Path) -> dict[str, Any]:
-    """Hash the executable source bytes independently of Git cleanliness."""
+    """Hash every executable byte and require a clean Git or release identity."""
 
     candidates = list((repo_root / "src/trauma_predict").rglob("*.py"))
     candidates.extend(
         repo_root / relative
         for relative in (
-            "notebooks/kaggle/train_relational_primary.py",
+            "notebooks/kaggle/train_relation_v2_p100.py",
+            "notebooks/kaggle/run_relation_v2_p100_bundle.py",
             "requirements-multires-kaggle.txt",
             "pyproject.toml",
         )
@@ -4704,6 +4596,14 @@ def _source_tree_identity(repo_root: Path) -> dict[str, Any]:
         ):
             raise ValueError("SOURCE_RELEASE.json does not bind the executable source tree")
         release_identity = candidate
+    if status is not None and status != "":
+        raise RuntimeError(
+            "formal relation V2 training requires a clean committed source tree"
+        )
+    if status is None and release_identity is None:
+        raise RuntimeError(
+            "formal relation V2 training outside Git requires a valid SOURCE_RELEASE.json"
+        )
     return {
         "schema_version": "trauma_predict.multires_event_v2_source_identity.v1",
         "git_commit": (
@@ -4770,19 +4670,22 @@ def _mapping(value: Any, label: str) -> Mapping[str, Any]:
     return value
 
 
+def _require_exact_keys(
+    value: Mapping[str, Any],
+    expected: set[str],
+    label: str,
+) -> None:
+    observed = {str(key) for key in value}
+    if observed != expected:
+        raise ValueError(
+            f"{label} keys differ from strict relation V2: "
+            f"missing={sorted(expected - observed)}, extra={sorted(observed - expected)}"
+        )
+
+
 __all__ = [
-    "CAPACITY_PROBE_OPTIMIZER_STEPS",
-    "CAPACITY_PROBE_SCHEMA",
-    "CAPACITY_PROBE_TRAJECTORIES_PER_ANCHOR",
-    "CAPACITY_PROBE_VALIDATION_ANCHORS",
-    "CAPACITY_SEMANTIC_CANARY_ANCHORS",
-    "CAPACITY_SEMANTIC_CANARY_TRAJECTORIES_PER_ANCHOR",
-    "CAPACITY_RUNTIME_POLICY",
-    "CAPACITY_STRUCTURAL_METRICS",
     "AUTHORIZED_TRAINING_RUN_NAMES",
-    "AUTHORIZED_VERIFICATION_RUN_NAMES",
     "EXPECTED_OPTIMIZER_CONTRACT",
-    "MATCHED_MODES",
     "EXPECTED_FORMAL_MODEL_PARAMETER_COUNT",
     "MultiresEventV2Runtime",
     "OPTIMIZER_CONTRACT_VERSION",
@@ -4791,8 +4694,6 @@ __all__ = [
     "ROUTE",
     "TRAINING_AUTHORIZED",
     "TRAINING_AUTHORIZATION_REASON",
-    "VERIFICATION_AUTHORIZED",
-    "VERIFICATION_AUTHORIZATION_REASON",
     "V2_DISTRIBUTED_TIMEOUT_SECONDS",
     "V2_EARLY_CANARY_PROCESS_GROUP_TIMEOUT_SECONDS",
     "V2_NCCL_MONITOR_HEARTBEAT_TIMEOUT_SECONDS",
@@ -4801,19 +4702,14 @@ __all__ = [
     "build_multires_event_v2_runtime",
     "load_multires_event_v2_configs",
     "load_lab_scale_artifact",
-    "matched_design_signature",
-    "project_multires_event_v2_capacity_runtime",
+    "run_contract_signature",
     "raw_414_factor_joint_nll_batch_mean",
     "require_multires_event_v2_training_authorization",
-    "run_multires_event_v2_capacity_gated_training",
-    "run_multires_event_v2_capacity_probe",
     "run_multires_event_v2_rank_artifact_preflight_only",
     "run_multires_event_v2_training",
-    "run_multires_event_v2_verification_probe",
     "validate_formal_model_parameter_count",
     "validate_formal_target_field_order",
     "validate_multires_event_v2_configs",
     "validate_optimizer_health_summary",
-    "require_multires_event_v2_verification_authorization",
     "summarize_optimizer_health_metrics",
 ]

@@ -418,7 +418,10 @@ class MultiresEventV2Contract:
         if len(structural_edges) != 21 or len(
             {edge.edge_id for edge in structural_edges}
         ) != 21:
-            raise ValueError("V2 promotion relation cover must contain 21 canonical lag-0 edges")
+            raise ValueError(
+                "historical full_r9 embedded relation registry must contain "
+                "21 canonical lag-0 edges"
+            )
         if not set(self.dense_abnormal_conditions).issubset(self.dense_fields):
             raise ValueError("dense abnormal condition map references a non-dense field")
 

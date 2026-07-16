@@ -9,8 +9,8 @@ from typing import Any, Mapping, Sequence
 
 import torch
 
-from trauma_predict.data.multires_event_v2 import CoreRelationEdge, MultiresEventV2Contract
-from trauma_predict.eval.multires_event_v2_promotion_contract import (
+from trauma_predict.data.multires_event_v2 import MultiresEventV2Contract, RegisteredRelationEdge
+from trauma_predict.eval.multires_event_v2_metric_contract import (
     marginal_encoding_partitions,
 )
 from trauma_predict.modeling.multires_event_v2.emissions import dense_abnormal_class_masks
@@ -738,13 +738,13 @@ def score_standardized_primitive_ensemble(
     sample_phi: torch.Tensor,
     truth_phi: torch.Tensor,
     schema: Sequence[PrimitiveVectorCoordinate],
-    relation_edges: Sequence[CoreRelationEdge],
-    promotion_contract: Mapping[str, Any],
+    relation_edges: Sequence[RegisteredRelationEdge],
+    metric_contract: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Score joint, temporal, relational, and marginal properties of phi(T).
 
-    Promotion endpoints are field balanced.  The 21 cross-field relation rows
-    remain canonical registry rows: undirected edges are not expanded twice.
+    Reported endpoints are field balanced. The 23 same-block cross-field rows
+    come directly from relation contract V2.
     """
 
     if sample_phi.ndim != 3 or sample_phi.shape[1] != 6:
@@ -752,28 +752,28 @@ def score_standardized_primitive_ensemble(
     if truth_phi.shape != sample_phi.shape[1:]:
         raise ValueError("truth phi(T) must be [6,D]")
     if sample_phi.shape[0] != int(
-        promotion_contract["ancestral_ensemble"]["trajectories_per_anchor"]
+        metric_contract["ancestral_ensemble"]["trajectories_per_anchor"]
     ):
-        raise ValueError("promotion phi score requires exactly 100 trajectories")
+        raise ValueError("trajectory metric contract requires exactly 100 trajectories")
     block_rows = tuple(row for row in schema if row.block_index == 0)
     if len(block_rows) != sample_phi.shape[2]:
-        raise ValueError("promotion phi schema dimension does not match sampled vectors")
+        raise ValueError("trajectory metric schema dimension does not match sampled vectors")
     expected_dimension = int(
-        promotion_contract["standardized_primitive_vector"]["coordinates_per_block"]
+        metric_contract["standardized_primitive_vector"]["coordinates_per_block"]
     )
     if len(block_rows) != expected_dimension:
-        raise ValueError("promotion phi schema must contain exactly 160 coordinates per block")
+        raise ValueError("trajectory metric schema requires 160 coordinates per block")
     field_indices: dict[str, list[int]] = {}
     for coordinate_index, row in enumerate(block_rows):
         field_indices.setdefault(row.field, []).append(coordinate_index)
     if len(field_indices) != int(
-        promotion_contract["standardized_primitive_vector"]["fields"]
+        metric_contract["standardized_primitive_vector"]["fields"]
     ):
-        raise ValueError("promotion phi schema must cover exactly 29 fields")
+        raise ValueError("trajectory metric schema must cover exactly 29 fields")
 
     energy = empirical_energy_score(sample_phi.flatten(1), truth_phi.flatten())
     order = float(
-        promotion_contract["standardized_primitive_vector"]["variogram_order"]
+        metric_contract["standardized_primitive_vector"]["variogram_order"]
     )
     observed = (truth_phi[1:] - truth_phi[:-1]).abs().pow(order)
     forecast = (sample_phi[:, 1:] - sample_phi[:, :-1]).abs().pow(order).mean(dim=0)
@@ -788,20 +788,21 @@ def score_standardized_primitive_ensemble(
     structural_edges = tuple(
         edge
         for edge in relation_edges
-        if edge.lag_blocks == 0 and edge.source_field != edge.target_field
+        if edge.time_scope == "same_future_block_registered_order"
+        and edge.source_field != edge.target_field
     )
-    expected_edges = int(promotion_contract["relation_edge_cover"]["expected_edges"])
+    expected_edges = int(metric_contract["relation_edge_cover"]["expected_edges"])
     if len(structural_edges) != expected_edges or len(
         {edge.edge_id for edge in structural_edges}
     ) != expected_edges:
-        raise ValueError("promotion relation score requires 21 canonical lag-0 core edges")
+        raise ValueError("relation V2 score requires 23 registered same-block cross edges")
     edge_scores: dict[str, float] = {}
     edge_types: dict[str, list[float]] = {}
     for edge in structural_edges:
         source_indices = field_indices.get(edge.source_field)
         target_indices = field_indices.get(edge.target_field)
         if not source_indices or not target_indices:
-            raise ValueError(f"promotion relation edge lacks phi coordinates: {edge.edge_id}")
+            raise ValueError(f"relation V2 edge lacks phi coordinates: {edge.edge_id}")
         truth_source = truth_phi[:, source_indices]
         truth_target = truth_phi[:, target_indices]
         sample_source = sample_phi[:, :, source_indices]
@@ -822,7 +823,7 @@ def score_standardized_primitive_ensemble(
     }
 
     coordinate_crps = empirical_coordinate_crps(sample_phi, truth_phi)
-    partitions = marginal_encoding_partitions(promotion_contract)
+    partitions = marginal_encoding_partitions(metric_contract)
     marginal_scores: dict[str, float] = {}
     marginal_field_scores: dict[str, dict[str, float]] = {}
     for partition_name, encodings in partitions.items():
@@ -830,13 +831,13 @@ def score_standardized_primitive_ensemble(
             index for index, row in enumerate(block_rows) if row.encoding in encodings
         ]
         expected_coordinates = int(
-            promotion_contract["marginal_partitions"][partition_name][
+            metric_contract["marginal_partitions"][partition_name][
                 "expected_coordinates_per_block"
             ]
         )
         if len(partition_indices) != expected_coordinates:
             raise ValueError(
-                f"promotion marginal partition {partition_name!r} has "
+                f"trajectory marginal partition {partition_name!r} has "
                 f"{len(partition_indices)} coordinates, expected {expected_coordinates}"
             )
         by_field: dict[str, float] = {}
@@ -846,7 +847,7 @@ def score_standardized_primitive_ensemble(
             if selected:
                 by_field[field] = float(coordinate_crps[:, selected].mean().item())
         if not by_field:
-            raise ValueError(f"promotion marginal partition {partition_name!r} is empty")
+            raise ValueError(f"trajectory marginal partition {partition_name!r} is empty")
         marginal_field_scores[partition_name] = by_field
         marginal_scores[partition_name] = sum(by_field.values()) / len(by_field)
     return {

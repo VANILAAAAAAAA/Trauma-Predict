@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .config import TrajectoryMode, resolve_mode
 from .field_state import FieldStateContextEmbedding
-from .relation_bias import TypedRelationBias
+from .relation_bias import RegisteredRelationBias
+
+
+TARGET_SCOPE_SAME_BLOCK = 0
+TARGET_SCOPE_ADJACENT_BLOCKS = 1
+INPUT_SCOPE_LATEST_TO_FIRST = 0
+INPUT_SCOPE_ALL_TO_EACH = 1
 
 
 @dataclass
@@ -25,12 +31,11 @@ class FieldStateTrajectoryLayerCache:
 class FieldStateTrajectoryCache:
     """Inference-only cache for exact block-major incremental decoding."""
 
-    mode: TrajectoryMode
     flat_queries: torch.Tensor
     memory_attention_bias: torch.Tensor
     layers: list[FieldStateTrajectoryLayerCache]
-    relation_adjacency: torch.Tensor | None
-    relation_type_lags: torch.Tensor | None
+    target_relation_adjacency: torch.Tensor
+    target_time_scope_ids: torch.Tensor
     position: int = 0
     awaiting_feedback: bool = False
 
@@ -41,11 +46,7 @@ def _project_query(
 ) -> torch.Tensor:
     hidden_size = attention.embed_dim
     weight = attention.in_proj_weight[:hidden_size]
-    bias = (
-        None
-        if attention.in_proj_bias is None
-        else attention.in_proj_bias[:hidden_size]
-    )
+    bias = None if attention.in_proj_bias is None else attention.in_proj_bias[:hidden_size]
     return F.linear(value, weight, bias)
 
 
@@ -105,25 +106,22 @@ def _projected_attention(
     return attention.out_proj(merged)
 
 
-def build_target_access_mask(
-    mode: TrajectoryMode,
+def build_joint_target_access_mask(
     block_count: int,
     field_count: int,
     *,
     device: torch.device | None = None,
 ) -> torch.Tensor:
-    """Return ``[query, key]`` truth access in registered block/field order."""
+    """Return the frozen joint causal contract in block-major field order."""
 
-    resolved = resolve_mode(mode, mode)
     positions = torch.arange(block_count * field_count, device=device)
     query_block = positions.div(field_count, rounding_mode="floor").view(-1, 1)
     query_field = positions.remainder(field_count).view(-1, 1)
     key_block = query_block.transpose(0, 1)
     key_field = query_field.transpose(0, 1)
-    same_block_earlier_field = key_block.eq(query_block) & key_field.lt(query_field)
-    if resolved == "block":
-        return same_block_earlier_field
-    return key_block.lt(query_block) | same_block_earlier_field
+    return key_block.lt(query_block) | (
+        key_block.eq(query_block) & key_field.lt(query_field)
+    )
 
 
 class FieldStateTrajectoryLayer(nn.Module):
@@ -160,7 +158,7 @@ class FieldStateTrajectoryLayer(nn.Module):
         target_context: torch.Tensor,
         target_attention_bias: torch.Tensor,
         memory: torch.Tensor,
-        memory_mask: torch.Tensor,
+        memory_attention_bias: torch.Tensor,
     ) -> torch.Tensor:
         attended, _ = self.target_attention(
             self.query_norm(hidden),
@@ -174,7 +172,7 @@ class FieldStateTrajectoryLayer(nn.Module):
             self.memory_query_norm(hidden),
             self.memory_norm(memory),
             self.memory_norm(memory),
-            key_padding_mask=~memory_mask.bool(),
+            attn_mask=memory_attention_bias,
             need_weights=False,
         )
         hidden = hidden + attended_memory
@@ -182,7 +180,7 @@ class FieldStateTrajectoryLayer(nn.Module):
 
 
 class FieldStateTrajectoryDecoder(nn.Module):
-    """Decode field states under an explicit target-state access contract."""
+    """Decode one joint trajectory with both registered relation paths active."""
 
     def __init__(
         self,
@@ -192,18 +190,45 @@ class FieldStateTrajectoryDecoder(nn.Module):
         dropout: float,
         block_count: int,
         field_count: int,
-        relation_type_count: int,
+        input_field_count: int,
+        target_parameter_keys: Sequence[str],
+        input_parameter_keys: Sequence[str],
+        target_input_field_ids: Sequence[int],
     ) -> None:
         super().__init__()
         self.hidden_size = int(hidden_size)
         self.num_heads = int(num_heads)
         self.block_count = int(block_count)
         self.field_count = int(field_count)
+        self.input_field_count = int(input_field_count)
         self.target_count = self.block_count * self.field_count
         self.context_embedding = FieldStateContextEmbedding(hidden_size, dropout)
         self.target_bos = nn.Parameter(torch.empty(hidden_size))
         nn.init.normal_(self.target_bos, std=0.02)
-        self.relation_bias = TypedRelationBias(relation_type_count, num_heads)
+        self.target_relation_bias = RegisteredRelationBias(
+            target_parameter_keys,
+            num_heads,
+        )
+        self.input_target_relation_bias = RegisteredRelationBias(
+            input_parameter_keys,
+            num_heads,
+        )
+        target_input_field_ids = tuple(int(field_id) for field_id in target_input_field_ids)
+        if len(target_input_field_ids) != self.field_count:
+            raise ValueError("target_input_field_ids must align with target fields")
+        if min(target_input_field_ids, default=0) < 1 or max(
+            target_input_field_ids, default=0
+        ) > self.input_field_count:
+            raise ValueError("target_input_field_ids is outside input field memory")
+        required_input_mask = torch.zeros(self.input_field_count, dtype=torch.bool)
+        required_input_mask[
+            torch.tensor(target_input_field_ids, dtype=torch.long) - 1
+        ] = True
+        self.register_buffer(
+            "required_input_field_mask",
+            required_input_mask,
+            persistent=True,
+        )
         self.layers = nn.ModuleList(
             FieldStateTrajectoryLayer(hidden_size, num_heads, dropout) for _ in range(layers)
         )
@@ -215,11 +240,12 @@ class FieldStateTrajectoryDecoder(nn.Module):
         memory: torch.Tensor,
         memory_mask: torch.Tensor,
         *,
-        mode: TrajectoryMode,
+        target_relation_adjacency: torch.Tensor,
+        target_time_scope_ids: torch.Tensor,
+        input_target_relation_adjacency: torch.Tensor,
+        input_target_time_scope_ids: torch.Tensor,
         context_states: torch.Tensor | None = None,
         context_mask: torch.Tensor | None = None,
-        relation_adjacency: torch.Tensor | None = None,
-        relation_type_lags: torch.Tensor | None = None,
         query_positions: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size = query_tokens.shape[0]
@@ -228,12 +254,8 @@ class FieldStateTrajectoryDecoder(nn.Module):
             raise ValueError(
                 f"query_tokens shape={tuple(query_tokens.shape)} does not match {expected}"
             )
-        if memory.ndim != 3 or memory.shape[0] != batch_size:
-            raise ValueError("memory must be [batch, memory_tokens, hidden]")
-        if memory_mask.shape != memory.shape[:2]:
-            raise ValueError("memory_mask must align with memory tokens")
+        self._validate_memory(memory, memory_mask, batch_size)
 
-        resolved_mode = resolve_mode(mode, mode)
         flat_queries = query_tokens.reshape(batch_size, self.target_count, self.hidden_size)
         if query_positions is None:
             positions = torch.arange(self.target_count, device=query_tokens.device)
@@ -277,17 +299,30 @@ class FieldStateTrajectoryDecoder(nn.Module):
         embedded_context = embedded_context * available.unsqueeze(-1)
         bos = self.target_bos.view(1, 1, -1).expand(batch_size, -1, -1)
         target_context = torch.cat((bos, embedded_context), dim=1)
-        attention_bias = self._attention_bias(
-            mode=resolved_mode,
+        target_attention_bias = self._target_attention_bias(
             batch_size=batch_size,
             available=available,
             positions=positions,
-            relation_adjacency=relation_adjacency,
-            relation_type_lags=relation_type_lags,
+            target_relation_adjacency=target_relation_adjacency,
+            target_time_scope_ids=target_time_scope_ids,
+            dtype=query_tokens.dtype,
+        )
+        memory_attention_bias = self._memory_attention_bias(
+            batch_size=batch_size,
+            memory_mask=memory_mask,
+            positions=positions,
+            input_target_relation_adjacency=input_target_relation_adjacency,
+            input_target_time_scope_ids=input_target_time_scope_ids,
             dtype=query_tokens.dtype,
         )
         for layer in self.layers:
-            hidden = layer(hidden, target_context, attention_bias, memory, memory_mask)
+            hidden = layer(
+                hidden,
+                target_context,
+                target_attention_bias,
+                memory,
+                memory_attention_bias,
+            )
         return self.output_norm(hidden)
 
     def initialize_incremental_cache(
@@ -296,16 +331,12 @@ class FieldStateTrajectoryDecoder(nn.Module):
         memory: torch.Tensor,
         memory_mask: torch.Tensor,
         *,
-        mode: TrajectoryMode,
-        relation_adjacency: torch.Tensor | None = None,
-        relation_type_lags: torch.Tensor | None = None,
+        target_relation_adjacency: torch.Tensor,
+        target_time_scope_ids: torch.Tensor,
+        input_target_relation_adjacency: torch.Tensor,
+        input_target_time_scope_ids: torch.Tensor,
     ) -> FieldStateTrajectoryCache:
-        """Project immutable target BOS and memory K/V once for free rollout.
-
-        This path is deliberately inference-only.  Reusing projected states
-        under active dropout would define a different stochastic computation
-        from the reference decoder, which recomputes dropout at every position.
-        """
+        """Project immutable target BOS and memory K/V once for free rollout."""
 
         if self.training:
             raise RuntimeError(
@@ -317,29 +348,14 @@ class FieldStateTrajectoryDecoder(nn.Module):
             raise ValueError(
                 f"query_tokens shape={tuple(query_tokens.shape)} does not match {expected}"
             )
-        if memory.ndim != 3 or memory.shape[0] != batch_size:
-            raise ValueError("memory must be [batch, memory_tokens, hidden]")
-        if memory.shape[-1] != self.hidden_size:
-            raise ValueError("memory hidden width must match the decoder")
-        if memory_mask.shape != memory.shape[:2]:
-            raise ValueError("memory_mask must align with memory tokens")
+        self._validate_memory(memory, memory_mask, batch_size)
 
-        resolved_mode = resolve_mode(mode, mode)
-        if resolved_mode == "relational" and (
-            relation_adjacency is None or relation_type_lags is None
-        ):
-            raise ValueError(
-                "relational mode requires relation_adjacency and relation_type_lags"
-            )
         flat_queries = query_tokens.reshape(batch_size, self.target_count, self.hidden_size)
         bos = self.target_bos.view(1, 1, -1).expand(batch_size, -1, -1)
         layer_caches: list[FieldStateTrajectoryLayerCache] = []
         for layer in self.layers:
             normalized_bos = layer.context_norm(bos)
-            bos_key, bos_value = _project_key_value(
-                layer.target_attention,
-                normalized_bos,
-            )
+            bos_key, bos_value = _project_key_value(layer.target_attention, normalized_bos)
             normalized_memory = layer.memory_norm(memory)
             memory_key, memory_value = _project_key_value(
                 layer.memory_attention,
@@ -354,24 +370,29 @@ class FieldStateTrajectoryDecoder(nn.Module):
                 )
             )
 
-        memory_attention_bias = torch.zeros(
-            (batch_size, 1, 1, memory.shape[1]),
+        all_positions = torch.arange(self.target_count, device=query_tokens.device)
+        memory_attention_bias = self._memory_attention_bias(
+            batch_size=batch_size,
+            memory_mask=memory_mask,
+            positions=all_positions,
+            input_target_relation_adjacency=input_target_relation_adjacency,
+            input_target_time_scope_ids=input_target_time_scope_ids,
             dtype=query_tokens.dtype,
-            device=query_tokens.device,
-        ).masked_fill(~memory_mask[:, None, None, :].bool(), float("-inf"))
+        ).reshape(
+            batch_size,
+            self.num_heads,
+            self.target_count,
+            memory.shape[1],
+        )
         return FieldStateTrajectoryCache(
-            mode=resolved_mode,
             flat_queries=flat_queries,
             memory_attention_bias=memory_attention_bias,
             layers=layer_caches,
-            relation_adjacency=relation_adjacency,
-            relation_type_lags=relation_type_lags,
+            target_relation_adjacency=target_relation_adjacency,
+            target_time_scope_ids=target_time_scope_ids,
         )
 
-    def incremental_step(
-        self,
-        cache: FieldStateTrajectoryCache,
-    ) -> torch.Tensor:
+    def incremental_step(self, cache: FieldStateTrajectoryCache) -> torch.Tensor:
         """Decode the next registered field from cached projected context."""
 
         if cache.awaiting_feedback:
@@ -380,43 +401,24 @@ class FieldStateTrajectoryDecoder(nn.Module):
             raise RuntimeError("incremental target sequence is already complete")
         position = cache.position
         hidden = cache.flat_queries[:, position : position + 1]
-        key_positions = self._incremental_key_positions(cache.mode, position, hidden.device)
-        relation_bias = self._incremental_relation_bias(
+        key_positions = torch.arange(position, dtype=torch.long, device=hidden.device)
+        target_relation_bias = self._incremental_target_relation_bias(
             cache,
             position=position,
             key_positions=key_positions,
             dtype=hidden.dtype,
         )
-        first_position = (
-            (position // self.field_count) * self.field_count
-            if cache.mode == "block"
-            else 0
-        )
+        memory_attention_bias = cache.memory_attention_bias[:, :, position : position + 1]
 
         for layer, layer_cache in zip(self.layers, cache.layers, strict=True):
-            # Cache index zero is BOS; generated target position p is index p+1.
-            selected_keys = [
-                layer_cache.target_keys[0],
-                *layer_cache.target_keys[first_position + 1 : position + 1],
-            ]
-            selected_values = [
-                layer_cache.target_values[0],
-                *layer_cache.target_values[first_position + 1 : position + 1],
-            ]
-            target_keys = torch.cat(
-                selected_keys,
-                dim=2,
-            )
-            target_values = torch.cat(
-                selected_values,
-                dim=2,
-            )
+            target_keys = torch.cat(layer_cache.target_keys, dim=2)
+            target_values = torch.cat(layer_cache.target_values, dim=2)
             attended = _projected_attention(
                 layer.target_attention,
                 layer.query_norm(hidden),
                 target_keys,
                 target_values,
-                relation_bias,
+                target_relation_bias,
             )
             hidden = hidden + attended
             attended_memory = _projected_attention(
@@ -424,7 +426,7 @@ class FieldStateTrajectoryDecoder(nn.Module):
                 layer.memory_query_norm(hidden),
                 layer_cache.memory_keys,
                 layer_cache.memory_values,
-                cache.memory_attention_bias,
+                memory_attention_bias,
             )
             hidden = hidden + attended_memory
             hidden = hidden + layer.feed_forward(layer.feed_forward_norm(hidden))
@@ -453,75 +455,101 @@ class FieldStateTrajectoryDecoder(nn.Module):
         )
         for layer, layer_cache in zip(self.layers, cache.layers, strict=True):
             normalized_context = layer.context_norm(context)
-            key, value = _project_key_value(
-                layer.target_attention,
-                normalized_context,
-            )
+            key, value = _project_key_value(layer.target_attention, normalized_context)
             layer_cache.target_keys.append(_split_heads(key, layer.target_attention))
             layer_cache.target_values.append(_split_heads(value, layer.target_attention))
         cache.position += 1
         cache.awaiting_feedback = False
 
-    def _incremental_key_positions(
+    def _validate_memory(
         self,
-        mode: TrajectoryMode,
-        position: int,
-        device: torch.device,
-    ) -> torch.Tensor:
-        if mode == "block":
-            block_start = (position // self.field_count) * self.field_count
-        else:
-            block_start = 0
-        return torch.arange(block_start, position, dtype=torch.long, device=device)
+        memory: torch.Tensor,
+        memory_mask: torch.Tensor,
+        batch_size: int,
+    ) -> None:
+        if memory.ndim != 3 or memory.shape[0] != batch_size:
+            raise ValueError("memory must be [batch, memory_tokens, hidden]")
+        if memory.shape[-1] != self.hidden_size:
+            raise ValueError("memory hidden width must match the decoder")
+        if memory.shape[1] < self.input_field_count:
+            raise ValueError("memory must end with all registered input-field tokens")
+        if memory_mask.shape != memory.shape[:2]:
+            raise ValueError("memory_mask must align with memory tokens")
+        field_memory_mask = memory_mask[:, -self.input_field_count :].bool()
+        if not field_memory_mask[:, self.required_input_field_mask].all():
+            raise ValueError(
+                "all 29 output-field history tokens, including unobserved, must be visible"
+            )
 
-    def _incremental_relation_bias(
+    def _incremental_target_relation_bias(
         self,
         cache: FieldStateTrajectoryCache,
         *,
         position: int,
         key_positions: torch.Tensor,
         dtype: torch.dtype,
-    ) -> torch.Tensor | None:
-        if cache.mode != "relational":
-            return None
-        assert cache.relation_adjacency is not None
-        assert cache.relation_type_lags is not None
+    ) -> torch.Tensor:
         query_position = torch.tensor([position], device=cache.flat_queries.device)
-        relation = self.relation_bias(
-            cache.relation_adjacency.to(device=cache.flat_queries.device),
-            query_position.remainder(self.field_count),
-            key_positions.remainder(self.field_count),
-            relation_type_lags=cache.relation_type_lags,
-            query_block_indices=query_position.div(
-                self.field_count,
-                rounding_mode="floor",
-            ),
-            key_block_indices=key_positions.div(
-                self.field_count,
-                rounding_mode="floor",
-            ),
-        ).to(dtype=dtype)
+        relation = self._target_relation_values(
+            positions=query_position,
+            key_positions=key_positions,
+            target_relation_adjacency=cache.target_relation_adjacency,
+            target_time_scope_ids=cache.target_time_scope_ids,
+            dtype=dtype,
+        )
         batch_size = cache.flat_queries.shape[0]
-        if relation.shape[0] == 1 and batch_size != 1:
-            relation = relation.expand(batch_size, -1, -1, -1)
-        if relation.shape[0] != batch_size:
-            raise ValueError("batched relation_adjacency must align with the input batch")
+        relation = relation.expand(batch_size, -1, -1, -1)
         bos_bias = relation.new_zeros((batch_size, self.num_heads, 1, 1))
         return torch.cat((bos_bias, relation), dim=-1)
 
-    def _attention_bias(
+    def _target_relation_values(
         self,
         *,
-        mode: TrajectoryMode,
+        positions: torch.Tensor,
+        key_positions: torch.Tensor,
+        target_relation_adjacency: torch.Tensor,
+        target_time_scope_ids: torch.Tensor,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        query_fields = positions.remainder(self.field_count)
+        query_blocks = positions.div(self.field_count, rounding_mode="floor")
+        key_fields = key_positions.remainder(self.field_count)
+        key_blocks = key_positions.div(self.field_count, rounding_mode="floor")
+        delta = query_blocks[:, None] - key_blocks[None, :]
+        scopes = target_time_scope_ids.to(device=positions.device, dtype=torch.long).flatten()
+        if scopes.shape != (self.target_relation_bias.relation_count,):
+            raise ValueError("target_time_scope_ids must contain one id per target edge")
+        if not torch.isin(
+            scopes,
+            torch.tensor(
+                [TARGET_SCOPE_SAME_BLOCK, TARGET_SCOPE_ADJACENT_BLOCKS],
+                device=scopes.device,
+            ),
+        ).all():
+            raise ValueError("target_time_scope_ids contains an unknown scope")
+        scope_mask = torch.where(
+            scopes[:, None, None].eq(TARGET_SCOPE_SAME_BLOCK),
+            delta.unsqueeze(0).eq(0),
+            delta.unsqueeze(0).eq(1),
+        )
+        return self.target_relation_bias(
+            target_relation_adjacency.to(device=positions.device),
+            query_fields,
+            key_fields,
+            relation_scope_mask=scope_mask,
+        ).to(dtype=dtype)
+
+    def _target_attention_bias(
+        self,
+        *,
         batch_size: int,
         available: torch.Tensor,
         positions: torch.Tensor,
-        relation_adjacency: torch.Tensor | None,
-        relation_type_lags: torch.Tensor | None,
+        target_relation_adjacency: torch.Tensor,
+        target_time_scope_ids: torch.Tensor,
         dtype: torch.dtype,
     ) -> torch.Tensor:
-        access = build_target_access_mask(
-            mode,
+        access = build_joint_target_access_mask(
             self.block_count,
             self.field_count,
             device=available.device,
@@ -537,57 +565,80 @@ class FieldStateTrajectoryDecoder(nn.Module):
             (batch_size, self.num_heads, positions.numel(), self.target_count + 1),
             dtype=dtype,
             device=available.device,
-        )
-        bias = bias.masked_fill(~allowed_with_bos.unsqueeze(1), float("-inf"))
-
-        if mode == "relational" and (
-            relation_adjacency is None or relation_type_lags is None
-        ):
-            raise ValueError(
-                "relational mode requires relation_adjacency and relation_type_lags"
-            )
-        if relation_adjacency is None:
-            relation_adjacency = torch.zeros(
-                self.relation_bias.relation_type_count,
-                self.field_count,
-                self.field_count,
-                device=available.device,
-            )
-        if relation_type_lags is None:
-            relation_type_lags = torch.zeros(
-                self.relation_bias.relation_type_count,
-                dtype=torch.long,
-                device=available.device,
-            )
-        query_fields = positions.remainder(self.field_count)
-        query_blocks = positions.div(self.field_count, rounding_mode="floor")
-        key_fields = torch.arange(
-            self.target_count,
-            device=available.device,
-        ).remainder(self.field_count)
-        key_blocks = torch.arange(
-            self.target_count,
-            device=available.device,
-        ).div(self.field_count, rounding_mode="floor")
-        relation = self.relation_bias(
-            relation_adjacency.to(device=available.device),
-            query_fields,
-            key_fields,
-            relation_type_lags=relation_type_lags,
-            query_block_indices=query_blocks,
-            key_block_indices=key_blocks,
-        ).to(dtype=dtype)
-        if relation.shape[0] == 1 and batch_size != 1:
-            relation = relation.expand(batch_size, -1, -1, -1)
-        if relation.shape[0] != batch_size:
-            raise ValueError("batched relation_adjacency must align with the input batch")
-        # Keep the relation parameters in every mode's computation graph for matched
-        # DDP runs.  Neutral modes receive an exact-zero gradient, never grad=None.
-        relation_gate = relation.new_tensor(1.0 if mode == "relational" else 0.0)
-        bias[..., 1:] = bias[..., 1:] + relation * relation_gate
-
+        ).masked_fill(~allowed_with_bos.unsqueeze(1), float("-inf"))
+        key_positions = torch.arange(self.target_count, device=available.device)
+        relation = self._target_relation_values(
+            positions=positions,
+            key_positions=key_positions,
+            target_relation_adjacency=target_relation_adjacency,
+            target_time_scope_ids=target_time_scope_ids,
+            dtype=dtype,
+        ).expand(batch_size, -1, -1, -1)
+        bias[..., 1:] = bias[..., 1:] + relation
         return bias.reshape(
             batch_size * self.num_heads,
             positions.numel(),
             self.target_count + 1,
+        )
+
+    def _memory_attention_bias(
+        self,
+        *,
+        batch_size: int,
+        memory_mask: torch.Tensor,
+        positions: torch.Tensor,
+        input_target_relation_adjacency: torch.Tensor,
+        input_target_time_scope_ids: torch.Tensor,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        memory_count = memory_mask.shape[1]
+        bias = torch.zeros(
+            (batch_size, self.num_heads, positions.numel(), memory_count),
+            dtype=dtype,
+            device=memory_mask.device,
+        ).masked_fill(~memory_mask[:, None, None, :].bool(), float("-inf"))
+        query_fields = positions.remainder(self.field_count)
+        query_blocks = positions.div(self.field_count, rounding_mode="floor")
+        input_fields = torch.arange(self.input_field_count, device=memory_mask.device)
+        scopes = input_target_time_scope_ids.to(
+            device=memory_mask.device,
+            dtype=torch.long,
+        ).flatten()
+        if scopes.shape != (self.input_target_relation_bias.relation_count,):
+            raise ValueError(
+                "input_target_time_scope_ids must contain one id per input-target edge"
+            )
+        if not torch.isin(
+            scopes,
+            torch.tensor(
+                [INPUT_SCOPE_LATEST_TO_FIRST, INPUT_SCOPE_ALL_TO_EACH],
+                device=scopes.device,
+            ),
+        ).all():
+            raise ValueError("input_target_time_scope_ids contains an unknown scope")
+        bridge_scope = query_blocks.eq(0).view(1, -1, 1).expand(
+            scopes.numel(),
+            -1,
+            self.input_field_count,
+        )
+        all_scope = torch.ones_like(bridge_scope)
+        scope_mask = torch.where(
+            scopes[:, None, None].eq(INPUT_SCOPE_LATEST_TO_FIRST),
+            bridge_scope,
+            all_scope,
+        )
+        relation = self.input_target_relation_bias(
+            input_target_relation_adjacency.to(device=memory_mask.device),
+            query_fields,
+            input_fields,
+            relation_scope_mask=scope_mask,
+        ).to(dtype=dtype)
+        relation = relation.expand(batch_size, -1, -1, -1)
+        bias[..., -self.input_field_count :] = (
+            bias[..., -self.input_field_count :] + relation
+        )
+        return bias.reshape(
+            batch_size * self.num_heads,
+            positions.numel(),
+            memory_count,
         )

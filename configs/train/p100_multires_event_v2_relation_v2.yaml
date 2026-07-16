@@ -1,19 +1,18 @@
-schema_version: trauma_predict.multires_event_v2_train_config.v1
-route: multires_event_v2_m4_relational_primary
-run_name: t4x2_multires_event_v2_block
-mode: block
+schema_version: trauma_predict.multires_event_v2_train_config.v2
+route: multires_event_v2_m4_relation_v2
+run_name: p100_multires_event_v2_relation_v2
 seed: 20260713
 lab_scale_artifact: configs/dataset/multires_event_v2_c4_lab_affine_scale_r9.json
 lab_scale_artifact_hash: cae827b1f8b1c6a156da4bad340af1b9b0411ca2f5fbe0b9aa8d36ed06cb87bb
 standardized_primitive_scale_artifact: configs/dataset/multires_event_v2_c4_standardized_primitive_scale_r9.json
 standardized_primitive_scale_artifact_hash: f075a9d2d415028845026b06e746cecf382102dfc0ed2c31631000506030665f
-promotion_metric_contract: configs/evaluation/multires_event_v2_promotion_v2.json
-promotion_metric_contract_hash: 7b5b85d5d3b3604308e1fe8b1471bc6c5c0c20bb16e3b9aaffd0c5e3afb53f3f
+trajectory_metric_contract: configs/evaluation/multires_event_v2_relation_v2_metrics.json
+trajectory_metric_contract_hash: 2d8f9c2c421e9d69e18470a37b3c6ae7696fff0664c6083df8a7e2de1745123e
 
 dataset:
-  config_path: configs/dataset/multires_event_v2_c4.yaml
+  config_path: configs/dataset/multires_event_v2_relation_v2_c4.yaml
 model:
-  config_path: configs/model/multires_event_v2_relational_primary.yaml
+  config_path: configs/model/multires_event_v2_relation_v2.yaml
 
 objective:
   future_resolution: M4
@@ -42,27 +41,12 @@ evaluation:
   free_running_trajectory_batch_size: 100
   free_running_crn_seed: 20260713
 
-comparison:
-  primary_mode: relational
-  primary_training_order: [relational]
-  optional_ablation_modes: [trajectory, block]
-  ablations_are_prerequisites: false
-  paired_rows: all_6309_persisted_validation_anchors
-  paired_unit: subject_id
-  estimands: [candidate_minus_control_subject_macro_joint_nll, candidate_over_control_subject_macro_score_ratio]
-  bootstrap_repetitions: 2000
-  bootstrap_seed: 20260713
-  shared_subject_bootstrap_schedule: true
-  physical_metrics_decision_role: report_only
-  coherence_required_rate: 1.0
-  promotion_gate: none_for_primary_training
-  decision_authority: relational_primary_then_optional_matched_ablations
-
 training:
-  required_cuda_devices: 2
-  required_world_size: 2
+  required_cuda_devices: 1
+  required_world_size: 1
+  required_device_name_substring: P100
   precision: fp16
-  per_device_train_batch_size: 32
+  per_device_train_batch_size: 64
   per_device_eval_batch_size: 32
   gradient_accumulation_steps: 1
   grad_scaler_initial_scale: 32.0
@@ -70,7 +54,7 @@ training:
   grad_scaler_backoff_factor: 0.5
   grad_scaler_growth_interval: 1000000
   max_consecutive_scaler_skips: 0
-  grad_scaler_overflow_policy: fail_run_preserve_matched_rows
+  grad_scaler_overflow_policy: fail_run_preserve_rows
   train_samples_per_epoch: 3072
   max_steps: 4000
   optimizer_contract_version: trauma_predict.multires_event_v2_optimizer.v1
@@ -98,5 +82,5 @@ training:
   ddp_find_unused_parameters: false
 
 outputs:
-  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_multires_event_v2_block
-  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/t4x2_multires_event_v2_block/metrics.jsonl
+  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/p100_multires_event_v2_relation_v2
+  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/p100_multires_event_v2_relation_v2/metrics.jsonl

@@ -1,6 +1,6 @@
-schema_version: trauma_predict.multires_event_v2_model_config.v1
-route: multires_event_v2_m4_relational_primary
-role: primary
+schema_version: trauma_predict.multires_event_v2_model_config.v2
+route: multires_event_v2_m4_relation_v2
+role: relation_v2
 initialization: from_scratch
 text_backbone: null
 tokenizer: null
@@ -23,10 +23,23 @@ architecture:
   static_categorical_vocab_size: 32
   study_slot_vocab_size: 16
   time_scale_hours: 24.0
+  input_only_temporal_fusion: block_geometry_softmax_v1
   future_block_count: 6
   target_field_count: 29
   target_field_ids: [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 7, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 35]
-  relation_type_count: 14
+
+relation_contract:
+  config_dir: configs/contracts/multires_event_v2
+  version: 2026-07-16-v2
+  bundle_sha256: 0331ec0d552e47790d1dc4f8bae3520062c9e6f5fa62cf62e87c187f6783c033
+  files:
+    field_category_matrix_v1.csv: 33fd240c99b5d991f5412ebb7c6799054debaa11b884fd3b1b57334720ba32f5
+    target_target_relation_edges_v2.csv: 3232dacc91e0b772cb1667fa24ec6285f9b82dcd6566d34add5d8f38687ae77a
+    input_target_relation_edges_v2.csv: 27facf2703231fb8bed843731c803e97d36e87e14047e2ec9254c1e5a641d91e
+    relation_evidence_registry_v2.json: 9e0c07c50fc582e19ed726bb4e609c1ffe51d81b67eccd521baad92eb362763e
+  runtime_override: forbidden
+  target_target_edges: 52
+  input_target_edges: 39
 
 primitive_contract:
   parameter_dims_source: trauma_predict.training.multires_event_v2_loss.V2_PRIMITIVE_HEAD_DIMS
@@ -36,11 +49,14 @@ primitive_contract:
   output_blocks: 6
   registered_fields: 29
 
-primary_contract:
-  exact_parameter_count: 47801855
-  mode: relational
+formal_contract:
+  exact_parameter_count: 48728439
+  relation_contract_required: true
+  runtime_relation_override: forbidden
   causal_cross_block_attention: true
-  typed_relation_attention_bias: true
+  target_target_registered_bias: true
+  input_target_registered_bias: true
   silent_capacity_fallback: forbidden
+  legacy_checkpoint_loading: forbidden
   h1_head: false
   f24_head: false

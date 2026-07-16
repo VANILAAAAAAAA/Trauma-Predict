@@ -1,28 +1,55 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Any
+
 import torch
 from torch import nn
 
 
-class TypedRelationBias(nn.Module):
-    """Map a typed field graph to additive per-head attention bias.
+class RegisteredRelationBias(nn.Module):
+    """Map explicit registered edges to additive per-head attention bias.
 
-    Input orientation is ``[relation_type, query_field, key_field]``.  Zero-valued
-    nonedges remain an additive zero; this module never creates an attention mask.
+    The first adjacency axis is the frozen ``parameter_key`` order, not a
+    relation-type vocabulary.  Consequently two edges with the same clinical
+    relation type still learn independent attention residuals.  Rectangular
+    target-by-input adjacency is supported for input-target cross-attention.
+    Nonedges remain finite zero bias and never become a hard mask.
     """
 
-    def __init__(self, relation_type_count: int, num_attention_heads: int) -> None:
+    def __init__(
+        self,
+        parameter_keys: Sequence[str],
+        num_attention_heads: int = 1,
+    ) -> None:
         super().__init__()
-        self.relation_type_count = int(relation_type_count)
+        self.parameter_keys = tuple(str(key) for key in parameter_keys)
+        if not self.parameter_keys or any(not key for key in self.parameter_keys):
+            raise ValueError("parameter_keys must be non-empty strings")
+        if len(set(self.parameter_keys)) != len(self.parameter_keys):
+            raise ValueError("parameter_keys must be unique")
         self.num_attention_heads = int(num_attention_heads)
-        self.type_head_bias = nn.Parameter(
-            torch.empty(self.relation_type_count, self.num_attention_heads)
+        self.edge_head_bias = nn.Parameter(
+            torch.empty(len(self.parameter_keys), self.num_attention_heads)
         )
-        # Relational and relation-neutral runs must start from the same
-        # conditional function, not merely the same parameter shapes.  A zero
-        # initialization makes the typed prior an exact learned residual at
-        # step zero while retaining nonzero gradients in relational mode.
-        nn.init.zeros_(self.type_head_bias)
+        # A zero residual is not an off-gate: every registered edge is in the
+        # forward graph and receives gradients from its first legal use.
+        nn.init.zeros_(self.edge_head_bias)
+
+    @property
+    def relation_count(self) -> int:
+        return len(self.parameter_keys)
+
+    def get_extra_state(self) -> dict[str, Any]:
+        return {"parameter_keys": self.parameter_keys}
+
+    def set_extra_state(self, state: Any) -> None:
+        checkpoint_keys = tuple(state.get("parameter_keys", ())) if isinstance(state, dict) else ()
+        if checkpoint_keys != self.parameter_keys:
+            raise RuntimeError(
+                "relation parameter_key order differs from the checkpoint: "
+                f"expected {self.parameter_keys}, got {checkpoint_keys}"
+            )
 
     def forward(
         self,
@@ -30,63 +57,44 @@ class TypedRelationBias(nn.Module):
         query_field_indices: torch.Tensor,
         key_field_indices: torch.Tensor,
         *,
-        relation_type_lags: torch.Tensor | None = None,
-        query_block_indices: torch.Tensor | None = None,
-        key_block_indices: torch.Tensor | None = None,
+        relation_scope_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         adjacency = relation_adjacency
-        if adjacency.ndim == 3:
-            adjacency = adjacency.unsqueeze(0)
-        if adjacency.ndim != 4:
+        if adjacency.ndim != 3:
             raise ValueError(
-                "relation_adjacency must be [types, fields, fields] or "
-                "[batch, types, fields, fields]"
+                "relation_adjacency must be [parameter_keys, query_fields, key_fields]"
             )
-        if adjacency.shape[1] != self.relation_type_count:
+        if adjacency.shape[0] != self.relation_count:
             raise ValueError(
-                f"relation_adjacency type width={adjacency.shape[1]} does not match "
-                f"configured relation_type_count={self.relation_type_count}"
+                f"relation_adjacency width={adjacency.shape[0]} does not match "
+                f"registered parameter_key count={self.relation_count}"
             )
-        if adjacency.shape[2] != adjacency.shape[3]:
-            raise ValueError("relation_adjacency field axes must be square")
-        field_count = adjacency.shape[2]
-        if query_field_indices.numel() and (
-            query_field_indices.min().item() < 0 or query_field_indices.max().item() >= field_count
+        query_fields = query_field_indices.to(device=adjacency.device, dtype=torch.long).flatten()
+        key_fields = key_field_indices.to(device=adjacency.device, dtype=torch.long).flatten()
+        if query_fields.numel() and (
+            query_fields.min().item() < 0
+            or query_fields.max().item() >= adjacency.shape[1]
         ):
             raise ValueError("query field index is outside relation_adjacency")
-        if key_field_indices.numel() and (
-            key_field_indices.min().item() < 0 or key_field_indices.max().item() >= field_count
+        if key_fields.numel() and (
+            key_fields.min().item() < 0
+            or key_fields.max().item() >= adjacency.shape[2]
         ):
             raise ValueError("key field index is outside relation_adjacency")
 
-        adjacency = adjacency.to(dtype=self.type_head_bias.dtype)
-        selected = adjacency[:, :, query_field_indices][:, :, :, key_field_indices]
-        lag_arguments = (relation_type_lags, query_block_indices, key_block_indices)
-        if any(item is not None for item in lag_arguments):
-            if any(item is None for item in lag_arguments):
-                raise ValueError(
-                    "relation lag gating requires type lags and query/key block indices"
-                )
-            assert relation_type_lags is not None
-            assert query_block_indices is not None
-            assert key_block_indices is not None
-            lags = relation_type_lags.to(device=adjacency.device, dtype=torch.long).flatten()
-            if lags.shape != (self.relation_type_count,):
-                raise ValueError("relation_type_lags must contain one lag per relation type")
-            if lags.lt(0).any():
-                raise ValueError("relation_type_lags cannot be negative")
-            query_blocks = query_block_indices.to(device=adjacency.device, dtype=torch.long).flatten()
-            key_blocks = key_block_indices.to(device=adjacency.device, dtype=torch.long).flatten()
-            if query_blocks.numel() != query_field_indices.numel():
-                raise ValueError("query block and field indices must align")
-            if key_blocks.numel() != key_field_indices.numel():
-                raise ValueError("key block and field indices must align")
-            block_delta = query_blocks[:, None] - key_blocks[None, :]
-            lag_match = block_delta.unsqueeze(0).eq(lags[:, None, None])
-            selected = selected * lag_match.unsqueeze(0)
-        field_bias = torch.einsum(
-            "brqk,rh->bhqk",
-            selected,
-            self.type_head_bias,
+        selected = adjacency[:, query_fields][:, :, key_fields].to(
+            dtype=self.edge_head_bias.dtype
         )
-        return field_bias
+        if relation_scope_mask is not None:
+            scope = relation_scope_mask.to(device=adjacency.device, dtype=selected.dtype)
+            expected = (self.relation_count, query_fields.numel(), key_fields.numel())
+            if scope.shape != expected:
+                raise ValueError(
+                    f"relation_scope_mask shape={tuple(scope.shape)} does not match {expected}"
+                )
+            selected = selected * scope
+        return torch.einsum(
+            "rqk,rh->hqk",
+            selected,
+            self.edge_head_bias,
+        ).unsqueeze(0)

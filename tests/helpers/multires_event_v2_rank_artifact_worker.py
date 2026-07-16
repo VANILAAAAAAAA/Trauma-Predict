@@ -83,7 +83,6 @@ def main() -> None:
             raise AssertionError(f"injected {stage} failure did not propagate")
         result = free_running.verify_rank_local_artifact_preflight(
             output_dir=args.output_dir,
-            mode="block",
         )
         if dist.get_rank() == 0:
             print(json.dumps(result, sort_keys=True), flush=True)
