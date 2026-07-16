@@ -12,10 +12,16 @@ ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 def load_yaml_config(path: Path) -> dict[str, Any]:
+    return expand_env(load_yaml_config_unexpanded(path))
+
+
+def load_yaml_config_unexpanded(path: Path) -> dict[str, Any]:
+    """Load the authored YAML contract without resolving runtime locations."""
+
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"config must be a mapping: {path}")
-    return expand_env(payload)
+    return payload
 
 
 def expand_env(value: Any) -> Any:

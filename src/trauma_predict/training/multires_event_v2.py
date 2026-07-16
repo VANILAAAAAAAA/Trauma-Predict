@@ -53,7 +53,11 @@ from trauma_predict.eval.multires_event_v2_projections import (
 )
 from trauma_predict.modeling.multires_event_v2.config import MultiResolutionEventV2Config
 from trauma_predict.modeling.multires_event_v2.model import MultiResolutionEventV2Model
-from trauma_predict.training.config import load_yaml_config
+from trauma_predict.training.config import (
+    expand_env,
+    load_yaml_config,
+    load_yaml_config_unexpanded,
+)
 from trauma_predict.training.multires_event import (
     _barrier,
     _build_grad_scaler,
@@ -247,12 +251,19 @@ def load_multires_event_v2_configs(
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], Path, Path]:
     root = Path(repo_root).resolve()
     train_path = Path(train_config_path).resolve()
-    train = load_yaml_config(train_path)
-    dataset_path = resolve_repo_path(train["dataset"]["config_path"], root)
-    model_path = resolve_repo_path(train["model"]["config_path"], root)
-    dataset = load_yaml_config(dataset_path)
-    model = load_yaml_config(model_path)
-    validate_multires_event_v2_configs(train, dataset, model)
+    authored_train = load_yaml_config_unexpanded(train_path)
+    dataset_path = resolve_repo_path(authored_train["dataset"]["config_path"], root)
+    model_path = resolve_repo_path(authored_train["model"]["config_path"], root)
+    authored_dataset = load_yaml_config_unexpanded(dataset_path)
+    authored_model = load_yaml_config_unexpanded(model_path)
+    validate_multires_event_v2_configs(
+        authored_train,
+        authored_dataset,
+        authored_model,
+    )
+    train = expand_env(authored_train)
+    dataset = expand_env(authored_dataset)
+    model = expand_env(authored_model)
     return train, dataset, model, dataset_path, model_path
 
 
@@ -302,8 +313,20 @@ def validate_multires_event_v2_configs(
         raise ValueError("model schema_version differs from relation V2")
     if int(train.get("seed", -1)) != 20260713:
         raise ValueError("relation V2 seed must equal 20260713")
-    _require_exact_keys(_mapping(train.get("dataset"), "train.dataset"), {"config_path"}, "train.dataset")
-    _require_exact_keys(_mapping(train.get("model"), "train.model"), {"config_path"}, "train.model")
+    train_dataset = _mapping(train.get("dataset"), "train.dataset")
+    train_model = _mapping(train.get("model"), "train.model")
+    _require_exact_keys(train_dataset, {"config_path"}, "train.dataset")
+    _require_exact_keys(train_model, {"config_path"}, "train.model")
+    if (
+        train_dataset.get("config_path")
+        != "configs/dataset/multires_event_v2_relation_v2_c4.yaml"
+    ):
+        raise ValueError("train.dataset.config_path differs from the frozen relation V2 route")
+    if (
+        train_model.get("config_path")
+        != "configs/model/multires_event_v2_relation_v2.yaml"
+    ):
+        raise ValueError("train.model.config_path differs from the frozen relation V2 route")
     _require_exact_keys(
         _mapping(train.get("outputs"), "train.outputs"),
         {"output_dir", "metrics_jsonl"},

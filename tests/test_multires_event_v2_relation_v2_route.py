@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import copy
 import inspect
+import os
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
+import trauma_predict.training.multires_event_v2 as training_module
 from trauma_predict.data.multires_event_v2 import MultiresEventV2RelationContract
 from trauma_predict.eval.multires_event_v2 import (
     evaluate_teacher_forced,
@@ -21,6 +24,7 @@ from trauma_predict.eval.multires_event_v2_metric_contract import (
     load_trajectory_metric_contract,
 )
 from trauma_predict.modeling.multires_event_v2.config import MultiResolutionEventV2Config
+from trauma_predict.training.config import load_yaml_config_unexpanded
 from trauma_predict.training.multires_event_v2 import (
     EXPECTED_FORMAL_MODEL_PARAMETER_COUNT,
     ROUTE,
@@ -62,6 +66,103 @@ def _drift(value: object) -> object:
 
 
 class RelationV2RouteTest(unittest.TestCase):
+    def test_hosted_locations_expand_after_authored_contract_validation(self) -> None:
+        hosted = {
+            "TRAUMA_PREDICT_DATA_ROOT": "/kaggle/temp/relation_v2_p100/mounted_data/base",
+            "TRAUMA_PREDICT_V2_TARGET_ROOT": "/kaggle/temp/relation_v2_p100/mounted_data/target",
+            "TRAUMA_PREDICT_OUTPUT_ROOT": "/kaggle/working",
+        }
+        with patch.dict(os.environ, hosted, clear=False):
+            train, dataset, _, _, _ = load_multires_event_v2_configs(
+                TRAIN_PATH,
+                repo_root=REPO_ROOT,
+            )
+        self.assertEqual(dataset["base"]["root"], hosted["TRAUMA_PREDICT_DATA_ROOT"])
+        self.assertEqual(
+            dataset["target"]["root"],
+            hosted["TRAUMA_PREDICT_V2_TARGET_ROOT"],
+        )
+        self.assertEqual(
+            dataset["normalization"]["path"],
+            "/kaggle/working/contracts/multires_event_v1_input_normalization.json",
+        )
+        self.assertEqual(
+            train["outputs"]["output_dir"],
+            "/kaggle/working/p100_multires_event_v2_relation_v2",
+        )
+        self.assertEqual(
+            train["outputs"]["metrics_jsonl"],
+            "/kaggle/working/p100_multires_event_v2_relation_v2/metrics.jsonl",
+        )
+
+    def test_hosted_environment_cannot_authorize_hardcoded_runtime_paths(self) -> None:
+        hosted = {
+            "TRAUMA_PREDICT_DATA_ROOT": "/kaggle/temp/relation_v2_p100/mounted_data/base",
+            "TRAUMA_PREDICT_V2_TARGET_ROOT": "/kaggle/temp/relation_v2_p100/mounted_data/target",
+            "TRAUMA_PREDICT_OUTPUT_ROOT": "/kaggle/working",
+        }
+        authored_train = load_yaml_config_unexpanded(TRAIN_PATH)
+        dataset_path = REPO_ROOT / authored_train["dataset"]["config_path"]
+        model_path = REPO_ROOT / authored_train["model"]["config_path"]
+        authored_model = load_yaml_config_unexpanded(model_path)
+        cases = (
+            (
+                ("base", "root"),
+                hosted["TRAUMA_PREDICT_DATA_ROOT"],
+                "dataset.base.root",
+            ),
+            (
+                ("target", "root"),
+                hosted["TRAUMA_PREDICT_V2_TARGET_ROOT"],
+                "dataset.target.root",
+            ),
+            (
+                ("normalization", "path"),
+                "/kaggle/working/contracts/multires_event_v1_input_normalization.json",
+                "dataset.normalization",
+            ),
+        )
+        for keys, value, error in cases:
+            authored_dataset = load_yaml_config_unexpanded(dataset_path)
+            authored_dataset[keys[0]][keys[1]] = value
+            payloads = {
+                TRAIN_PATH.resolve(): authored_train,
+                dataset_path.resolve(): authored_dataset,
+                model_path.resolve(): authored_model,
+            }
+
+            def load_authored(path: Path) -> dict:
+                return copy.deepcopy(payloads[Path(path).resolve()])
+
+            with (
+                self.subTest(path=".".join(keys)),
+                patch.dict(os.environ, hosted, clear=False),
+                patch.object(
+                    training_module,
+                    "load_yaml_config_unexpanded",
+                    side_effect=load_authored,
+                ),
+                self.assertRaisesRegex(ValueError, error),
+            ):
+                load_multires_event_v2_configs(TRAIN_PATH, repo_root=REPO_ROOT)
+
+    def test_missing_hosted_location_remains_unexpanded_and_fails_closed(self) -> None:
+        hosted_without_target = {
+            "TRAUMA_PREDICT_DATA_ROOT": "/kaggle/temp/relation_v2_p100/mounted_data/base",
+            "TRAUMA_PREDICT_OUTPUT_ROOT": "/kaggle/working",
+        }
+        with patch.dict(os.environ, hosted_without_target, clear=True):
+            _, dataset, _, _, _ = load_multires_event_v2_configs(
+                TRAIN_PATH,
+                repo_root=REPO_ROOT,
+            )
+        self.assertEqual(
+            dataset["target"]["root"],
+            "${TRAUMA_PREDICT_V2_TARGET_ROOT}",
+        )
+        with self.assertRaisesRegex(ValueError, "unexpanded environment variable"):
+            training_module.resolve_repo_path(dataset["target"]["root"], REPO_ROOT)
+
     def test_single_route_is_hash_bound_and_builds_exact_model(self) -> None:
         train, dataset, model = _load()
         self.assertEqual(train["route"], dataset["route"])
