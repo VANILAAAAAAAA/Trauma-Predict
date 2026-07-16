@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
-BUNDLE_SCHEMA = "trauma_predict.multires_event_v2_relation_v2_p100_bundle.v2"
+BUNDLE_SCHEMA = "trauma_predict.multires_event_v2_relation_v2_p100_bundle.v3"
 DATA_INVENTORY_SCHEMA = "trauma_predict.mounted_file_inventory.v3"
 SOURCE_INVENTORY_SCHEMA = "trauma_predict.source_release_inventory.v1"
 SOURCE_RELEASE_SCHEMA = "trauma_predict.multires_event_v2_source_release.v1"
@@ -46,6 +46,7 @@ RUNTIME_TORCH_VERSION = "2.10.0+cu126"
 RUNTIME_CUDA_VERSION = "12.6"
 RUNTIME_PYTHON_ABI = "cp312"
 RUNTIME_CUDA_ARCH = "sm_60"
+RUNTIME_ARCHIVE_NAME = "p100_torch_2_10_cu126_cp312_wheelhouse.blob"
 
 BASE_AUTHORITY = {
     "dataset_id": BASE_DATASET_ID,
@@ -205,20 +206,63 @@ def build_runtime_wheelhouse(
         raise ValueError(
             f"runtime wheelhouse file set differs from lock: missing={missing} extra={extra}"
         )
-    copied_rows: list[dict[str, Any]] = []
+    verified: list[tuple[Path, dict[str, Any]]] = []
     for name, row in sorted(expected.items()):
         source = observed[name]
         if source.stat().st_size != int(row["size_bytes"]):
             raise ValueError(f"runtime wheel size differs from lock: {name}")
         if sha256_file(source) != row["sha256"]:
             raise ValueError(f"runtime wheel hash differs from lock: {name}")
-        destination = output / name
-        if destination.exists():
-            raise FileExistsError(f"runtime wheel collides with bundle payload: {name}")
-        shutil.copy2(source, destination)
-        if sha256_file(destination) != row["sha256"]:
-            raise RuntimeError(f"copied runtime wheel hash changed: {name}")
-        copied_rows.append(dict(row))
+        verified.append((source, dict(row)))
+
+    archive = output / RUNTIME_ARCHIVE_NAME
+    if archive.exists():
+        raise FileExistsError("runtime wheel archive collides with bundle payload")
+    with tarfile.open(archive, "w", format=tarfile.USTAR_FORMAT) as handle:
+        for source, row in verified:
+            member = tarfile.TarInfo(str(row["path"]))
+            member.size = int(row["size_bytes"])
+            member.mode = 0o444
+            member.uid = 0
+            member.gid = 0
+            member.uname = ""
+            member.gname = ""
+            member.mtime = 0
+            with source.open("rb") as source_handle:
+                handle.addfile(member, source_handle)
+
+    with tarfile.open(archive, "r:") as handle:
+        members = handle.getmembers()
+        if [member.name for member in members] != [row["path"] for _, row in verified]:
+            raise RuntimeError("written runtime archive member order differs from the lock")
+        for member, (_, row) in zip(members, verified, strict=True):
+            if (
+                member.type != tarfile.REGTYPE
+                or member.size != int(row["size_bytes"])
+                or member.mode != 0o444
+                or member.uid != 0
+                or member.gid != 0
+                or member.uname
+                or member.gname
+                or member.mtime != 0
+                or member.linkname
+                or member.pax_headers
+            ):
+                raise RuntimeError(
+                    f"written runtime archive metadata differs from lock: {member.name}"
+                )
+            extracted = handle.extractfile(member)
+            if extracted is None:
+                raise RuntimeError(f"cannot read written runtime archive member: {member.name}")
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: extracted.read(1024 * 1024), b""):
+                digest.update(chunk)
+            if digest.hexdigest() != row["sha256"]:
+                raise RuntimeError(
+                    f"written runtime archive member hash changed: {member.name}"
+                )
+
+    logical_rows = [row for _, row in verified]
     contract_source = repo_root / RUNTIME_CONTRACT_RELATIVE
     contract_destination = output / RUNTIME_CONTRACT_RELATIVE.name
     if contract_destination.exists():
@@ -238,9 +282,14 @@ def build_runtime_wheelhouse(
         "cuda_version": RUNTIME_CUDA_VERSION,
         "required_cuda_arch": RUNTIME_CUDA_ARCH,
         "inventory_sha256": RUNTIME_INVENTORY_SHA256,
-        "file_count": len(copied_rows),
-        "total_bytes": sum(int(row["size_bytes"]) for row in copied_rows),
-        "files": copied_rows,
+        "archive": {
+            "path": archive.name,
+            "size_bytes": archive.stat().st_size,
+            "sha256": sha256_file(archive),
+        },
+        "file_count": len(logical_rows),
+        "total_bytes": sum(int(row["size_bytes"]) for row in logical_rows),
+        "files": logical_rows,
         "network_install": False,
         "pip_requirement": f"torch=={RUNTIME_TORCH_VERSION}",
     }

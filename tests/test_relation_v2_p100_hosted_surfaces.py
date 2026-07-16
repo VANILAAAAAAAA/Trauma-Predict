@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
@@ -26,6 +27,31 @@ KERNEL_TEMPLATE_PATH = (
 RUNTIME_CONTRACT_PATH = (
     ROOT / "configs/runtime/p100_torch_2_10_cu126_cp312.json"
 )
+RUNTIME_ARCHIVE_NAME = "p100_torch_2_10_cu126_cp312_wheelhouse.blob"
+
+
+def _notebook_source() -> str:
+    notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
+    return "".join(notebook["cells"][1]["source"])
+
+
+def _notebook_function(name: str):
+    tree = ast.parse(_notebook_source())
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+    module = ast.Module(body=[function], type_ignores=[])
+    ast.fix_missing_locations(module)
+    namespace = {
+        "Path": Path,
+        "hashlib": hashlib,
+        "os": __import__("os"),
+        "tarfile": tarfile,
+    }
+    exec(compile(module, str(NOTEBOOK_PATH), "exec"), namespace)
+    return namespace[name]
 
 
 def _load(path: Path, name: str):
@@ -45,8 +71,7 @@ class RelationV2P100HostedSurfacesTest(unittest.TestCase):
 
     def test_frozen_route_identity_matches_across_surfaces(self) -> None:
         metadata = json.loads(KERNEL_TEMPLATE_PATH.read_text(encoding="utf-8"))
-        notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
-        notebook_source = "".join(notebook["cells"][1]["source"])
+        notebook_source = _notebook_source()
         model_config = yaml.safe_load(
             (ROOT / "configs/model/multires_event_v2_relation_v2.yaml").read_text(
                 encoding="utf-8"
@@ -83,6 +108,210 @@ class RelationV2P100HostedSurfacesTest(unittest.TestCase):
         self.assertNotIn("git clone", notebook_source)
         self.assertNotIn("KAGGLE_KEY", notebook_source)
         self.assertNotIn("torch.distributed.run", notebook_source)
+
+    def test_bundle_v3_uses_one_safe_runtime_archive_under_kaggle_temp(self) -> None:
+        notebook_source = _notebook_source()
+        builder_source = BUILDER_PATH.read_text(encoding="utf-8")
+        launcher_source = LAUNCHER_PATH.read_text(encoding="utf-8")
+        schema = "trauma_predict.multires_event_v2_relation_v2_p100_bundle.v3"
+        self.assertEqual(self.builder.BUNDLE_SCHEMA, schema)
+        self.assertEqual(self.launcher.MANIFEST_SCHEMA, schema)
+        self.assertIn(f"SCHEMA = '{schema}'", notebook_source)
+        self.assertEqual(self.builder.RUNTIME_ARCHIVE_NAME, RUNTIME_ARCHIVE_NAME)
+        self.assertEqual(
+            self.launcher.EXPECTED_RUNTIME_ARCHIVE_NAME,
+            RUNTIME_ARCHIVE_NAME,
+        )
+        self.assertIn(
+            f"RUNTIME_ARCHIVE_NAME = '{RUNTIME_ARCHIVE_NAME}'",
+            notebook_source,
+        )
+        self.assertIn("Path('/kaggle/temp/relation_v2_p100_runtime", notebook_source)
+        self.assertIn("Path('/kaggle/temp/relation_v2_p100_wheelhouse", notebook_source)
+        self.assertNotIn("Path('/kaggle/working/relation_v2_p100_runtime", notebook_source)
+        self.assertIn("extract_runtime_wheelhouse(archive_path", notebook_source)
+        self.assertNotIn("wheel_paths = [resolve_file", notebook_source)
+        self.assertIn('"archive": {', builder_source)
+        self.assertIn("_validate_runtime_archive(bundle, runtime)", launcher_source)
+
+    def test_runtime_builder_emits_only_contract_and_deterministic_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            wheelhouse = root / "wheelhouse"
+            output_a = root / "bundle-a"
+            output_b = root / "bundle-b"
+            contract_path = repo / self.builder.RUNTIME_CONTRACT_RELATIVE
+            contract_path.parent.mkdir(parents=True)
+            wheelhouse.mkdir()
+            output_a.mkdir()
+            output_b.mkdir()
+            contract_path.write_text('{"fixture":true}\n', encoding="utf-8")
+            contract_digest = hashlib.sha256(contract_path.read_bytes()).hexdigest()
+            contents = {
+                "alpha-1.0-cp312-cp312-manylinux_x86_64.whl": b"alpha-wheel",
+                "torch-2.10.0+cu126-cp312-cp312-manylinux_x86_64.whl": b"torch-wheel",
+            }
+            rows = []
+            for name, content in sorted(contents.items()):
+                (wheelhouse / name).write_bytes(content)
+                rows.append(
+                    {
+                        "path": name,
+                        "size_bytes": len(content),
+                        "sha256": hashlib.sha256(content).hexdigest(),
+                    }
+                )
+            contract = {"files": rows}
+            with (
+                mock.patch.object(
+                    self.builder,
+                    "load_runtime_contract",
+                    return_value=contract,
+                ),
+                mock.patch.object(
+                    self.builder,
+                    "RUNTIME_CONTRACT_SHA256",
+                    contract_digest,
+                ),
+            ):
+                runtime_a = self.builder.build_runtime_wheelhouse(
+                    repo, wheelhouse, output_a
+                )
+                runtime_b = self.builder.build_runtime_wheelhouse(
+                    repo, wheelhouse, output_b
+                )
+            expected_top_level = {
+                self.builder.RUNTIME_CONTRACT_RELATIVE.name,
+                RUNTIME_ARCHIVE_NAME,
+            }
+            self.assertEqual(
+                {path.name for path in output_a.iterdir()}, expected_top_level
+            )
+            self.assertEqual(
+                {path.name for path in output_b.iterdir()}, expected_top_level
+            )
+            self.assertEqual(runtime_a["files"], rows)
+            self.assertEqual(runtime_a["archive"]["path"], RUNTIME_ARCHIVE_NAME)
+            self.assertEqual(
+                runtime_a["archive"]["sha256"],
+                runtime_b["archive"]["sha256"],
+            )
+            self.assertEqual(
+                (output_a / RUNTIME_ARCHIVE_NAME).read_bytes(),
+                (output_b / RUNTIME_ARCHIVE_NAME).read_bytes(),
+            )
+            with tarfile.open(output_a / RUNTIME_ARCHIVE_NAME, "r:") as handle:
+                members = handle.getmembers()
+            self.assertEqual(
+                [member.name for member in members],
+                [row["path"] for row in rows],
+            )
+            self.assertTrue(all(member.isfile() for member in members))
+            self.assertTrue(all(member.mtime == 0 for member in members))
+
+    def test_launcher_validates_archive_and_every_logical_member(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory)
+            archive = bundle / RUNTIME_ARCHIVE_NAME
+            contents = {
+                f"wheel-{index:02d}.whl": f"wheel-{index:02d}".encode("ascii")
+                for index in range(28)
+            }
+            rows = [
+                {
+                    "path": name,
+                    "size_bytes": len(content),
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                }
+                for name, content in sorted(contents.items())
+            ]
+            with tarfile.open(
+                archive, "w", format=tarfile.USTAR_FORMAT
+            ) as handle:
+                for row in rows:
+                    member = tarfile.TarInfo(row["path"])
+                    member.size = row["size_bytes"]
+                    member.mode = 0o444
+                    member.uid = 0
+                    member.gid = 0
+                    member.uname = ""
+                    member.gname = ""
+                    member.mtime = 0
+                    handle.addfile(member, io.BytesIO(contents[row["path"]]))
+            archive_row = {
+                "path": RUNTIME_ARCHIVE_NAME,
+                "size_bytes": archive.stat().st_size,
+                "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+            }
+            runtime = {"archive": archive_row, "files": rows}
+            self.assertEqual(
+                self.launcher._validate_runtime_archive(bundle, runtime),
+                archive,
+            )
+            tampered = json.loads(json.dumps(runtime))
+            tampered["files"][13]["sha256"] = "0" * 64
+            with self.assertRaisesRegex(ValueError, "member hash differs"):
+                self.launcher._validate_runtime_archive(bundle, tampered)
+
+    def test_notebook_runtime_extractor_verifies_member_hashes(self) -> None:
+        extract = _notebook_function("extract_runtime_wheelhouse")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / RUNTIME_ARCHIVE_NAME
+            expected_content = b"registered-wheel"
+            observed_content = b"tampered-wheel"
+            name = "torch-2.10.0+cu126-cp312-cp312-manylinux_x86_64.whl"
+            with tarfile.open(archive, "w") as handle:
+                member = tarfile.TarInfo(name)
+                member.size = len(observed_content)
+                handle.addfile(member, io.BytesIO(observed_content))
+            rows = [
+                {
+                    "path": name,
+                    "size_bytes": len(observed_content),
+                    "sha256": hashlib.sha256(expected_content).hexdigest(),
+                }
+            ]
+            with self.assertRaisesRegex(ValueError, "member hash differs"):
+                extract(archive, root / "wheelhouse", rows)
+
+    def test_notebook_runtime_extractor_rejects_traversal_and_links(self) -> None:
+        extract = _notebook_function("extract_runtime_wheelhouse")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            traversal_archive = root / "traversal.blob"
+            content = b"forbidden"
+            with tarfile.open(traversal_archive, "w") as handle:
+                member = tarfile.TarInfo("../escape.whl")
+                member.size = len(content)
+                handle.addfile(member, io.BytesIO(content))
+            rows = [
+                {
+                    "path": "../escape.whl",
+                    "size_bytes": len(content),
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                }
+            ]
+            with self.assertRaisesRegex(ValueError, "escapes destination"):
+                extract(traversal_archive, root / "traversal-output", rows)
+            self.assertFalse((root / "escape.whl").exists())
+
+            link_archive = root / "link.blob"
+            with tarfile.open(link_archive, "w") as handle:
+                member = tarfile.TarInfo("linked.whl")
+                member.type = tarfile.SYMTYPE
+                member.linkname = "outside.whl"
+                handle.addfile(member)
+            link_rows = [
+                {
+                    "path": "linked.whl",
+                    "size_bytes": 0,
+                    "sha256": hashlib.sha256(b"").hexdigest(),
+                }
+            ]
+            with self.assertRaisesRegex(ValueError, "Invalid runtime archive member"):
+                extract(link_archive, root / "link-output", link_rows)
 
     def test_p100_runtime_lock_is_complete_and_frozen(self) -> None:
         runtime = self.builder.load_runtime_contract(ROOT)

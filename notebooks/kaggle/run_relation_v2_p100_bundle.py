@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
-MANIFEST_SCHEMA = "trauma_predict.multires_event_v2_relation_v2_p100_bundle.v2"
+MANIFEST_SCHEMA = "trauma_predict.multires_event_v2_relation_v2_p100_bundle.v3"
 DATA_INVENTORY_SCHEMA = "trauma_predict.mounted_file_inventory.v3"
 SOURCE_INVENTORY_SCHEMA = "trauma_predict.source_release_inventory.v1"
 SOURCE_RELEASE_SCHEMA = "trauma_predict.multires_event_v2_source_release.v1"
@@ -52,6 +52,7 @@ EXPECTED_RUNTIME_PYTHON_ABI = "cp312"
 EXPECTED_RUNTIME_CUDA_ARCH = "sm_60"
 EXPECTED_RUNTIME_WHEEL_COUNT = 28
 EXPECTED_RUNTIME_WHEEL_BYTES = 3_587_233_664
+EXPECTED_RUNTIME_ARCHIVE_NAME = "p100_torch_2_10_cu126_cp312_wheelhouse.blob"
 RUNTIME_ROOT_ENV = "TRAUMA_PREDICT_RUNTIME_SITE_PACKAGES"
 RUNTIME_LOCK_ENV = "TRAUMA_PREDICT_RUNTIME_LOCK_SHA256"
 STAGE_MANIFEST_NAME = "hosted_stage_manifest.json"
@@ -158,6 +159,14 @@ def _resolve_file(bundle: Path, row: Mapping[str, Any], label: str) -> Path:
     return path
 
 
+def _deterministic_ustar_size(rows: list[Mapping[str, Any]]) -> int:
+    blocks = 2
+    for row in rows:
+        size = int(row["size_bytes"])
+        blocks += 1 + (size + 511) // 512
+    return ((blocks + 19) // 20) * 20 * 512
+
+
 def _validate_runtime_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
     runtime = _mapping(manifest.get("runtime"), "runtime")
     contract = _mapping(runtime.get("contract"), "runtime.contract")
@@ -214,7 +223,66 @@ def _validate_runtime_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
     }
     if _sha256_payload(inventory) != EXPECTED_RUNTIME_INVENTORY_SHA256:
         raise ValueError("runtime wheel inventory differs from the frozen cu126 lock")
-    return {**runtime, "files": rows}
+    raw_archive = _mapping(runtime.get("archive"), "runtime.archive")
+    archive_relative = _safe_relative(raw_archive.get("path"), "runtime.archive.path")
+    archive = {
+        "path": archive_relative.as_posix(),
+        "size_bytes": int(raw_archive.get("size_bytes", -1)),
+        "sha256": str(raw_archive.get("sha256") or ""),
+    }
+    if (
+        len(archive_relative.parts) != 1
+        or archive["path"] != EXPECTED_RUNTIME_ARCHIVE_NAME
+        or archive["size_bytes"] != _deterministic_ustar_size(rows)
+        or not _is_sha256(archive["sha256"])
+    ):
+        raise ValueError("runtime wheel archive row differs from the frozen v3 contract")
+    return {**runtime, "archive": archive, "files": rows}
+
+
+def _validate_runtime_archive(bundle: Path, runtime: Mapping[str, Any]) -> Path:
+    archive = _resolve_file(
+        bundle,
+        _mapping(runtime.get("archive"), "runtime.archive"),
+        "P100 cu126 runtime wheel archive",
+    )
+    rows = runtime.get("files")
+    if not isinstance(rows, list) or len(rows) != EXPECTED_RUNTIME_WHEEL_COUNT:
+        raise ValueError("runtime logical wheel inventory is absent")
+    expected_names = [str(row["path"]) for row in rows]
+    with tarfile.open(archive, "r:") as handle:
+        members = handle.getmembers()
+        if [member.name for member in members] != expected_names:
+            raise ValueError(
+                "runtime archive members/order differ from the logical wheel inventory"
+            )
+        for member, row in zip(members, rows, strict=True):
+            if (
+                member.type != tarfile.REGTYPE
+                or member.size != int(row["size_bytes"])
+                or member.mode != 0o444
+                or member.uid != 0
+                or member.gid != 0
+                or member.uname
+                or member.gname
+                or member.mtime != 0
+                or member.linkname
+                or member.pax_headers
+            ):
+                raise ValueError(
+                    f"runtime archive member metadata differs from contract: {member.name}"
+                )
+            extracted = handle.extractfile(member)
+            if extracted is None:
+                raise ValueError(f"cannot read runtime archive member: {member.name}")
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: extracted.read(1024 * 1024), b""):
+                digest.update(chunk)
+            if digest.hexdigest() != row["sha256"]:
+                raise ValueError(
+                    f"runtime archive member hash differs from contract: {member.name}"
+                )
+    return archive
 
 
 def _validate_isolated_torch_runtime(
@@ -1072,6 +1140,7 @@ def main() -> int:
         _mapping(runtime.get("contract"), "runtime.contract"),
         "P100 cu126 runtime contract",
     )
+    _validate_runtime_archive(bundle, runtime)
     bundle_manifest_sha256 = _sha256(manifest_path)
     launcher = _resolve_file(
         bundle,
