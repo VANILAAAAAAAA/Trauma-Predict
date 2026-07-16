@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.util
 import io
@@ -21,6 +22,9 @@ NOTEBOOK_PATH = (
 )
 KERNEL_TEMPLATE_PATH = (
     ROOT / "notebooks/kaggle/kernel-metadata-relation-v2-p100.template.json"
+)
+RUNTIME_CONTRACT_PATH = (
+    ROOT / "configs/runtime/p100_torch_2_10_cu126_cp312.json"
 )
 
 
@@ -60,11 +64,58 @@ class RelationV2P100HostedSurfacesTest(unittest.TestCase):
         self.assertEqual(metadata["machine_shape"], "NvidiaTeslaP100")
         self.assertFalse(metadata["enable_internet"])
         self.assertEqual(metadata["dataset_sources"], [self.builder.DATASET_REF])
-        self.assertIn("kagglehub.dataset_download", notebook_source)
+        self.assertNotIn("kagglehub", notebook_source)
+        self.assertIn("Path('/kaggle/input')", notebook_source)
+        self.assertIn("--no-index", notebook_source)
+        self.assertIn("--no-deps", notebook_source)
+        self.assertIn("2.10.0+cu126", notebook_source)
+        self.assertIn("sm_60", notebook_source)
+        self.assertIn("TRAUMA_PREDICT_RUNTIME_SITE_PACKAGES", notebook_source)
+        notebook_tree = ast.parse(notebook_source)
+        imported = {
+            alias.name
+            for node in ast.walk(notebook_tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        self.assertNotIn("torch", imported)
         self.assertIn("run_relation_v2_p100_bundle.py", notebook_source)
         self.assertNotIn("git clone", notebook_source)
         self.assertNotIn("KAGGLE_KEY", notebook_source)
         self.assertNotIn("torch.distributed.run", notebook_source)
+
+    def test_p100_runtime_lock_is_complete_and_frozen(self) -> None:
+        runtime = self.builder.load_runtime_contract(ROOT)
+        self.assertEqual(runtime["schema"], self.builder.RUNTIME_WHEELHOUSE_SCHEMA)
+        self.assertEqual(runtime["python_abi"], "cp312")
+        self.assertEqual(runtime["torch_version"], "2.10.0+cu126")
+        self.assertEqual(runtime["cuda_version"], "12.6")
+        self.assertEqual(runtime["required_cuda_arch"], "sm_60")
+        self.assertEqual(runtime["inventory_sha256"], self.builder.RUNTIME_INVENTORY_SHA256)
+        self.assertEqual(runtime["file_count"], 28)
+        self.assertEqual(runtime["total_bytes"], 3_587_233_664)
+        self.assertEqual(len(runtime["files"]), 28)
+        names = {row["path"] for row in runtime["files"]}
+        self.assertIn(
+            "torch-2.10.0+cu126-cp312-cp312-manylinux_2_28_x86_64.whl",
+            names,
+        )
+        self.assertEqual(
+            hashlib.sha256(RUNTIME_CONTRACT_PATH.read_bytes()).hexdigest(),
+            self.builder.RUNTIME_CONTRACT_SHA256,
+        )
+
+    def test_launcher_preserves_isolated_runtime_for_training_child(self) -> None:
+        launcher_source = LAUNCHER_PATH.read_text(encoding="utf-8")
+        self.assertIn("EXPECTED_RUNTIME_CONTRACT_SHA256", launcher_source)
+        self.assertIn("_validate_isolated_torch_runtime", launcher_source)
+        self.assertIn("torch.cuda.get_arch_list", launcher_source)
+        self.assertIn("TRAUMA_PREDICT_RUNTIME_SITE_PACKAGES=runtime_root", launcher_source)
+        self.assertIn(
+            'PYTHONPATH=os.pathsep.join((runtime_root, str(repo_root / "src")))',
+            launcher_source,
+        )
+        self.assertNotIn('PYTHONPATH=str(repo_root / "src")', launcher_source)
 
     def test_source_and_prior_output_are_hash_bound(self) -> None:
         launcher_source = LAUNCHER_PATH.read_text(encoding="utf-8")

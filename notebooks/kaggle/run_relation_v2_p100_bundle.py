@@ -14,10 +14,11 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
-MANIFEST_SCHEMA = "trauma_predict.multires_event_v2_relation_v2_p100_bundle.v1"
+MANIFEST_SCHEMA = "trauma_predict.multires_event_v2_relation_v2_p100_bundle.v2"
 DATA_INVENTORY_SCHEMA = "trauma_predict.mounted_file_inventory.v3"
 SOURCE_INVENTORY_SCHEMA = "trauma_predict.source_release_inventory.v1"
 SOURCE_RELEASE_SCHEMA = "trauma_predict.multires_event_v2_source_release.v1"
+RUNTIME_WHEELHOUSE_SCHEMA = "trauma_predict.p100_torch_runtime_wheelhouse.v1"
 HOSTED_STAGE_SCHEMA = "trauma_predict.multires_event_v2_p100_hosted_stage.v1"
 HOSTED_STOP_READINESS_SCHEMA = (
     "trauma_predict.multires_event_v2_hosted_stop_readiness.v1"
@@ -39,6 +40,20 @@ EXPECTED_RELATION_BUNDLE_SHA256 = (
 )
 EXPECTED_TRAINING_STOP_STEPS = (250, 1500, 2750, 4000)
 EXPECTED_VALIDATION_ANCHORS = 6309
+EXPECTED_RUNTIME_CONTRACT_SHA256 = (
+    "aada1dee4ee21e02fd5c81ae97d441c38e72d770eec5398932ee295d08f8f2cc"
+)
+EXPECTED_RUNTIME_INVENTORY_SHA256 = (
+    "8063e83b243589e26c353d335fd5137505bfa90b2d5aa0b1226c15fd810120a1"
+)
+EXPECTED_RUNTIME_TORCH_VERSION = "2.10.0+cu126"
+EXPECTED_RUNTIME_CUDA_VERSION = "12.6"
+EXPECTED_RUNTIME_PYTHON_ABI = "cp312"
+EXPECTED_RUNTIME_CUDA_ARCH = "sm_60"
+EXPECTED_RUNTIME_WHEEL_COUNT = 28
+EXPECTED_RUNTIME_WHEEL_BYTES = 3_587_233_664
+RUNTIME_ROOT_ENV = "TRAUMA_PREDICT_RUNTIME_SITE_PACKAGES"
+RUNTIME_LOCK_ENV = "TRAUMA_PREDICT_RUNTIME_LOCK_SHA256"
 STAGE_MANIFEST_NAME = "hosted_stage_manifest.json"
 
 BASE_AUTHORITY = {
@@ -141,6 +156,112 @@ def _resolve_file(bundle: Path, row: Mapping[str, Any], label: str) -> Path:
     if observed != expected:
         raise ValueError(f"mounted {label} hash mismatch: {observed} != {expected}")
     return path
+
+
+def _validate_runtime_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    runtime = _mapping(manifest.get("runtime"), "runtime")
+    contract = _mapping(runtime.get("contract"), "runtime.contract")
+    if (
+        runtime.get("schema") != RUNTIME_WHEELHOUSE_SCHEMA
+        or runtime.get("python_abi") != EXPECTED_RUNTIME_PYTHON_ABI
+        or runtime.get("torch_version") != EXPECTED_RUNTIME_TORCH_VERSION
+        or runtime.get("cuda_version") != EXPECTED_RUNTIME_CUDA_VERSION
+        or runtime.get("required_cuda_arch") != EXPECTED_RUNTIME_CUDA_ARCH
+        or runtime.get("inventory_sha256")
+        != EXPECTED_RUNTIME_INVENTORY_SHA256
+        or int(runtime.get("file_count", -1)) != EXPECTED_RUNTIME_WHEEL_COUNT
+        or int(runtime.get("total_bytes", -1)) != EXPECTED_RUNTIME_WHEEL_BYTES
+        or runtime.get("network_install") is not False
+        or runtime.get("pip_requirement")
+        != f"torch=={EXPECTED_RUNTIME_TORCH_VERSION}"
+        or contract.get("path") != "p100_torch_2_10_cu126_cp312.json"
+        or int(contract.get("size_bytes", -1)) != 6144
+        or contract.get("sha256") != EXPECTED_RUNTIME_CONTRACT_SHA256
+    ):
+        raise ValueError("mounted bundle runtime differs from the frozen P100 cu126 lock")
+    raw_rows = runtime.get("files")
+    if not isinstance(raw_rows, list) or len(raw_rows) != EXPECTED_RUNTIME_WHEEL_COUNT:
+        raise ValueError("mounted bundle runtime wheel rows differ from the frozen lock")
+    rows: list[dict[str, Any]] = []
+    names: set[str] = set()
+    for index, raw in enumerate(raw_rows):
+        row = _mapping(raw, f"runtime.files[{index}]")
+        relative = _safe_relative(row.get("path"), f"runtime.files[{index}].path")
+        name = relative.as_posix()
+        size = int(row.get("size_bytes", -1))
+        digest = str(row.get("sha256") or "")
+        if (
+            len(relative.parts) != 1
+            or not name.endswith(".whl")
+            or name in names
+            or size < 1
+            or not _is_sha256(digest)
+        ):
+            raise ValueError(f"invalid runtime wheel row: {row!r}")
+        names.add(name)
+        rows.append({"path": name, "size_bytes": size, "sha256": digest})
+    if rows != sorted(rows, key=lambda row: row["path"]):
+        raise ValueError("runtime wheel rows are not sorted by filename")
+    if sum(int(row["size_bytes"]) for row in rows) != EXPECTED_RUNTIME_WHEEL_BYTES:
+        raise ValueError("runtime wheel rows do not match the frozen byte count")
+    inventory = {
+        "schema": RUNTIME_WHEELHOUSE_SCHEMA,
+        "python_abi": EXPECTED_RUNTIME_PYTHON_ABI,
+        "torch_version": EXPECTED_RUNTIME_TORCH_VERSION,
+        "cuda_version": EXPECTED_RUNTIME_CUDA_VERSION,
+        "required_cuda_arch": EXPECTED_RUNTIME_CUDA_ARCH,
+        "files": rows,
+    }
+    if _sha256_payload(inventory) != EXPECTED_RUNTIME_INVENTORY_SHA256:
+        raise ValueError("runtime wheel inventory differs from the frozen cu126 lock")
+    return {**runtime, "files": rows}
+
+
+def _validate_isolated_torch_runtime(
+    torch: Any,
+    manifest: Mapping[str, Any],
+) -> str:
+    _validate_runtime_manifest(manifest)
+    runtime_root_value = os.environ.get(RUNTIME_ROOT_ENV, "").strip()
+    if not runtime_root_value:
+        raise RuntimeError(f"{RUNTIME_ROOT_ENV} is required")
+    runtime_root = Path(runtime_root_value).resolve()
+    if not runtime_root.is_dir():
+        raise FileNotFoundError(f"isolated cu126 runtime is absent: {runtime_root}")
+    torch_file = Path(str(getattr(torch, "__file__", ""))).resolve()
+    try:
+        torch_file.relative_to(runtime_root)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"PyTorch was not imported from the isolated cu126 runtime: {torch_file}"
+        ) from exc
+    if os.environ.get(RUNTIME_LOCK_ENV) != EXPECTED_RUNTIME_CONTRACT_SHA256:
+        raise RuntimeError("isolated cu126 runtime lock identity is absent or changed")
+    if sys.version_info[:2] != (3, 12):
+        raise RuntimeError(f"P100 cu126 runtime requires Python 3.12, found {sys.version}")
+    if str(torch.__version__) != EXPECTED_RUNTIME_TORCH_VERSION:
+        raise RuntimeError(f"unexpected PyTorch runtime: {torch.__version__}")
+    if str(torch.version.cuda) != EXPECTED_RUNTIME_CUDA_VERSION:
+        raise RuntimeError(f"unexpected PyTorch CUDA runtime: {torch.version.cuda}")
+    if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
+        raise RuntimeError(
+            "Relation V2 requires exactly one visible P100; "
+            f"found {torch.cuda.device_count()} visible GPUs"
+        )
+    device_name = torch.cuda.get_device_name(0)
+    if "P100" not in device_name.upper():
+        raise RuntimeError(f"select Kaggle P100; current device is {device_name!r}")
+    if tuple(torch.cuda.get_device_capability(0)) != (6, 0):
+        raise RuntimeError("selected GPU is not the frozen Pascal sm_60 device")
+    if EXPECTED_RUNTIME_CUDA_ARCH not in set(torch.cuda.get_arch_list()):
+        raise RuntimeError("isolated PyTorch wheel does not contain sm_60 kernels")
+    probe = torch.tensor([1.0, 2.0], device="cuda", dtype=torch.float16, requires_grad=True)
+    loss = (probe.square() + 1.0).sum()
+    loss.backward()
+    torch.cuda.synchronize()
+    if probe.grad is None or not bool(torch.isfinite(probe.grad).all().item()):
+        raise RuntimeError("P100 cu126 CUDA backward smoke produced a non-finite gradient")
+    return str(device_name)
 
 
 def _find_bundle(explicit: Path | None) -> tuple[Path, dict[str, Any], Path]:
@@ -663,6 +784,10 @@ def _validate_stage_manifest(
         or stage.get("source_tree_sha256") != source.get("source_tree_sha256")
         or stage.get("normalization_sha256") != EXPECTED_NORMALIZATION_SHA256
         or stage.get("relation_bundle_sha256") != EXPECTED_RELATION_BUNDLE_SHA256
+        or stage.get("runtime_contract_sha256")
+        != EXPECTED_RUNTIME_CONTRACT_SHA256
+        or stage.get("runtime_inventory_sha256")
+        != EXPECTED_RUNTIME_INVENTORY_SHA256
         or int(stage.get("run_file_count", -1)) != len(stage.get("run_files") or ())
     ):
         raise ValueError("prior output hosted stage identity differs from this bundle")
@@ -885,6 +1010,8 @@ def _write_stage_manifest(
         "source_tree_sha256": source["source_tree_sha256"],
         "normalization_sha256": EXPECTED_NORMALIZATION_SHA256,
         "relation_bundle_sha256": EXPECTED_RELATION_BUNDLE_SHA256,
+        "runtime_contract_sha256": EXPECTED_RUNTIME_CONTRACT_SHA256,
+        "runtime_inventory_sha256": EXPECTED_RUNTIME_INVENTORY_SHA256,
         "latest_checkpoint_step": max(steps, default=0),
         "run_file_count": len(run_files),
         "run_files": run_files,
@@ -903,8 +1030,10 @@ def _validate_manifest_contract(manifest: Mapping[str, Any]) -> None:
     hardware = _mapping(manifest.get("hardware"), "hardware")
     hosted = _mapping(manifest.get("hosted"), "hosted")
     relation = _mapping(manifest.get("relation_contract"), "relation_contract")
+    _validate_runtime_manifest(manifest)
     if (
-        manifest.get("dataset_ref") != EXPECTED_DATASET_REF
+        manifest.get("schema") != MANIFEST_SCHEMA
+        or manifest.get("dataset_ref") != EXPECTED_DATASET_REF
         or manifest.get("notebook_ref") != EXPECTED_NOTEBOOK_REF
         or manifest.get("route") != ROUTE
         or manifest.get("run_name") != RUN_NAME
@@ -937,6 +1066,12 @@ def main() -> int:
 
     bundle, manifest, manifest_path = _find_bundle(args.bundle_root)
     _validate_manifest_contract(manifest)
+    runtime = _validate_runtime_manifest(manifest)
+    _resolve_file(
+        bundle,
+        _mapping(runtime.get("contract"), "runtime.contract"),
+        "P100 cu126 runtime contract",
+    )
     bundle_manifest_sha256 = _sha256(manifest_path)
     launcher = _resolve_file(
         bundle,
@@ -948,15 +1083,8 @@ def main() -> int:
     try:
         import torch
     except ImportError as exc:
-        raise RuntimeError("Kaggle image lacks PyTorch") from exc
-    if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
-        raise RuntimeError(
-            "Relation V2 requires exactly one visible P100; "
-            f"found {torch.cuda.device_count()} visible GPUs"
-        )
-    device_name = torch.cuda.get_device_name(0)
-    if "P100" not in device_name.upper():
-        raise RuntimeError(f"select Kaggle P100; current device is {device_name!r}")
+        raise RuntimeError("isolated P100 cu126 PyTorch runtime is absent") from exc
+    device_name = _validate_isolated_torch_runtime(torch, manifest)
     dependencies = _validate_runtime_dependencies()
 
     scratch = args.scratch_root.resolve()
@@ -1064,19 +1192,24 @@ def main() -> int:
     shutil.copy2(normalization, contracts / "multires_event_v1_input_normalization.json")
 
     environment = os.environ.copy()
+    runtime_root = str(Path(os.environ[RUNTIME_ROOT_ENV]).resolve())
     environment.update(
         TRAUMA_PREDICT_DATA_ROOT=str(base_root),
         TRAUMA_PREDICT_V2_TARGET_ROOT=str(target_root),
         TRAUMA_PREDICT_OUTPUT_ROOT=str(output_root),
         TRAUMA_PREDICT_V2_HOSTED_STOP_STEP=str(stop_step),
         TRAUMA_PREDICT_V2_FREE_RUNNING_MAX_NEW_ANCHORS=str(free_running_limit),
-        PYTHONPATH=str(repo_root / "src"),
+        PYTHONPATH=os.pathsep.join((runtime_root, str(repo_root / "src"))),
+        PYTHONNOUSERSITE="1",
+        TRAUMA_PREDICT_RUNTIME_SITE_PACKAGES=runtime_root,
+        TRAUMA_PREDICT_RUNTIME_LOCK_SHA256=EXPECTED_RUNTIME_CONTRACT_SHA256,
         PYTHONUNBUFFERED="1",
         TOKENIZERS_PARALLELISM="false",
     )
     print(
         "RELATION_V2_P100_MOUNTED_PREFLIGHT_OK "
         f"device={device_name!r} parameters={EXPECTED_PARAMETERS} "
+        f"torch={torch.__version__} cuda={torch.version.cuda} arch=sm_60 "
         "relations=52+39 world_size=1 train_batch=64 "
         f"restored_step={current_step} stop_step={stop_step} "
         f"free_running_max_new_anchors={free_running_limit} "

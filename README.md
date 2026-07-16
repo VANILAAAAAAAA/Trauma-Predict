@@ -17,7 +17,7 @@ Use that workspace for cohort construction, field adapter development, sample-bu
 - Model route: this version has one joint causal Relation V2 route. Relation-off, block, trajectory, mode selection, and promotion logic are outside this contract; any later ablation requires a separately frozen experiment.
 - Backbone boundary: the Relation V2 model uses neither ModernBERT, a tokenizer, nor another text backbone. The inputs are structured continuous/categorical event tuples and the outputs are mixed-measure clinical process distributions; pretrained text is a separate later matched factor, not a substitute for this decoder contract.
 - Optimizer contract: one-group AdamW over the raw 414-factor joint-NLL batch mean, with no hidden factor normalization or global gradient clipping. Every step must carry complete gradient, scaler, Adam-state, LR, and resume-schedule health evidence.
-- Hosted contract: the new single-P100 route uses `trauma_predict_relation_v2_p100_r9.ipynb`, an offline source archive, the private `vanila111/trauma-predict-relation-v2-p100-r9-bundle` Dataset, and hash-validated prior-Notebook-output restore. Training advances through 250/1500/2750/4000-step boundaries before resumable free-running evaluation. The v8 Notebook, launcher, entrypoint, and bundle builder remain historical fail-closed files.
+- Hosted contract: the new single-P100 route uses `trauma_predict_relation_v2_p100_r9.ipynb`, an offline source archive, a hash-locked Python 3.12 `torch 2.10.0+cu126` wheelhouse, the private `vanila111/trauma-predict-relation-v2-p100-r9-bundle` Dataset, and hash-validated prior-Notebook-output restore. Training advances through 250/1500/2750/4000-step boundaries before resumable free-running evaluation. The v8 Notebook, launcher, entrypoint, and bundle builder remain historical fail-closed files.
 - Historical V1 scratch Transformer and GRU-D runs remain retained evidence, not the active prediction task.
 - Legacy textual routes remain for experiment traceability and are not the active multi-resolution baseline.
 - Sample unit: one ICU stay plus one prediction anchor.
@@ -57,6 +57,6 @@ python tools/update_file_index.py --check
 
 ## Kaggle Direction
 
-The active hosted delivery surface is `notebooks/kaggle/trauma_predict_relation_v2_p100_r9.ipynb`. Upload it under its filename-derived slug, select one P100, keep Internet off, and use Save & Run All. It resolves the exact private bundle from an attached Input or Kaggle's authenticated `kagglehub` Dataset path, then delegates to `run_relation_v2_p100_bundle.py`.
+The active hosted delivery surface is the published private `vanila111/trauma-predict-relation-v2-p100-r9` Notebook. Its private bundle must already be attached under Input before Save & Run All; a raw `.ipynb` import requires Add Input first. With P100 selected and Internet off, it verifies and installs the frozen cu126 runtime, proves a real `sm_60` CUDA backward in a child process, and then delegates to `run_relation_v2_p100_bundle.py`.
 
 `notebooks/kaggle/train_multires_event_v2_relational_primary.ipynb`, `train_relational_primary.py`, `run_relational_primary_bundle.py`, and `tools/build_relational_primary_bundle.py` remain v8 historical evidence and fail closed. They cannot train, resume, or package Relation V2.

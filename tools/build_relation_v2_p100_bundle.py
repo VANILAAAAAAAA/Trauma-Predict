@@ -11,10 +11,11 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
-BUNDLE_SCHEMA = "trauma_predict.multires_event_v2_relation_v2_p100_bundle.v1"
+BUNDLE_SCHEMA = "trauma_predict.multires_event_v2_relation_v2_p100_bundle.v2"
 DATA_INVENTORY_SCHEMA = "trauma_predict.mounted_file_inventory.v3"
 SOURCE_INVENTORY_SCHEMA = "trauma_predict.source_release_inventory.v1"
 SOURCE_RELEASE_SCHEMA = "trauma_predict.multires_event_v2_source_release.v1"
+RUNTIME_WHEELHOUSE_SCHEMA = "trauma_predict.p100_torch_runtime_wheelhouse.v1"
 ROUTE = "multires_event_v2_m4_relation_v2"
 RUN_NAME = "p100_multires_event_v2_relation_v2"
 MODEL_PARAMETER_COUNT = 48_728_439
@@ -29,9 +30,22 @@ RELATION_BUNDLE_SHA256 = (
     "0331ec0d552e47790d1dc4f8bae3520062c9e6f5fa62cf62e87c187f6783c033"
 )
 SMALL_PAYLOAD_THRESHOLD_BYTES = 64 * 1024
-MAX_KAGGLE_TOP_LEVEL_FILES = 200
+MAX_KAGGLE_TOP_LEVEL_FILES = 220
 HOSTED_TRAINING_STOPS = (250, 1500, 2750, 4000)
 DEFAULT_FREE_RUNNING_MAX_NEW_ANCHORS = 2048
+RUNTIME_CONTRACT_RELATIVE = Path(
+    "configs/runtime/p100_torch_2_10_cu126_cp312.json"
+)
+RUNTIME_CONTRACT_SHA256 = (
+    "aada1dee4ee21e02fd5c81ae97d441c38e72d770eec5398932ee295d08f8f2cc"
+)
+RUNTIME_INVENTORY_SHA256 = (
+    "8063e83b243589e26c353d335fd5137505bfa90b2d5aa0b1226c15fd810120a1"
+)
+RUNTIME_TORCH_VERSION = "2.10.0+cu126"
+RUNTIME_CUDA_VERSION = "12.6"
+RUNTIME_PYTHON_ABI = "cp312"
+RUNTIME_CUDA_ARCH = "sm_60"
 
 BASE_AUTHORITY = {
     "dataset_id": BASE_DATASET_ID,
@@ -62,6 +76,7 @@ TARGET_AUTHORITY = {
 }
 
 REQUIRED_SOURCE_PATHS = {
+    RUNTIME_CONTRACT_RELATIVE.as_posix(),
     "configs/dataset/multires_event_v2_relation_v2_c4.yaml",
     "configs/evaluation/multires_event_v2_relation_v2_metrics.json",
     "configs/model/multires_event_v2_relation_v2.yaml",
@@ -107,6 +122,128 @@ def json_bytes(value: Mapping[str, Any]) -> bytes:
 
 def write_json(path: Path, value: Mapping[str, Any]) -> None:
     path.write_bytes(json_bytes(value))
+
+
+def load_runtime_contract(repo_root: Path) -> dict[str, Any]:
+    path = repo_root / RUNTIME_CONTRACT_RELATIVE
+    if path.is_symlink() or not path.is_file():
+        raise FileNotFoundError(f"runtime contract is absent: {path}")
+    if sha256_file(path) != RUNTIME_CONTRACT_SHA256:
+        raise ValueError("tracked P100 runtime contract hash differs from the frozen lock")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise TypeError("P100 runtime contract must be a JSON object")
+    expected_scalars = {
+        "schema": RUNTIME_WHEELHOUSE_SCHEMA,
+        "python_abi": RUNTIME_PYTHON_ABI,
+        "torch_version": RUNTIME_TORCH_VERSION,
+        "cuda_version": RUNTIME_CUDA_VERSION,
+        "required_cuda_arch": RUNTIME_CUDA_ARCH,
+        "inventory_sha256": RUNTIME_INVENTORY_SHA256,
+    }
+    if any(payload.get(key) != value for key, value in expected_scalars.items()):
+        raise ValueError("P100 runtime contract scalars differ from the frozen lock")
+    rows = payload.get("files")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("P100 runtime contract files must be a non-empty list")
+    normalized: list[dict[str, Any]] = []
+    names: set[str] = set()
+    for index, raw in enumerate(rows):
+        if not isinstance(raw, dict):
+            raise TypeError(f"runtime wheel row {index} must be an object")
+        name = str(raw.get("path", ""))
+        size = int(raw.get("size_bytes", -1))
+        digest = str(raw.get("sha256", ""))
+        if (
+            not name
+            or Path(name).name != name
+            or not name.endswith(".whl")
+            or name in names
+            or size < 1
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+        ):
+            raise ValueError(f"invalid frozen runtime wheel row: {raw!r}")
+        names.add(name)
+        normalized.append({"path": name, "size_bytes": size, "sha256": digest})
+    if normalized != sorted(normalized, key=lambda row: row["path"]):
+        raise ValueError("P100 runtime wheel rows must be sorted by filename")
+    total_bytes = sum(int(row["size_bytes"]) for row in normalized)
+    if int(payload.get("file_count", -1)) != len(normalized):
+        raise ValueError("P100 runtime wheel count differs from the frozen rows")
+    if int(payload.get("total_bytes", -1)) != total_bytes:
+        raise ValueError("P100 runtime byte count differs from the frozen rows")
+    inventory_payload = {
+        "schema": RUNTIME_WHEELHOUSE_SCHEMA,
+        "python_abi": RUNTIME_PYTHON_ABI,
+        "torch_version": RUNTIME_TORCH_VERSION,
+        "cuda_version": RUNTIME_CUDA_VERSION,
+        "required_cuda_arch": RUNTIME_CUDA_ARCH,
+        "files": normalized,
+    }
+    if sha256_payload(inventory_payload) != RUNTIME_INVENTORY_SHA256:
+        raise ValueError("P100 runtime wheel inventory digest differs from the frozen lock")
+    return {**payload, "files": normalized}
+
+
+def build_runtime_wheelhouse(
+    repo_root: Path,
+    wheelhouse_root: Path,
+    output: Path,
+) -> dict[str, Any]:
+    contract = load_runtime_contract(repo_root)
+    if wheelhouse_root.is_symlink() or not wheelhouse_root.is_dir():
+        raise FileNotFoundError(f"runtime wheelhouse is absent: {wheelhouse_root}")
+    children = sorted(wheelhouse_root.iterdir(), key=lambda path: path.name)
+    if any(path.is_symlink() or not path.is_file() for path in children):
+        raise ValueError("runtime wheelhouse permits regular top-level files only")
+    expected = {row["path"]: row for row in contract["files"]}
+    observed = {path.name: path for path in children}
+    if set(observed) != set(expected):
+        missing = sorted(set(expected) - set(observed))
+        extra = sorted(set(observed) - set(expected))
+        raise ValueError(
+            f"runtime wheelhouse file set differs from lock: missing={missing} extra={extra}"
+        )
+    copied_rows: list[dict[str, Any]] = []
+    for name, row in sorted(expected.items()):
+        source = observed[name]
+        if source.stat().st_size != int(row["size_bytes"]):
+            raise ValueError(f"runtime wheel size differs from lock: {name}")
+        if sha256_file(source) != row["sha256"]:
+            raise ValueError(f"runtime wheel hash differs from lock: {name}")
+        destination = output / name
+        if destination.exists():
+            raise FileExistsError(f"runtime wheel collides with bundle payload: {name}")
+        shutil.copy2(source, destination)
+        if sha256_file(destination) != row["sha256"]:
+            raise RuntimeError(f"copied runtime wheel hash changed: {name}")
+        copied_rows.append(dict(row))
+    contract_source = repo_root / RUNTIME_CONTRACT_RELATIVE
+    contract_destination = output / RUNTIME_CONTRACT_RELATIVE.name
+    if contract_destination.exists():
+        raise FileExistsError("runtime contract collides with bundle payload")
+    shutil.copy2(contract_source, contract_destination)
+    if sha256_file(contract_destination) != RUNTIME_CONTRACT_SHA256:
+        raise RuntimeError("copied runtime contract hash changed")
+    return {
+        "schema": RUNTIME_WHEELHOUSE_SCHEMA,
+        "contract": {
+            "path": contract_destination.name,
+            "size_bytes": contract_destination.stat().st_size,
+            "sha256": RUNTIME_CONTRACT_SHA256,
+        },
+        "python_abi": RUNTIME_PYTHON_ABI,
+        "torch_version": RUNTIME_TORCH_VERSION,
+        "cuda_version": RUNTIME_CUDA_VERSION,
+        "required_cuda_arch": RUNTIME_CUDA_ARCH,
+        "inventory_sha256": RUNTIME_INVENTORY_SHA256,
+        "file_count": len(copied_rows),
+        "total_bytes": sum(int(row["size_bytes"]) for row in copied_rows),
+        "files": copied_rows,
+        "network_install": False,
+        "pip_requirement": f"torch=={RUNTIME_TORCH_VERSION}",
+    }
 
 
 def _git(repo_root: Path, *arguments: str) -> str:
@@ -187,6 +324,7 @@ def build_source_release(
     executable_candidates.extend(
         repo_root / relative
         for relative in (
+            RUNTIME_CONTRACT_RELATIVE.as_posix(),
             "notebooks/kaggle/train_relation_v2_p100.py",
             "notebooks/kaggle/run_relation_v2_p100_bundle.py",
             "requirements-multires-kaggle.txt",
@@ -391,6 +529,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-root", type=Path, required=True)
     parser.add_argument("--target-root", type=Path, required=True)
     parser.add_argument("--normalization", type=Path, required=True)
+    parser.add_argument("--runtime-wheelhouse", type=Path, required=True)
     parser.add_argument("--launcher", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--dataset-ref", default=DATASET_REF)
@@ -427,6 +566,7 @@ def main() -> int:
         base_root = args.base_root.resolve()
         target_root = args.target_root.resolve()
         normalization_source = args.normalization.resolve()
+        runtime_wheelhouse_source = args.runtime_wheelhouse.resolve()
         launcher_source = args.launcher.resolve()
         expected_launcher = repo_root / "notebooks/kaggle/run_relation_v2_p100_bundle.py"
         if launcher_source != expected_launcher or not launcher_source.is_file():
@@ -435,6 +575,11 @@ def main() -> int:
             raise ValueError("input normalization differs from the frozen train-only artifact")
 
         source, source_inventory = build_source_release(repo_root, output)
+        runtime = build_runtime_wheelhouse(
+            repo_root,
+            runtime_wheelhouse_source,
+            output,
+        )
         base_identity = dataset_identity(base_root, BASE_AUTHORITY)
         target_identity = dataset_identity(target_root, TARGET_AUTHORITY)
         base_inventory, base_storage = build_data_inventory(base_root, output, prefix="base")
@@ -474,6 +619,7 @@ def main() -> int:
                 "precision": "fp16",
                 "per_device_train_batch_size": 64,
             },
+            "runtime": runtime,
             "hosted": {
                 "training_stop_steps": list(HOSTED_TRAINING_STOPS),
                 "free_running_max_new_anchors": int(
@@ -512,10 +658,13 @@ def main() -> int:
                     base_storage["packed_bytes"] + target_storage["packed_bytes"]
                 ),
                 "source_files": int(source_inventory["file_count"]),
+                "runtime_wheel_files": int(runtime["file_count"]),
+                "runtime_wheel_bytes": int(runtime["total_bytes"]),
                 "bulk_patient_payload_copy_inside_notebook": False,
                 "bulk_patient_payload_extraction_inside_notebook": False,
                 "small_payload_pack_extraction_inside_notebook": True,
                 "network_source_checkout": False,
+                "network_runtime_install": False,
             },
         }
         write_json(output / "run_bundle_manifest.json", manifest)

@@ -113,6 +113,11 @@ EXPECTED_RELATION_CONFIG_DIR = "configs/contracts/multires_event_v2"
 EXPECTED_RELATION_BUNDLE_SHA256 = (
     "0331ec0d552e47790d1dc4f8bae3520062c9e6f5fa62cf62e87c187f6783c033"
 )
+EXPECTED_P100_RUNTIME_CONTRACT_SHA256 = (
+    "aada1dee4ee21e02fd5c81ae97d441c38e72d770eec5398932ee295d08f8f2cc"
+)
+EXPECTED_P100_TORCH_VERSION = "2.10.0+cu126"
+EXPECTED_P100_CUDA_RUNTIME = "12.6"
 EXPECTED_SUPERVISION_SHA256 = "722cae631ca2b7cf801514cccdfd6cf18be9742f0cb94c9a1e89fb3696d095f6"
 EXPECTED_INPUT_NORMALIZATION_SHA256 = (
     "4f54dbeaab4b2becd349d1d8fcaac7b6bdea2567a20874ee7d29338c1f930add"
@@ -3704,6 +3709,19 @@ def _runtime_environment_artifact(
         raise ValueError("formal V2 runtime identity requires one P100 process/device")
     if not torch.cuda.is_available() or torch.cuda.device_count() < required_devices:
         raise RuntimeError("formal V2 runtime identity requires one visible CUDA device")
+    runtime_contract_sha256 = os.environ.get(
+        "TRAUMA_PREDICT_RUNTIME_LOCK_SHA256", ""
+    )
+    if runtime_contract_sha256 != EXPECTED_P100_RUNTIME_CONTRACT_SHA256:
+        raise RuntimeError("formal V2 runtime lacks the frozen P100 cu126 lock identity")
+    if str(torch.__version__) != EXPECTED_P100_TORCH_VERSION:
+        raise RuntimeError(f"formal V2 runtime has unexpected torch: {torch.__version__}")
+    if str(torch.version.cuda or "") != EXPECTED_P100_CUDA_RUNTIME:
+        raise RuntimeError(
+            f"formal V2 runtime has unexpected CUDA runtime: {torch.version.cuda}"
+        )
+    if "sm_60" not in set(torch.cuda.get_arch_list()):
+        raise RuntimeError("formal V2 PyTorch runtime does not contain sm_60 kernels")
     devices: list[dict[str, Any]] = []
     diagnostic_devices: list[dict[str, Any]] = []
     for index in range(required_devices):
@@ -3720,6 +3738,8 @@ def _runtime_environment_artifact(
                 int(properties.minor),
             ],
         }
+        if semantic_device["compute_capability"] != [6, 0]:
+            raise RuntimeError("formal V2 runtime requires Pascal compute capability 6.0")
         devices.append(semantic_device)
         diagnostic_devices.append(
             {
@@ -3755,6 +3775,8 @@ def _runtime_environment_artifact(
         "requirements_sha256": sha256_file(requirements_path),
         "lock_sha256": sha256_file(lock_path) if lock_path.is_file() else None,
         "dependency_versions": dependency_versions,
+        "p100_runtime_contract_sha256": runtime_contract_sha256,
+        "cuda_arch_list": list(torch.cuda.get_arch_list()),
     }
     if not semantic["cuda_runtime"] or int(semantic["cudnn"]) <= 0:
         raise RuntimeError("formal V2 runtime lacks CUDA/cuDNN identity")
@@ -4551,6 +4573,7 @@ def _source_tree_identity(repo_root: Path) -> dict[str, Any]:
     candidates.extend(
         repo_root / relative
         for relative in (
+            "configs/runtime/p100_torch_2_10_cu126_cp312.json",
             "notebooks/kaggle/train_relation_v2_p100.py",
             "notebooks/kaggle/run_relation_v2_p100_bundle.py",
             "requirements-multires-kaggle.txt",

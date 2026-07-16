@@ -1,0 +1,152 @@
+{
+  "cuda_version": "12.6",
+  "file_count": 28,
+  "files": [
+    {
+      "path": "cuda_bindings-12.9.4-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "fda147a344e8eaeca0c6ff113d2851ffca8f7dfc0a6c932374ee5c47caa649c8",
+      "size_bytes": 12151019
+    },
+    {
+      "path": "cuda_pathfinder-1.2.2-py3-none-any.whl",
+      "sha256": "4a97b8eb29bc4bbd52f419141dd0345da95f67e599deeed686bd925729d22228",
+      "size_bytes": 23129
+    },
+    {
+      "path": "filelock-3.29.0-py3-none-any.whl",
+      "sha256": "96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258",
+      "size_bytes": 39812
+    },
+    {
+      "path": "fsspec-2026.4.0-py3-none-any.whl",
+      "sha256": "11ef7bb35dab8a394fde6e608221d5cf3e8499401c249bebaeaad760a1a8dec2",
+      "size_bytes": 203402
+    },
+    {
+      "path": "jinja2-3.1.6-py3-none-any.whl",
+      "sha256": "85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67",
+      "size_bytes": 134899
+    },
+    {
+      "path": "markupsafe-3.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "d6dd0be5b5b189d31db7cda48b91d7e0a9795f31430b7f271219ab30f1d3ac9d",
+      "size_bytes": 22947
+    },
+    {
+      "path": "mpmath-1.3.0-py3-none-any.whl",
+      "sha256": "a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c",
+      "size_bytes": 536198
+    },
+    {
+      "path": "networkx-3.6.1-py3-none-any.whl",
+      "sha256": "d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762",
+      "size_bytes": 2068504
+    },
+    {
+      "path": "nvidia_cublas_cu12-12.6.4.1-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "08ed2686e9875d01b58e3cb379c6896df8e76c75e0d4a7f7dace3d7b6d9ef8eb",
+      "size_bytes": 393138322
+    },
+    {
+      "path": "nvidia_cuda_cupti_cu12-12.6.80-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "6768bad6cab4f19e8292125e5f1ac8aa7d1718704012a0e3272a6f61c4bce132",
+      "size_bytes": 8917980
+    },
+    {
+      "path": "nvidia_cuda_nvrtc_cu12-12.6.77-py3-none-manylinux2014_x86_64.whl",
+      "sha256": "35b0cc6ee3a9636d5409133e79273ce1f3fd087abb0532d2d2e8fff1fe9efc53",
+      "size_bytes": 23650380
+    },
+    {
+      "path": "nvidia_cuda_runtime_cu12-12.6.77-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "ba3b56a4f896141e25e19ab287cd71e52a6a0f4b29d0d31609f60e3b4d5219b7",
+      "size_bytes": 897690
+    },
+    {
+      "path": "nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_x86_64.whl",
+      "sha256": "949452be657fa16687d0930933f032835951ef0892b37d2d53824d1a84dc97a8",
+      "size_bytes": 706758467
+    },
+    {
+      "path": "nvidia_cufft_cu12-11.3.0.4-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "ccba62eb9cef5559abd5e0d54ceed2d9934030f51163df018532142a8ec533e5",
+      "size_bytes": 200221632
+    },
+    {
+      "path": "nvidia_cufile_cu12-1.11.1.6-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "cc23469d1c7e52ce6c1d55253273d32c565dd22068647f3aa59b3c6b005bf159",
+      "size_bytes": 1142103
+    },
+    {
+      "path": "nvidia_curand_cu12-10.3.7.77-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "a42cd1344297f70b9e39a1e4f467a4e1c10f1da54ff7a85c12197f6c652c8bdf",
+      "size_bytes": 56279010
+    },
+    {
+      "path": "nvidia_cusolver_cu12-11.7.1.2-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "e9e49843a7707e42022babb9bcfa33c29857a93b88020c4e4434656a655b698c",
+      "size_bytes": 158229790
+    },
+    {
+      "path": "nvidia_cusparse_cu12-12.5.4.2-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "7556d9eca156e18184b94947ade0fba5bb47d69cec46bf8660fd2c71a4b48b73",
+      "size_bytes": 216561367
+    },
+    {
+      "path": "nvidia_cusparselt_cu12-0.7.1-py3-none-manylinux2014_x86_64.whl",
+      "sha256": "f1bb701d6b930d5a7cea44c19ceb973311500847f81b634d802b7b539dc55623",
+      "size_bytes": 287193691
+    },
+    {
+      "path": "nvidia_nccl_cu12-2.27.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "ad730cf15cb5d25fe849c6e6ca9eb5b76db16a80f13f425ac68d8e2e55624457",
+      "size_bytes": 322348229
+    },
+    {
+      "path": "nvidia_nvjitlink_cu12-12.6.85-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl",
+      "sha256": "eedc36df9e88b682efe4309aa16b5b4e78c2407eac59e8c10a6a47535164369a",
+      "size_bytes": 19744971
+    },
+    {
+      "path": "nvidia_nvshmem_cu12-3.4.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "042f2500f24c021db8a06c5eec2539027d57460e1c1a762055a6554f72c369bd",
+      "size_bytes": 139103095
+    },
+    {
+      "path": "nvidia_nvtx_cu12-12.6.77-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "b90bed3df379fa79afbd21be8e04a0314336b8ae16768b58f2d34cb1d04cd7d2",
+      "size_bytes": 89276
+    },
+    {
+      "path": "setuptools-78.1.0-py3-none-any.whl",
+      "sha256": "3e386e96793c8702ae83d17b853fb93d3e09ef82ec62722e61da5cd22376dcd8",
+      "size_bytes": 1256108
+    },
+    {
+      "path": "sympy-1.14.0-py3-none-any.whl",
+      "sha256": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5",
+      "size_bytes": 6299353
+    },
+    {
+      "path": "torch-2.10.0+cu126-cp312-cp312-manylinux_2_28_x86_64.whl",
+      "sha256": "2a7a569206f07965eff69b28e147676540bb0ba6e1a39410802b6e4708cb8356",
+      "size_bytes": 841904130
+    },
+    {
+      "path": "triton-3.6.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "6f5928e6d44c34a97bbe164cceddc0ef2007121c89ebcfba5415cf452de7ee9f",
+      "size_bytes": 188273546
+    },
+    {
+      "path": "typing_extensions-4.15.0-py3-none-any.whl",
+      "sha256": "f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548",
+      "size_bytes": 44614
+    }
+  ],
+  "inventory_sha256": "8063e83b243589e26c353d335fd5137505bfa90b2d5aa0b1226c15fd810120a1",
+  "python_abi": "cp312",
+  "required_cuda_arch": "sm_60",
+  "schema": "trauma_predict.p100_torch_runtime_wheelhouse.v1",
+  "torch_version": "2.10.0+cu126",
+  "total_bytes": 3587233664
+}

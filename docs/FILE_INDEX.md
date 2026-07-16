@@ -24,6 +24,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `configs/model/multires_event_v1.yaml` | config | Scratch hierarchical event Transformer and typed-head architecture contract. | No data. |
 | `configs/model/multires_event_v1_supervision.json` | config | Model-side target overlay over the immutable 1,314-row canonical target. | Registry metadata only. |
 | `configs/model/multires_event_v2_relation_v2.yaml` | config | Frozen 48,728,439-parameter Relation V2 architecture with mandatory target-target/input-target paths and 48-parameter input-only temporal fusion. | No data. |
+| `configs/runtime/p100_torch_2_10_cu126_cp312.json` | config | Hash lock for the complete Python 3.12 PyTorch 2.10.0 CUDA 12.6 wheelhouse required by P100 `sm_60`. | Public package filenames, sizes, and hashes only. |
 | `configs/train/p100_stage_a_hour.yaml` | config | Stage A single-GPU/P100 HOUR values-only training config. | Uses environment-variable paths only. |
 | `configs/train/t4x2_first_run.yaml` | config | Joint-baseline T4 x2 training config; not Stage A. | Uses environment-variable paths only. |
 | `configs/train/t4x2_multires_event_v1_full.yaml` | config | Frozen 4,000-step T4 x2 multires baseline training and evaluation contract. | Uses environment-variable paths only. |
@@ -57,7 +58,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `notebooks/kaggle/verify_multires_event_v2.ipynb` | kaggle | Historical v8 verification Notebook retained with an immediate fail-closed cell. | No embedded data and no active verification. |
 | `notebooks/kaggle/train_full_first_run.ipynb` | kaggle | End-to-end Kaggle notebook for the joint-baseline run; not Stage A. | No data. |
 | `notebooks/kaggle/train_stage_a_hour.ipynb` | kaggle | End-to-end Kaggle notebook for Stage A HOUR-only training. | No data. |
-| `notebooks/kaggle/trauma_predict_relation_v2_p100_r9.ipynb` | kaggle | Thin UI-upload Notebook for the staged P100 Relation V2 run and authenticated private-Dataset fallback. | No embedded data, source download, or credentials. |
+| `notebooks/kaggle/trauma_predict_relation_v2_p100_r9.ipynb` | kaggle | Thin pre-bound-Input Notebook that installs and verifies the frozen P100 cu126 runtime before the staged Relation V2 run. | No embedded data, source download, or credentials. |
 | `notebooks/kaggle/verify_private_dataset.ipynb` | kaggle | Kaggle notebook that verifies private Dataset mounting or API download before preflight. | No data. |
 | `pyproject.toml` | packaging | Python package, optional dependencies, and test config. | No data. |
 | `requirements-kaggle.txt` | packaging | Kaggle install requirements. | No data. |
@@ -160,6 +161,6 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `tests/test_repo_hygiene.py` | tests | Tests file index and forbidden repository paths. | No data. |
 | `tests/test_training_main_route.py` | tests | Tests main-route config, label encoding, collator alignment, adapter shape, and checkpoint helpers. | Synthetic records only. |
 | `tools/build_relational_primary_bundle.py` | tools | Historical v8 bundle builder retained as fail-closed evidence; it cannot package or resume Relation V2. | Stops without writing artifacts. |
-| `tools/build_relation_v2_p100_bundle.py` | tools | Builds the clean source-bound private Kaggle Dataset bundle for the formal P100 Relation V2 route. | Packages only frozen derived artifacts; never raw MIMIC rows. |
+| `tools/build_relation_v2_p100_bundle.py` | tools | Builds the clean source-bound private Kaggle Dataset bundle and complete hash-locked P100 cu126 runtime for the formal Relation V2 route. | Packages only frozen derived artifacts and public runtime wheels; never raw MIMIC rows. |
 | `tools/update_file_index.py` | tools | Validates that all tracked files appear in this index. | No data. |
 | `uv.lock` | packaging | Exact dependency resolution used in semantic runtime identity. | No data. |
