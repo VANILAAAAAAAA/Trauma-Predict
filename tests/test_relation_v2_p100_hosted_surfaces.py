@@ -89,6 +89,7 @@ class RelationV2P100HostedSurfacesTest(unittest.TestCase):
         self.assertEqual(metadata["machine_shape"], "NvidiaTeslaP100")
         self.assertFalse(metadata["enable_internet"])
         self.assertEqual(metadata["dataset_sources"], [self.builder.DATASET_REF])
+        self.assertEqual(metadata["kernel_sources"], [self.builder.NOTEBOOK_REF])
         self.assertNotIn("kagglehub", notebook_source)
         self.assertIn("Path('/kaggle/input')", notebook_source)
         self.assertIn("--no-index", notebook_source)
@@ -105,6 +106,11 @@ class RelationV2P100HostedSurfacesTest(unittest.TestCase):
         }
         self.assertNotIn("torch", imported)
         self.assertIn("run_relation_v2_p100_bundle.py", notebook_source)
+        self.assertIn("hosted_stage_manifest.json", notebook_source)
+        self.assertIn("--skip-prior-output-download", notebook_source)
+        self.assertIn("--prior-output-root", notebook_source)
+        self.assertIn("RELATION_V2_P100_BOOTSTRAP_FRESH_START", notebook_source)
+        self.assertIn("RELATION_V2_P100_BOOTSTRAP_BOUND_PRIOR_OUTPUT", notebook_source)
         self.assertNotIn("git clone", notebook_source)
         self.assertNotIn("KAGGLE_KEY", notebook_source)
         self.assertNotIn("torch.distributed.run", notebook_source)
@@ -379,6 +385,13 @@ class RelationV2P100HostedSurfacesTest(unittest.TestCase):
         self.assertFalse(
             self.launcher._prior_output_not_found(
                 RuntimeError("temporary authentication failure")
+            )
+        )
+        self.assertFalse(
+            self.launcher._prior_output_not_found(
+                RuntimeError(
+                    "New Notebooks cannot be attached in non-interactive sessions"
+                )
             )
         )
 

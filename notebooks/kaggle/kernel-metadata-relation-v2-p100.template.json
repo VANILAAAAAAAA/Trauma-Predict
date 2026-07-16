@@ -14,7 +14,9 @@
   "dataset_sources": [
     "vanila111/trauma-predict-relation-v2-p100-r9-bundle"
   ],
-  "kernel_sources": [],
+  "kernel_sources": [
+    "vanila111/trauma-predict-relation-v2-p100-r9"
+  ],
   "competition_sources": [],
   "model_sources": [],
   "machine_shape": "NvidiaTeslaP100"
