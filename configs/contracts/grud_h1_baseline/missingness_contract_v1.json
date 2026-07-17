@@ -1,0 +1,27 @@
+{
+  "schema": "multires_event_missingness_contract_v1",
+  "version": "2026-07-12-full-field-v1",
+  "states": {
+    "input_observed": "emit an ID-array tuple and its exact or derived value",
+    "input_known_zero": "emit zero only for a legal known-state tuple",
+    "input_unknown": "omit the tuple; never substitute zero",
+    "target_observed": "parallel target_mask is 1 and value is finite, including a true zero",
+    "target_unobserved": "parallel target_mask is 0 and tuple value is null"
+  },
+  "availability": {
+    "clinical_hour": "selects the time block represented by the event",
+    "available_hour": "for input, must be <= prediction_hour; prevents delayed lab or report leakage",
+    "target": "target truth uses clinical time inside the future block and is not exposed to the input"
+  },
+  "known_zero_sources": [
+    "registered point observation counts",
+    "registered interval start counts",
+    "complete treatment amounts",
+    "known interval block-end states"
+  ],
+  "field_exceptions": {
+    "respiratory_support": "absence of all support evidence is unknown, not off; category zero is valid only when another registered support category establishes block or edge coverage",
+    "urine_output": "zero records makes SUM unknown/masked while COUNT remains a known zero",
+    "antibiotics": "inputevents ADMINISTRATION and prescriptions ORDER_START/ORDER_ACTIVE are separate legal sources and are never pooled"
+  }
+}

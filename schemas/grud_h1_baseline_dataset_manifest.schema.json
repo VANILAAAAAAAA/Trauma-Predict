@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trauma-predict.local/schemas/grud_h1_baseline_dataset_manifest.schema.json",
+  "title": "GRU-D H1 Baseline Dataset Manifest V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "dataset_id", "status", "created_at", "completed_at",
+    "full_authority_build", "sample_unit", "input_contract", "target_contract",
+    "authority", "fingerprint", "fingerprint_payload", "counts", "files"
+  ],
+  "properties": {
+    "schema": {"const": "grud_h1_baseline_dataset_manifest_v1"},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "status": {"const": "SUCCEEDED"},
+    "created_at": {"type": "string", "minLength": 1},
+    "completed_at": {"type": "string", "minLength": 1},
+    "full_authority_build": {"type": "boolean"},
+    "sample_unit": {"const": "one ICU stay and one frozen prediction anchor"},
+    "input_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resolution", "history", "max_history_hours", "fields",
+        "registered_channels", "tuple_order", "normalization", "availability_gate"
+      ],
+      "properties": {
+        "resolution": {"const": "H1"},
+        "history": {"const": "ICU hour 0 through the prediction anchor"},
+        "max_history_hours": {"const": 312},
+        "fields": {"const": 37},
+        "registered_channels": {"const": 118},
+        "tuple_order": {
+          "const": ["field_id", "operator_id", "condition_id", "value", "block_id"]
+        },
+        "normalization": {"const": "none in persisted sample"},
+        "availability_gate": {"const": "available_hour <= prediction_hour"}
+      }
+    },
+    "target_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storage", "dataset_id", "blocks", "resolution", "field_processes",
+        "stochastic_factors"
+      ],
+      "properties": {
+        "storage": {"const": "referenced, not duplicated"},
+        "dataset_id": {"const": "multires_event_m4_target_v2_c4_full_20260714_r9"},
+        "blocks": {"const": 6},
+        "resolution": {"const": "M4"},
+        "field_processes": {"const": 29},
+        "stochastic_factors": {"const": 414}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "same_sample_id_order_as_base", "patient_split_reused",
+        "base_sample_manifest_sha256", "target_sample_manifest_sha256"
+      ],
+      "properties": {
+        "same_sample_id_order_as_base": {"const": true},
+        "patient_split_reused": {"const": true},
+        "base_sample_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "target_sample_manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "fingerprint": {"$ref": "#/$defs/sha256"},
+    "fingerprint_payload": {"type": "object"},
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["samples", "by_split", "shards", "h1_blocks", "events"],
+      "properties": {
+        "samples": {"type": "integer", "minimum": 1, "maximum": 50350},
+        "by_split": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["train", "val", "test"],
+          "properties": {
+            "train": {"type": "integer", "minimum": 0, "maximum": 37734},
+            "val": {"type": "integer", "minimum": 0, "maximum": 6309},
+            "test": {"type": "integer", "minimum": 0, "maximum": 6307}
+          }
+        },
+        "shards": {"type": "integer", "minimum": 1, "maximum": 52},
+        "h1_blocks": {"type": "integer", "minimum": 1},
+        "events": {"type": "integer", "minimum": 1}
+      }
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sample_manifest", "h1_event_templates", "build_state", "contracts", "h1_shards"
+      ],
+      "properties": {
+        "sample_manifest": {"$ref": "#/$defs/file"},
+        "h1_event_templates": {"$ref": "#/$defs/file"},
+        "build_state": {"const": "build_state.json"},
+        "contracts": {"const": "contracts/"},
+        "h1_shards": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 52,
+          "additionalProperties": {"$ref": "#/$defs/shard"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "shard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shard_key", "split", "samples", "events", "h1_blocks",
+        "first_sample_id", "last_sample_id", "sample_path", "sample_sha256",
+        "manifest_path", "manifest_sha256"
+      ],
+      "properties": {
+        "shard_key": {"type": "string", "minLength": 1},
+        "split": {"enum": ["train", "val", "test"]},
+        "samples": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "events": {"type": "integer", "minimum": 1},
+        "h1_blocks": {"type": "integer", "minimum": 1},
+        "first_sample_id": {"type": "string", "minLength": 1},
+        "last_sample_id": {"type": "string", "minLength": 1},
+        "sample_path": {"type": "string", "pattern": "^h1_shards/"},
+        "sample_sha256": {"$ref": "#/$defs/sha256"},
+        "manifest_path": {"type": "string", "pattern": "^manifests/"},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

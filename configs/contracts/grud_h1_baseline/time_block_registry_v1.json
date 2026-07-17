@@ -1,0 +1,35 @@
+{
+  "schema": "prediction_relative_time_block_registry_v1",
+  "version": "2026-07-12-full-field-v1",
+  "finite_string_vocabulary": false,
+  "serialized_id_format": "{IN|OUT}_{H1|M4|F24}_R{relative_start_signed}_R{relative_end_signed}",
+  "model_components": ["side_id", "role_id", "resolution_id", "relative_start_hour", "relative_end_hour"],
+  "model_encoding": "block_table categorical IDs plus numeric relative-time encoding; event arrays reference the local block_id; never tokenize the serialized ID",
+  "geometry": {
+    "span_rule": "relative_end_hour - relative_start_hour equals registered resolution span",
+    "input_interval": "[-prediction_hour, 0]",
+    "input_partition": "ordered, gap-free, non-overlapping",
+    "target_interval": "(0, 24]",
+    "event_at_anchor": "input only"
+  },
+  "adaptive_input": {
+    "near_nominal_hours": [6, 8, 12],
+    "near_alignment_extension_max_hours": 3,
+    "middle_to_near_hour_cap": 4,
+    "roles": [
+      {"role": "FAR", "resolution": "F24", "span_hours": 24},
+      {"role": "MIDDLE", "resolution": "M4", "span_hours": 4},
+      {"role": "NEAR", "resolution": "H1", "span_hours": 1}
+    ]
+  },
+  "fixed_target": [
+    {"slot": "H1_01", "role": "FUTURE_H1", "resolution": "H1", "relative_start_hour": 0, "relative_end_hour": 1},
+    {"slot": "M4_01", "role": "FUTURE_M4", "resolution": "M4", "relative_start_hour": 0, "relative_end_hour": 4},
+    {"slot": "M4_02", "role": "FUTURE_M4", "resolution": "M4", "relative_start_hour": 4, "relative_end_hour": 8},
+    {"slot": "M4_03", "role": "FUTURE_M4", "resolution": "M4", "relative_start_hour": 8, "relative_end_hour": 12},
+    {"slot": "M4_04", "role": "FUTURE_M4", "resolution": "M4", "relative_start_hour": 12, "relative_end_hour": 16},
+    {"slot": "M4_05", "role": "FUTURE_M4", "resolution": "M4", "relative_start_hour": 16, "relative_end_hour": 20},
+    {"slot": "M4_06", "role": "FUTURE_M4", "resolution": "M4", "relative_start_hour": 20, "relative_end_hour": 24},
+    {"slot": "F24_01", "role": "FUTURE_F24", "resolution": "F24", "relative_start_hour": 0, "relative_end_hour": 24}
+  ]
+}

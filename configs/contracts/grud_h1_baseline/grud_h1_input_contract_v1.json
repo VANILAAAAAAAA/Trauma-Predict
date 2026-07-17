@@ -1,0 +1,49 @@
+{
+  "schema": "grud_h1_baseline_input_contract_v1",
+  "version": "2026-07-17",
+  "status": "frozen_sample_contract",
+  "task": "classic_grud_baseline_for_joint_six_m4_trajectory",
+  "sample_authority": {
+    "base_sample_manifest_sha256": "b3d4305353997320fe310c4df6e15619026db6f229a124b0c9a5e1d89898f05e",
+    "target_sample_manifest_sha256": "df5eedcee0abf7d09fea86572db471047bdaa82dc28b14dc8bbf0dac0e32dd0e",
+    "samples": 50350,
+    "split_counts": {
+      "train": 37734,
+      "val": 6309,
+      "test": 6307
+    },
+    "split_key": "subject_id",
+    "join_key": "sample_id"
+  },
+  "input": {
+    "resolutions": ["H1"],
+    "history_start": "ICU hour 0",
+    "history_end": "prediction anchor",
+    "max_history_hours": 312,
+    "block_width_hours": 1,
+    "fields": 37,
+    "registered_channels": 118,
+    "tuple_order": [
+      "field_id",
+      "operator_id",
+      "condition_id",
+      "value",
+      "block_id"
+    ],
+    "value_policy": "canonical exact value without builder normalization",
+    "availability_gate": "available_hour <= prediction_hour"
+  },
+  "target": {
+    "storage": "reference existing r9 sidecar without duplication",
+    "dataset_id": "multires_event_m4_target_v2_c4_full_20260714_r9",
+    "ordered_m4_blocks": 6,
+    "field_processes": 29,
+    "stochastic_factors": 414
+  },
+  "model_boundary": {
+    "sample_storage": "sparse registered H1 five-tuples",
+    "later_grud_adapter": "densify to channel value, observation mask, and elapsed-time delta",
+    "normalization_fit": "training subjects only",
+    "model_or_training_code_in_this_stage": false
+  }
+}

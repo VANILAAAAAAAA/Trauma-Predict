@@ -7,7 +7,7 @@ Trauma-Predict is a code-only repository. It must remain safe to push to GitHub 
 | Category | Examples |
 | --- | --- |
 | Source code | Python package, tests, Kaggle launchers, maintenance tools. |
-| Configuration | YAML configs with environment-variable paths. |
+| Configuration | YAML configs and frozen registries with no patient rows or local paths. |
 | Schemas | JSON Schema files that describe manifests and samples. |
 | Documentation | Repository runbooks, structure notes, index tables. |
 
@@ -22,7 +22,7 @@ Trauma-Predict is a code-only repository. It must remain safe to push to GitHub 
 
 ## Upstream Boundary
 
-Return to `/home/vanila/code/EHR-Predict` for:
+Return to the upstream EHR-Predict research workspace for:
 
 - cohort extraction evidence,
 - field adapter development,
@@ -31,3 +31,6 @@ Return to `/home/vanila/code/EHR-Predict` for:
 - agent-managed project state.
 
 This repository only consumes finalized data artifacts through external paths.
+
+Versioned builders may materialize new sidecars outside Git when their source manifests and output
+contract are frozen here. Generated sample shards and patient-level manifests remain forbidden.

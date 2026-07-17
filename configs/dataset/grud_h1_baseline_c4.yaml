@@ -1,0 +1,51 @@
+schema_version: trauma_predict.grud_h1_baseline_dataset_config.v1
+dataset_id: grud_h1_baseline_c4_20260717_v1
+route: grud_h1_single_resolution_input_to_r9_six_m4_target
+
+paths:
+  field_ready_root: ${TRAUMA_PREDICT_FIELD_READY_ROOT}
+  base_dataset_root: ${TRAUMA_PREDICT_DATA_ROOT}
+  target_dataset_root: ${TRAUMA_PREDICT_V2_TARGET_ROOT}
+  output_root: ${TRAUMA_PREDICT_GRUD_H1_OUTPUT_ROOT}
+
+authority:
+  base_sample_manifest_sha256: b3d4305353997320fe310c4df6e15619026db6f229a124b0c9a5e1d89898f05e
+  target_sample_manifest_sha256: df5eedcee0abf7d09fea86572db471047bdaa82dc28b14dc8bbf0dac0e32dd0e
+  split_key: subject_id
+  join_key: sample_id
+
+expected_counts:
+  samples: 50350
+  train: 37734
+  val: 6309
+  test: 6307
+  shards: 52
+
+input:
+  resolution: H1
+  fields: 37
+  registered_channels: 118
+  max_history_hours: 312
+  normalization_in_sample: false
+  availability_gate: available_hour <= prediction_hour
+
+target_reference:
+  dataset_id: multires_event_m4_target_v2_c4_full_20260714_r9
+  resolution: M4
+  ordered_blocks: 6
+  field_processes: 29
+  stochastic_factors: 414
+
+builder:
+  workers: 8
+  deterministic_gzip: true
+  resume_by_verified_shard: true
+
+materialized_artifact:
+  status: SUCCEEDED
+  dataset_manifest_sha256: 2d30bdd75071f50b1631639087c2338e69ae346ec1facad13c6a8285e70288cf
+  sample_manifest_sha256: 6762897d5f516dc3442a7a206bc3bf19c3e43e32a2444f2807a475d3db61412b
+  samples: 50350
+  shards: 52
+  h1_blocks: 5197428
+  events: 213422601

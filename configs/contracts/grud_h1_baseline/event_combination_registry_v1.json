@@ -1,0 +1,6520 @@
+{
+  "schema": "multires_event_combination_registry_v1",
+  "version": "2026-07-12-full-field-v1",
+  "closed_world": true,
+  "legal_key": [
+    "side",
+    "resolution",
+    "field_id",
+    "operator_id",
+    "condition_id"
+  ],
+  "template_count": 205,
+  "rules": [
+    "No Cartesian product is legal; only expanded template rows are legal.",
+    "CXR templates are input-only and one study may emit several label tuples sharing a local study_slot.",
+    "H1 laboratory targets contain both OBS and COUNT so missing measurement and measured value remain distinct."
+  ],
+  "templates": [
+    {
+      "template_id": "heart_rate::OBS::NONE",
+      "field": "heart_rate",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "beats/min",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "heart_rate::LAST::NONE",
+      "field": "heart_rate",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "beats/min",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "heart_rate::MIN::NONE",
+      "field": "heart_rate",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "beats/min",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "heart_rate::MAX::NONE",
+      "field": "heart_rate",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "beats/min",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "heart_rate::MEAN::NONE",
+      "field": "heart_rate",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "beats/min",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "heart_rate::DURATION::OBSERVED",
+      "field": "heart_rate",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "heart_rate::DURATION::HR_LT40",
+      "field": "heart_rate",
+      "operator": "DURATION",
+      "condition": "HR_LT40",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_condition_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "heart_rate::DURATION::HR_GT120",
+      "field": "heart_rate",
+      "operator": "DURATION",
+      "condition": "HR_GT120",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_condition_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "systolic_bp::OBS::NONE",
+      "field": "systolic_bp",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        399
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "systolic_bp::LAST::NONE",
+      "field": "systolic_bp",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        399
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "systolic_bp::MIN::NONE",
+      "field": "systolic_bp",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        399
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "systolic_bp::MAX::NONE",
+      "field": "systolic_bp",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        399
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "systolic_bp::MEAN::NONE",
+      "field": "systolic_bp",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        399
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "systolic_bp::DURATION::OBSERVED",
+      "field": "systolic_bp",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        399
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "systolic_bp::DURATION::SBP_LT90",
+      "field": "systolic_bp",
+      "operator": "DURATION",
+      "condition": "SBP_LT90",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_condition_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        399
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "diastolic_bp::OBS::NONE",
+      "field": "diastolic_bp",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "diastolic_bp::LAST::NONE",
+      "field": "diastolic_bp",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "diastolic_bp::MIN::NONE",
+      "field": "diastolic_bp",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "diastolic_bp::MAX::NONE",
+      "field": "diastolic_bp",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "diastolic_bp::MEAN::NONE",
+      "field": "diastolic_bp",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "diastolic_bp::DURATION::OBSERVED",
+      "field": "diastolic_bp",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        299
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "mean_arterial_pressure::OBS::NONE",
+      "field": "mean_arterial_pressure",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        20,
+        250
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "mean_arterial_pressure::LAST::NONE",
+      "field": "mean_arterial_pressure",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        20,
+        250
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "mean_arterial_pressure::MIN::NONE",
+      "field": "mean_arterial_pressure",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        20,
+        250
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "mean_arterial_pressure::MAX::NONE",
+      "field": "mean_arterial_pressure",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        20,
+        250
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "mean_arterial_pressure::MEAN::NONE",
+      "field": "mean_arterial_pressure",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        20,
+        250
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "mean_arterial_pressure::DURATION::OBSERVED",
+      "field": "mean_arterial_pressure",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        20,
+        250
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "mean_arterial_pressure::DURATION::MAP_LT65",
+      "field": "mean_arterial_pressure",
+      "operator": "DURATION",
+      "condition": "MAP_LT65",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_condition_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        20,
+        250
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "mean_arterial_pressure::DURATION::MAP_GE65_LT70",
+      "field": "mean_arterial_pressure",
+      "operator": "DURATION",
+      "condition": "MAP_GE65_LT70",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_condition_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        20,
+        250
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "mean_arterial_pressure::DURATION::MAP_GE70",
+      "field": "mean_arterial_pressure",
+      "operator": "DURATION",
+      "condition": "MAP_GE70",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_condition_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        20,
+        250
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "respiratory_rate::OBS::NONE",
+      "field": "respiratory_rate",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "breaths/min",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        69
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "respiratory_rate::LAST::NONE",
+      "field": "respiratory_rate",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "breaths/min",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        69
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "respiratory_rate::MIN::NONE",
+      "field": "respiratory_rate",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "breaths/min",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        69
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "respiratory_rate::MAX::NONE",
+      "field": "respiratory_rate",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "breaths/min",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        69
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "respiratory_rate::MEAN::NONE",
+      "field": "respiratory_rate",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "breaths/min",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        69
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "respiratory_rate::DURATION::OBSERVED",
+      "field": "respiratory_rate",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        69
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "respiratory_rate::DURATION::RR_LT8",
+      "field": "respiratory_rate",
+      "operator": "DURATION",
+      "condition": "RR_LT8",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_condition_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        69
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "respiratory_rate::DURATION::RR_GE22",
+      "field": "respiratory_rate",
+      "operator": "DURATION",
+      "condition": "RR_GE22",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_condition_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        69
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "temperature::OBS::NONE",
+      "field": "temperature",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "Celsius",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        10,
+        50
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "temperature::LAST::NONE",
+      "field": "temperature",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "Celsius",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        10,
+        50
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "temperature::MIN::NONE",
+      "field": "temperature",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "Celsius",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        10,
+        50
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "temperature::MAX::NONE",
+      "field": "temperature",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "Celsius",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        10,
+        50
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "temperature::MEAN::NONE",
+      "field": "temperature",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "Celsius",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        10,
+        50
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "temperature::DURATION::OBSERVED",
+      "field": "temperature",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        10,
+        50
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "temperature::DURATION::TEMP_GE38",
+      "field": "temperature",
+      "operator": "DURATION",
+      "condition": "TEMP_GE38",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_condition_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        10,
+        50
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "spo2::OBS::NONE",
+      "field": "spo2",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "percent",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        50,
+        100
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "spo2::LAST::NONE",
+      "field": "spo2",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "percent",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        50,
+        100
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "spo2::MIN::NONE",
+      "field": "spo2",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "percent",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        50,
+        100
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "spo2::MAX::NONE",
+      "field": "spo2",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "percent",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        50,
+        100
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "spo2::MEAN::NONE",
+      "field": "spo2",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "percent",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        50,
+        100
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "spo2::DURATION::OBSERVED",
+      "field": "spo2",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        50,
+        100
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "spo2::DURATION::SPO2_LE93",
+      "field": "spo2",
+      "operator": "DURATION",
+      "condition": "SPO2_LE93",
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_condition_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        50,
+        100
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "gcs_eye::OBS::NONE",
+      "field": "gcs_eye",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        4
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_eye::LAST::NONE",
+      "field": "gcs_eye",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        4
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_eye::MIN::NONE",
+      "field": "gcs_eye",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        4
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_eye::MAX::NONE",
+      "field": "gcs_eye",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        4
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_eye::MEAN::NONE",
+      "field": "gcs_eye",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        4
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_eye::DURATION::OBSERVED",
+      "field": "gcs_eye",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        4
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "gcs_verbal::OBS::NONE",
+      "field": "gcs_verbal",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        5
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_verbal::LAST::NONE",
+      "field": "gcs_verbal",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        5
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_verbal::MIN::NONE",
+      "field": "gcs_verbal",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        5
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_verbal::MAX::NONE",
+      "field": "gcs_verbal",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        5
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_verbal::MEAN::NONE",
+      "field": "gcs_verbal",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        5
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_verbal::DURATION::OBSERVED",
+      "field": "gcs_verbal",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        5
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "gcs_motor::OBS::NONE",
+      "field": "gcs_motor",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        6
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_motor::LAST::NONE",
+      "field": "gcs_motor",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        6
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_motor::MIN::NONE",
+      "field": "gcs_motor",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        6
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_motor::MAX::NONE",
+      "field": "gcs_motor",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        6
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_motor::MEAN::NONE",
+      "field": "gcs_motor",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        6
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "gcs_motor::DURATION::OBSERVED",
+      "field": "gcs_motor",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        1,
+        6
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "respiratory_support::DURATION::RESP_INVASIVE",
+      "field": "respiratory_support",
+      "operator": "DURATION",
+      "condition": "RESP_INVASIVE",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "respiratory_support::DURATION::RESP_NONINVASIVE",
+      "field": "respiratory_support",
+      "operator": "DURATION",
+      "condition": "RESP_NONINVASIVE",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "respiratory_support::DURATION::RESP_HIGH_FLOW",
+      "field": "respiratory_support",
+      "operator": "DURATION",
+      "condition": "RESP_HIGH_FLOW",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "respiratory_support::DURATION::RESP_OTHER_OXYGEN",
+      "field": "respiratory_support",
+      "operator": "DURATION",
+      "condition": "RESP_OTHER_OXYGEN",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "respiratory_support::STATE::RESP_INVASIVE",
+      "field": "respiratory_support",
+      "operator": "STATE",
+      "condition": "RESP_INVASIVE",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "respiratory_support::STATE::RESP_NONINVASIVE",
+      "field": "respiratory_support",
+      "operator": "STATE",
+      "condition": "RESP_NONINVASIVE",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "respiratory_support::STATE::RESP_HIGH_FLOW",
+      "field": "respiratory_support",
+      "operator": "STATE",
+      "condition": "RESP_HIGH_FLOW",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "respiratory_support::STATE::RESP_OTHER_OXYGEN",
+      "field": "respiratory_support",
+      "operator": "STATE",
+      "condition": "RESP_OTHER_OXYGEN",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "respiratory_support::START::RESP_INVASIVE",
+      "field": "respiratory_support",
+      "operator": "START",
+      "condition": "RESP_INVASIVE",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "respiratory_support::START::RESP_NONINVASIVE",
+      "field": "respiratory_support",
+      "operator": "START",
+      "condition": "RESP_NONINVASIVE",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "respiratory_support::START::RESP_HIGH_FLOW",
+      "field": "respiratory_support",
+      "operator": "START",
+      "condition": "RESP_HIGH_FLOW",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "respiratory_support::START::RESP_OTHER_OXYGEN",
+      "field": "respiratory_support",
+      "operator": "START",
+      "condition": "RESP_OTHER_OXYGEN",
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "fio2::OBS::NONE",
+      "field": "fio2",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "fraction",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0.21,
+        1.0
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "fio2::LAST::NONE",
+      "field": "fio2",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "fraction",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0.21,
+        1.0
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "fio2::MIN::NONE",
+      "field": "fio2",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "fraction",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0.21,
+        1.0
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "fio2::MAX::NONE",
+      "field": "fio2",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "fraction",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0.21,
+        1.0
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "fio2::MEAN::NONE",
+      "field": "fio2",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "fraction",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0.21,
+        1.0
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "fio2::DURATION::OBSERVED",
+      "field": "fio2",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0.21,
+        1.0
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "peep::OBS::NONE",
+      "field": "peep",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "cmH2O",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0,
+        40
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "peep::LAST::NONE",
+      "field": "peep",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "cmH2O",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0,
+        40
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "peep::MIN::NONE",
+      "field": "peep",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "cmH2O",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0,
+        40
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "peep::MAX::NONE",
+      "field": "peep",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "cmH2O",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0,
+        40
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "peep::MEAN::NONE",
+      "field": "peep",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "cmH2O",
+      "value_type": "continuous",
+      "aggregation": "mean_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0,
+        40
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "weighted_mean",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "peep::DURATION::OBSERVED",
+      "field": "peep",
+      "operator": "DURATION",
+      "condition": "OBSERVED",
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "hourly_observed_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": [
+        0,
+        40
+      ],
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "lactate::OBS::NONE",
+      "field": "lactate",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mmol/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "lactate::LAST::NONE",
+      "field": "lactate",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mmol/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "lactate::MIN::NONE",
+      "field": "lactate",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mmol/L",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "lactate::MAX::NONE",
+      "field": "lactate",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mmol/L",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "lactate::COUNT::OBSERVED",
+      "field": "lactate",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "base_excess::OBS::NONE",
+      "field": "base_excess",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "base_excess::LAST::NONE",
+      "field": "base_excess",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "base_excess::MIN::NONE",
+      "field": "base_excess",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "base_excess::MAX::NONE",
+      "field": "base_excess",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "base_excess::COUNT::OBSERVED",
+      "field": "base_excess",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "bicarbonate::OBS::NONE",
+      "field": "bicarbonate",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "bicarbonate::LAST::NONE",
+      "field": "bicarbonate",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "bicarbonate::MIN::NONE",
+      "field": "bicarbonate",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "bicarbonate::MAX::NONE",
+      "field": "bicarbonate",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "bicarbonate::COUNT::OBSERVED",
+      "field": "bicarbonate",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "creatinine::OBS::NONE",
+      "field": "creatinine",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "creatinine::LAST::NONE",
+      "field": "creatinine",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "creatinine::MIN::NONE",
+      "field": "creatinine",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "creatinine::MAX::NONE",
+      "field": "creatinine",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "creatinine::COUNT::OBSERVED",
+      "field": "creatinine",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "bun::OBS::NONE",
+      "field": "bun",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "bun::LAST::NONE",
+      "field": "bun",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "bun::MIN::NONE",
+      "field": "bun",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "bun::MAX::NONE",
+      "field": "bun",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "bun::COUNT::OBSERVED",
+      "field": "bun",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "wbc::OBS::NONE",
+      "field": "wbc",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "K/uL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "wbc::LAST::NONE",
+      "field": "wbc",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "K/uL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "wbc::MIN::NONE",
+      "field": "wbc",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "K/uL",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "wbc::MAX::NONE",
+      "field": "wbc",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "K/uL",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "wbc::COUNT::OBSERVED",
+      "field": "wbc",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "hemoglobin::OBS::NONE",
+      "field": "hemoglobin",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "g/dL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "hemoglobin::LAST::NONE",
+      "field": "hemoglobin",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "g/dL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "hemoglobin::MIN::NONE",
+      "field": "hemoglobin",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "g/dL",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "hemoglobin::MAX::NONE",
+      "field": "hemoglobin",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "g/dL",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "hemoglobin::COUNT::OBSERVED",
+      "field": "hemoglobin",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "platelet_count::OBS::NONE",
+      "field": "platelet_count",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "K/uL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "platelet_count::LAST::NONE",
+      "field": "platelet_count",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "K/uL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "platelet_count::MIN::NONE",
+      "field": "platelet_count",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "K/uL",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "platelet_count::MAX::NONE",
+      "field": "platelet_count",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "K/uL",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "platelet_count::COUNT::OBSERVED",
+      "field": "platelet_count",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "inr::OBS::NONE",
+      "field": "inr",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "ratio",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "inr::LAST::NONE",
+      "field": "inr",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "ratio",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "inr::MIN::NONE",
+      "field": "inr",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "ratio",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "inr::MAX::NONE",
+      "field": "inr",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "ratio",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "inr::COUNT::OBSERVED",
+      "field": "inr",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "sodium::OBS::NONE",
+      "field": "sodium",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "sodium::LAST::NONE",
+      "field": "sodium",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "sodium::MIN::NONE",
+      "field": "sodium",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "sodium::MAX::NONE",
+      "field": "sodium",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "sodium::COUNT::OBSERVED",
+      "field": "sodium",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "potassium::OBS::NONE",
+      "field": "potassium",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "potassium::LAST::NONE",
+      "field": "potassium",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "potassium::MIN::NONE",
+      "field": "potassium",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "potassium::MAX::NONE",
+      "field": "potassium",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "potassium::COUNT::OBSERVED",
+      "field": "potassium",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "chloride::OBS::NONE",
+      "field": "chloride",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "chloride::LAST::NONE",
+      "field": "chloride",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "chloride::MIN::NONE",
+      "field": "chloride",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "chloride::MAX::NONE",
+      "field": "chloride",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "chloride::COUNT::OBSERVED",
+      "field": "chloride",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "glucose::OBS::NONE",
+      "field": "glucose",
+      "operator": "OBS",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "H1"
+      ],
+      "target_resolutions": [
+        "H1"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "glucose::LAST::NONE",
+      "field": "glucose",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "last_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "glucose::MIN::NONE",
+      "field": "glucose",
+      "operator": "MIN",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "min_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "min",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "glucose::MAX::NONE",
+      "field": "glucose",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "value_type": "continuous",
+      "aggregation": "max_point",
+      "input_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "M4",
+        "F24"
+      ],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "continuous_regression"
+    },
+    {
+      "template_id": "glucose::COUNT::OBSERVED",
+      "field": "glucose",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "count_point",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "vasopressor_support::DURATION::VASO_NOREPINEPHRINE",
+      "field": "vasopressor_support",
+      "operator": "DURATION",
+      "condition": "VASO_NOREPINEPHRINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "vasopressor_support::DURATION::VASO_EPINEPHRINE",
+      "field": "vasopressor_support",
+      "operator": "DURATION",
+      "condition": "VASO_EPINEPHRINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "vasopressor_support::DURATION::VASO_PHENYLEPHRINE",
+      "field": "vasopressor_support",
+      "operator": "DURATION",
+      "condition": "VASO_PHENYLEPHRINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "vasopressor_support::DURATION::VASO_VASOPRESSIN",
+      "field": "vasopressor_support",
+      "operator": "DURATION",
+      "condition": "VASO_VASOPRESSIN",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "vasopressor_support::DURATION::VASO_DOPAMINE",
+      "field": "vasopressor_support",
+      "operator": "DURATION",
+      "condition": "VASO_DOPAMINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "vasopressor_support::DURATION::VASO_OTHER",
+      "field": "vasopressor_support",
+      "operator": "DURATION",
+      "condition": "VASO_OTHER",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "vasopressor_support::STATE::VASO_NOREPINEPHRINE",
+      "field": "vasopressor_support",
+      "operator": "STATE",
+      "condition": "VASO_NOREPINEPHRINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "vasopressor_support::STATE::VASO_EPINEPHRINE",
+      "field": "vasopressor_support",
+      "operator": "STATE",
+      "condition": "VASO_EPINEPHRINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "vasopressor_support::STATE::VASO_PHENYLEPHRINE",
+      "field": "vasopressor_support",
+      "operator": "STATE",
+      "condition": "VASO_PHENYLEPHRINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "vasopressor_support::STATE::VASO_VASOPRESSIN",
+      "field": "vasopressor_support",
+      "operator": "STATE",
+      "condition": "VASO_VASOPRESSIN",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "vasopressor_support::STATE::VASO_DOPAMINE",
+      "field": "vasopressor_support",
+      "operator": "STATE",
+      "condition": "VASO_DOPAMINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "vasopressor_support::STATE::VASO_OTHER",
+      "field": "vasopressor_support",
+      "operator": "STATE",
+      "condition": "VASO_OTHER",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "vasopressor_support::START::VASO_NOREPINEPHRINE",
+      "field": "vasopressor_support",
+      "operator": "START",
+      "condition": "VASO_NOREPINEPHRINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "vasopressor_support::START::VASO_EPINEPHRINE",
+      "field": "vasopressor_support",
+      "operator": "START",
+      "condition": "VASO_EPINEPHRINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "vasopressor_support::START::VASO_PHENYLEPHRINE",
+      "field": "vasopressor_support",
+      "operator": "START",
+      "condition": "VASO_PHENYLEPHRINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "vasopressor_support::START::VASO_VASOPRESSIN",
+      "field": "vasopressor_support",
+      "operator": "START",
+      "condition": "VASO_VASOPRESSIN",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "vasopressor_support::START::VASO_DOPAMINE",
+      "field": "vasopressor_support",
+      "operator": "START",
+      "condition": "VASO_DOPAMINE",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "vasopressor_support::START::VASO_OTHER",
+      "field": "vasopressor_support",
+      "operator": "START",
+      "condition": "VASO_OTHER",
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "norepinephrine_equivalent_dose::LAST::NONE",
+      "field": "norepinephrine_equivalent_dose",
+      "operator": "LAST",
+      "condition": "NONE",
+      "domain": "circulation",
+      "source_kind": "rate_interval",
+      "unit": "mcg/kg/min",
+      "value_type": "nonnegative",
+      "aggregation": "interval_rate_last",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "nonnegative_regression"
+    },
+    {
+      "template_id": "norepinephrine_equivalent_dose::MAX::NONE",
+      "field": "norepinephrine_equivalent_dose",
+      "operator": "MAX",
+      "condition": "NONE",
+      "domain": "circulation",
+      "source_kind": "rate_interval",
+      "unit": "mcg/kg/min",
+      "value_type": "nonnegative",
+      "aggregation": "interval_rate_max",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "max",
+      "target_head_family": "nonnegative_regression"
+    },
+    {
+      "template_id": "norepinephrine_equivalent_dose::MEAN::NONE",
+      "field": "norepinephrine_equivalent_dose",
+      "operator": "MEAN",
+      "condition": "NONE",
+      "domain": "circulation",
+      "source_kind": "rate_interval",
+      "unit": "mcg/kg/min",
+      "value_type": "nonnegative",
+      "aggregation": "interval_rate_mean",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "block_weighted_mean",
+      "target_head_family": "nonnegative_regression"
+    },
+    {
+      "template_id": "crystalloid::SUM::NONE",
+      "field": "crystalloid",
+      "operator": "SUM",
+      "condition": "NONE",
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "mL",
+      "value_type": "nonnegative",
+      "aggregation": "interval_amount_sum",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "nonnegative_regression"
+    },
+    {
+      "template_id": "crystalloid::START::NONE",
+      "field": "crystalloid",
+      "operator": "START",
+      "condition": "NONE",
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "rbc::SUM::NONE",
+      "field": "rbc",
+      "operator": "SUM",
+      "condition": "NONE",
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "mL",
+      "value_type": "nonnegative",
+      "aggregation": "interval_amount_sum",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "nonnegative_regression"
+    },
+    {
+      "template_id": "rbc::START::NONE",
+      "field": "rbc",
+      "operator": "START",
+      "condition": "NONE",
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "plasma::SUM::NONE",
+      "field": "plasma",
+      "operator": "SUM",
+      "condition": "NONE",
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "mL",
+      "value_type": "nonnegative",
+      "aggregation": "interval_amount_sum",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "nonnegative_regression"
+    },
+    {
+      "template_id": "plasma::START::NONE",
+      "field": "plasma",
+      "operator": "START",
+      "condition": "NONE",
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "platelet_transfusion::SUM::NONE",
+      "field": "platelet_transfusion",
+      "operator": "SUM",
+      "condition": "NONE",
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "mL",
+      "value_type": "nonnegative",
+      "aggregation": "interval_amount_sum",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "nonnegative_regression"
+    },
+    {
+      "template_id": "platelet_transfusion::START::NONE",
+      "field": "platelet_transfusion",
+      "operator": "START",
+      "condition": "NONE",
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "cryoprecipitate::SUM::NONE",
+      "field": "cryoprecipitate",
+      "operator": "SUM",
+      "condition": "NONE",
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "mL",
+      "value_type": "nonnegative",
+      "aggregation": "interval_amount_sum",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "nonnegative_regression"
+    },
+    {
+      "template_id": "cryoprecipitate::START::NONE",
+      "field": "cryoprecipitate",
+      "operator": "START",
+      "condition": "NONE",
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "antibiotics::DURATION::ORDER_ACTIVE",
+      "field": "antibiotics",
+      "operator": "DURATION",
+      "condition": "ORDER_ACTIVE",
+      "domain": "treatment",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "value_type": "duration",
+      "aggregation": "interval_overlap_duration",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "duration_regression"
+    },
+    {
+      "template_id": "antibiotics::STATE::ORDER_ACTIVE",
+      "field": "antibiotics",
+      "operator": "STATE",
+      "condition": "ORDER_ACTIVE",
+      "domain": "treatment",
+      "source_kind": "state_interval",
+      "unit": "binary",
+      "value_type": "binary",
+      "aggregation": "interval_end_state",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "known_state",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "last",
+      "target_head_family": "binary_classification"
+    },
+    {
+      "template_id": "antibiotics::START::ADMINISTRATION",
+      "field": "antibiotics",
+      "operator": "START",
+      "condition": "ADMINISTRATION",
+      "domain": "treatment",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "antibiotics::START::ORDER_START",
+      "field": "antibiotics",
+      "operator": "START",
+      "condition": "ORDER_START",
+      "domain": "treatment",
+      "source_kind": "state_interval",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "urine_output::SUM::NONE",
+      "field": "urine_output",
+      "operator": "SUM",
+      "condition": "NONE",
+      "domain": "output",
+      "source_kind": "point_amount",
+      "unit": "mL",
+      "value_type": "nonnegative",
+      "aggregation": "uop_sum",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "nonnegative_regression"
+    },
+    {
+      "template_id": "urine_output::COUNT::OBSERVED",
+      "field": "urine_output",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "output",
+      "source_kind": "point_amount",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "uop_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "surgery::START::NONE",
+      "field": "surgery",
+      "operator": "START",
+      "condition": "NONE",
+      "domain": "procedures",
+      "source_kind": "interval_start",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "interval_start_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "sum",
+      "target_head_family": "count_regression"
+    },
+    {
+      "template_id": "cxr::OBS::pneumothorax",
+      "field": "cxr",
+      "operator": "OBS",
+      "condition": "pneumothorax",
+      "domain": "imaging",
+      "source_kind": "cxr_study",
+      "unit": "study_slot",
+      "value_type": "study_slot",
+      "aggregation": "cxr_study_slots",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": null
+    },
+    {
+      "template_id": "cxr::OBS::pleural_fluid",
+      "field": "cxr",
+      "operator": "OBS",
+      "condition": "pleural_fluid",
+      "domain": "imaging",
+      "source_kind": "cxr_study",
+      "unit": "study_slot",
+      "value_type": "study_slot",
+      "aggregation": "cxr_study_slots",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": null
+    },
+    {
+      "template_id": "cxr::OBS::lung_opacity",
+      "field": "cxr",
+      "operator": "OBS",
+      "condition": "lung_opacity",
+      "domain": "imaging",
+      "source_kind": "cxr_study",
+      "unit": "study_slot",
+      "value_type": "study_slot",
+      "aggregation": "cxr_study_slots",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": null
+    },
+    {
+      "template_id": "cxr::OBS::fracture",
+      "field": "cxr",
+      "operator": "OBS",
+      "condition": "fracture",
+      "domain": "imaging",
+      "source_kind": "cxr_study",
+      "unit": "study_slot",
+      "value_type": "study_slot",
+      "aggregation": "cxr_study_slots",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": null
+    },
+    {
+      "template_id": "cxr::OBS::normal",
+      "field": "cxr",
+      "operator": "OBS",
+      "condition": "normal",
+      "domain": "imaging",
+      "source_kind": "cxr_study",
+      "unit": "study_slot",
+      "value_type": "study_slot",
+      "aggregation": "cxr_study_slots",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": null
+    },
+    {
+      "template_id": "cxr::OBS::selected_negative",
+      "field": "cxr",
+      "operator": "OBS",
+      "condition": "selected_negative",
+      "domain": "imaging",
+      "source_kind": "cxr_study",
+      "unit": "study_slot",
+      "value_type": "study_slot",
+      "aggregation": "cxr_study_slots",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": null
+    },
+    {
+      "template_id": "cxr::OBS::selected_uncertain",
+      "field": "cxr",
+      "operator": "OBS",
+      "condition": "selected_uncertain",
+      "domain": "imaging",
+      "source_kind": "cxr_study",
+      "unit": "study_slot",
+      "value_type": "study_slot",
+      "aggregation": "cxr_study_slots",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [],
+      "input_emit": "observed_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": null
+    },
+    {
+      "template_id": "cxr::COUNT::OBSERVED",
+      "field": "cxr",
+      "operator": "COUNT",
+      "condition": "OBSERVED",
+      "domain": "imaging",
+      "source_kind": "cxr_study",
+      "unit": "count",
+      "value_type": "count",
+      "aggregation": "cxr_study_count",
+      "input_resolutions": [
+        "H1",
+        "M4",
+        "F24"
+      ],
+      "target_resolutions": [],
+      "input_emit": "positive_only",
+      "missingness_policy": "omit_input_unknown_mask_target_unknown",
+      "valid_range": null,
+      "normalization_key": [
+        "field",
+        "operator",
+        "condition",
+        "resolution"
+      ],
+      "cross_resolution_compose": "not_cross_resolution",
+      "target_head_family": null
+    }
+  ]
+}

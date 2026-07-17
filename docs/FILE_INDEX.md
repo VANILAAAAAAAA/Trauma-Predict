@@ -9,11 +9,22 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `README.md` | docs | Repository entry point and scope boundary. | Documents code-only policy. |
 | `configs/accelerate/single_gpu.yaml` | config | Single-GPU fallback accelerator config. | No data. |
 | `configs/accelerate/t4x2.yaml` | config | Kaggle T4 x2 accelerator config. | No data. |
+| `configs/contracts/grud_h1_baseline/README.md` | config | Defines the frozen source-registry boundary for the matched GRU-D H1 sample sidecar. | No patient rows. |
+| `configs/contracts/grud_h1_baseline/event_combination_registry_v1.json` | config | Vendored legal event-combination and H1 aggregation registry from the immutable V1 sample contract. | Registry metadata only. |
+| `configs/contracts/grud_h1_baseline/event_element_registry_v1.json` | config | Vendored stable field, operator, condition, side, role, and resolution IDs. | Registry metadata only. |
+| `configs/contracts/grud_h1_baseline/field_ready_contract_v1.json` | config | Hash authority for field-ready files, exact units, and clinical-availability semantics. | Schema metadata only. |
+| `configs/contracts/grud_h1_baseline/grud_h1_input_contract_v1.json` | config | Freezes same-anchor H1-only input and unchanged r9 six-M4 target identity for the GRU-D baseline. | Aggregate identities only. |
+| `configs/contracts/grud_h1_baseline/missingness_contract_v1.json` | config | Vendored missingness and no-forward-fill rules for H1 sample construction. | Registry metadata only. |
+| `configs/contracts/grud_h1_baseline/registry_manifest_v1.json` | config | Loads the vendored V1 registries as the closed H1 source contract. | Registry metadata only. |
+| `configs/contracts/grud_h1_baseline/static_registry_v1.json` | config | Vendored admission-static field and category authority. | Registry metadata only. |
+| `configs/contracts/grud_h1_baseline/time_block_registry_v1.json` | config | Vendored resolution metadata used to retain exact H1 semantics. | Registry metadata only. |
+| `configs/contracts/grud_h1_baseline/value_transform_spec_v1.json` | config | Vendored exact-value and later train-subject normalization boundary. | Registry metadata only. |
 | `configs/contracts/multires_event_v2/field_category_matrix_v1.csv` | config | Frozen 37-field channel/category authority used by Relation V2 axis validation. | Registry metadata only. |
 | `configs/contracts/multires_event_v2/input_target_relation_edges_v2.csv` | config | Frozen 39-row history-input to future-output relation table. | Registry metadata only. |
 | `configs/contracts/multires_event_v2/relation_evidence_registry_v2.json` | config | Evidence registry bound to every Relation V2 edge. | No patient rows. |
 | `configs/contracts/multires_event_v2/target_target_relation_edges_v2.csv` | config | Frozen 52-row target-target relation table with edge-specific parameter keys. | Registry metadata only. |
 | `configs/dataset/first_train.yaml` | config | First training dataset artifact paths and required sample fields. | Uses environment-variable paths only. |
+| `configs/dataset/grud_h1_baseline_c4.yaml` | config | Hash-binds the H1-only baseline sidecar to the 50,350 frozen anchors, split, and r9 target. | Uses environment-variable paths only. |
 | `configs/dataset/multires_event_v1_c4.yaml` | config | Frozen C4 multires event dataset identity, inventory, loader, and split contract. | Uses environment-variable paths only. |
 | `configs/dataset/multires_event_v2_relation_v2_c4.yaml` | config | Joins the immutable V1 input base to the accepted r9 target sidecar for the strict Relation V2 route. | Uses environment-variable paths only. |
 | `configs/dataset/multires_event_v2_c4_lab_affine_scale.json` | config | Train-subject-only affine scale for V2 laboratory likelihoods. | Aggregate scale metadata only. |
@@ -35,6 +46,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `configs/train/t4x2_stage_a_hour_smoke.yaml` | config | Stage A smoke config that proves HOUR values-only model/data/runtime wiring. | Uses environment-variable paths only. |
 | `docs/DATA_POLICY.md` | docs | Allowed and forbidden repository content policy. | No data. |
 | `docs/FILE_INDEX.md` | docs | Tracked-file index. | No data. |
+| `docs/GRUD_H1_BASELINE_SAMPLE.md` | docs | Describes the matched H1 input sidecar, unchanged target, and later GRU-D adapter boundary. | No data. |
 | `docs/KAGGLE_RUNBOOK.md` | docs | Kaggle launch and output policy. | No data. |
 | `docs/REPO_STRUCTURE.md` | docs | Directory structure and design rules. | No data. |
 | `docs/TRAINING_STAGES.md` | docs | Stage A/B/C and joint-baseline training contract. | No data. |
@@ -64,6 +76,8 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `requirements-kaggle.txt` | packaging | Kaggle install requirements. | No data. |
 | `requirements-multires-kaggle.txt` | packaging | Pinned direct dependencies for the multires Kaggle route. | No data. |
 | `schemas/dataset_manifest.schema.json` | schema | Contract for generated dataset manifests. | Schema only. |
+| `schemas/grud_h1_baseline_dataset_manifest.schema.json` | schema | Contract for full or gated GRU-D H1 sidecar inventories and source authority. | Schema only. |
+| `schemas/grud_h1_baseline_input_sample.schema.json` | schema | Contract for sparse exact-value H1 input records and hash-bound r9 target references. | Schema only. |
 | `schemas/multires_event_dataset_manifest.schema.json` | schema | Contract for the frozen multires event dataset manifest. | Schema only. |
 | `schemas/multires_event_normalization.schema.json` | schema | Contract for train-subject-only robust normalization statistics. | Schema only. |
 | `schemas/multires_event_sample.schema.json` | schema | Contract for canonical multires event sample records. | Schema only. |
@@ -77,6 +91,13 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `src/trauma_predict/data/main_route.py` | package | Loads main-route records and batches HOUR side tensors for training. | No data. |
 | `src/trauma_predict/data/main_route_contract.py` | package | Validates the standard textual V1 main-route record, HOUR tensors, and structured targets. | No data. |
 | `src/trauma_predict/data/manifest.py` | package | Dataset manifest loading and validation helpers. | No data. |
+| `src/trauma_predict/data/grud_h1_sample/__init__.py` | package | Public H1 sidecar allocation, construction, validation, and dataset-build exports. | No data. |
+| `src/trauma_predict/data/grud_h1_sample/aggregation.py` | package | Applies the frozen clinical aggregation and visibility rules within H1 blocks. | Reads field-ready data only at runtime. |
+| `src/trauma_predict/data/grud_h1_sample/allocation.py` | package | Allocates consecutive one-hour input blocks from ICU hour 0 through the anchor. | No data. |
+| `src/trauma_predict/data/grud_h1_sample/builder.py` | package | Builds exact sparse H1 five-tuples and immutable r9 target locators per frozen sample ID. | Reads field-ready data only at runtime. |
+| `src/trauma_predict/data/grud_h1_sample/dataset.py` | package | Hash-joins base/r9 authority and writes resumable deterministic H1 sidecar shards. | Writes generated artifacts outside Git. |
+| `src/trauma_predict/data/grud_h1_sample/io.py` | package | Loads and hash-validates field-ready static, point, interval, and CXR files. | Reads restricted mounted data only at runtime. |
+| `src/trauma_predict/data/grud_h1_sample/registry.py` | package | Loads frozen element, combination, and static registries and compiles legal H1 channels. | Registry metadata only. |
 | `src/trauma_predict/data/multires_event/__init__.py` | package | Public multires data contract, dataset, sampler, normalizer, collator, and runtime exports. | No data. |
 | `src/trauma_predict/data/multires_event/collator.py` | package | Converts compact events and frozen target slots into aligned model tensors. | No data. |
 | `src/trauma_predict/data/multires_event/contract.py` | package | Compiles supervision rules into fixed H1/M4 queries and derived F24 mappings. | Registry metadata only. |
@@ -132,6 +153,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `tests/helpers/multires_event_v2_best_checkpoint_worker.py` | tests | Two-process Gloo worker for the production best-checkpoint collective-order regression. | Synthetic zero-parameter checkpoint only. |
 | `tests/helpers/multires_event_v2_rank_artifact_worker.py` | tests | Two-process Gloo worker for rank-local artifact success and failure-path regression. | Synthetic metadata only. |
 | `tests/test_data_preflight.py` | tests | Tests generated artifact preflight checks with synthetic rows. | Synthetic records only. |
+| `tests/test_grud_h1_sample_builder.py` | tests | Tests 118-channel H1 geometry, availability, schema, and base/r9 authority joining. | Synthetic records only. |
 | `tests/test_manifest_contracts.py` | tests | Tests schema and manifest helper behavior. | Synthetic records only. |
 | `tests/test_multires_event_contract.py` | tests | Tests target-overlay counts, semantics, and F24 mappings against the frozen registry. | Registry metadata only. |
 | `tests/test_multires_event_data.py` | tests | Tests real-artifact filtering, sampling, normalization, and collator alignment. | Reads the immutable local artifact when mounted. |
@@ -162,5 +184,6 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `tests/test_training_main_route.py` | tests | Tests main-route config, label encoding, collator alignment, adapter shape, and checkpoint helpers. | Synthetic records only. |
 | `tools/build_relational_primary_bundle.py` | tools | Historical v8 bundle builder retained as fail-closed evidence; it cannot package or resume Relation V2. | Stops without writing artifacts. |
 | `tools/build_relation_v2_p100_bundle.py` | tools | Builds the clean source-bound private Kaggle Dataset bundle and complete hash-locked P100 cu126 runtime for the formal Relation V2 route. | Packages only frozen derived artifacts and public runtime wheels; never raw MIMIC rows. |
+| `tools/build_grud_h1_baseline_samples.py` | tools | Builds the full or gated matched H1 baseline sidecar from external hash-bound authorities. | Writes generated artifacts outside Git. |
 | `tools/update_file_index.py` | tools | Validates that all tracked files appear in this index. | No data. |
 | `uv.lock` | packaging | Exact dependency resolution used in semantic runtime identity. | No data. |

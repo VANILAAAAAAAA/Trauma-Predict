@@ -1,0 +1,83 @@
+{
+  "schema": "multires_event_static_registry_v1",
+  "version": "2026-07-12-full-field-v1",
+  "closed_world": true,
+  "visibility": "known_at_or_before_ICU_admission",
+  "unknown_policy": "omit_optional_field; never invent a category or numeric zero",
+  "fields": {
+    "age": {
+      "source_key": "age",
+      "model_key": "age",
+      "type": "continuous",
+      "unit": "years",
+      "required": true,
+      "valid_range": [18, 120],
+      "model_transform": "robust_z_train_subjects"
+    },
+    "sex": {
+      "source_key": "sex",
+      "model_key": "sex",
+      "type": "categorical",
+      "values": ["M", "F"],
+      "required": true
+    },
+    "mechanism": {
+      "source_key": "mechanism",
+      "model_key": "mechanism",
+      "type": "categorical",
+      "values": ["blunt", "penetrating", "other"],
+      "required": true
+    },
+    "transfer": {
+      "source_key": "transfer",
+      "model_key": "transfer",
+      "type": "categorical",
+      "values": ["direct", "transfer"],
+      "required": true
+    },
+    "ed": {
+      "source_key": "ed",
+      "model_key": "ed",
+      "type": "binary_category",
+      "values": ["no", "yes"],
+      "required": true
+    },
+    "head_injury": {
+      "source_key": "head_injury",
+      "model_key": "head_injury",
+      "type": "binary_category",
+      "values": ["no", "yes"],
+      "required": true
+    },
+    "weight_kg": {
+      "source_key": "weight_kg",
+      "model_key": "weight_kg",
+      "type": "continuous",
+      "unit": "kg",
+      "required": false,
+      "valid_range": [20, 300],
+      "model_transform": "robust_z_train_subjects"
+    },
+    "initial_ed_sbp": {
+      "source_key": "initial_ed_sbp",
+      "model_key": "initial_ed_sbp",
+      "type": "continuous",
+      "unit": "mmHg",
+      "required": false,
+      "valid_range": [1, 399],
+      "model_transform": "robust_z_train_subjects"
+    },
+    "rsi": {
+      "source_key": "rsi",
+      "model_key": "rsi",
+      "type": "continuous",
+      "unit": "ratio",
+      "required": false,
+      "valid_range": [0, 20],
+      "model_transform": "robust_z_train_subjects"
+    }
+  },
+  "forbidden_source_keys": {
+    "early48": "Dynamic post-admission history belongs in temporal tuples."
+  }
+}

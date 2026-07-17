@@ -1,0 +1,36 @@
+{
+  "schema": "multires_event_registry_manifest_v1",
+  "version": "2026-07-12-full-field-v1",
+  "status": "vendored_frozen_h1_source_contract",
+  "closed_world": true,
+  "tuple_order": [
+    "field_id",
+    "operator_id",
+    "condition_id",
+    "value",
+    "block_id"
+  ],
+  "authoritative_files": {
+    "static": "static_registry_v1.json",
+    "event_elements": "event_element_registry_v1.json",
+    "event_combinations": "event_combination_registry_v1.json",
+    "time_blocks": "time_block_registry_v1.json",
+    "value_transforms": "value_transform_spec_v1.json",
+    "missingness": "missingness_contract_v1.json"
+  },
+  "rules": [
+    "Integer zero is reserved for padding; field, operator, and condition IDs are explicit and stable.",
+    "Canonical sample values are finite absolute values with no builder rounding or normalization.",
+    "Input availability is gated by available_hour <= prediction_hour while block membership follows clinical_hour.",
+    "H1, M4, and F24 share the same canonical fields; only legal operators, conditions, and block geometry differ.",
+    "CXR is input-only and never appears in target_events."
+  ],
+  "scope": {
+    "included_temporal_fields": 36,
+    "input_only_special_fields": [
+      "cxr"
+    ],
+    "urine_output_policy": "sum_and_count_only; no rate or oliguria target until collection intervals are reliable",
+    "censoring_policy": "samples require a fully observed prediction+24h ICU window"
+  }
+}

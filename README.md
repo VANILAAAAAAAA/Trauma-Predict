@@ -2,13 +2,9 @@
 
 Trauma-Predict is the code-only repository for training and evaluating trauma ICU prediction models. Restricted MIMIC-derived data, generated samples, checkpoints, run outputs, and agent artifacts are not stored here.
 
-The upstream research workspace remains:
-
-```text
-/home/vanila/code/EHR-Predict
-```
-
-Use that workspace for cohort construction, field adapter development, sample-builder evidence, and historical project artifacts. Use this repository for reproducible training code, configs, schemas, tests, and Kaggle launchers.
+The upstream EHR-Predict research workspace remains separate. Use it for cohort construction,
+field-adapter development, source evidence, and historical project artifacts. Use this repository
+for reproducible training code, configs, schemas, tests, and Kaggle launchers.
 
 ## Current Scope
 
@@ -19,6 +15,7 @@ Use that workspace for cohort construction, field adapter development, sample-bu
 - Optimizer contract: one-group AdamW over the raw 414-factor joint-NLL batch mean, with no hidden factor normalization or global gradient clipping. Every step must carry complete gradient, scaler, Adam-state, LR, and resume-schedule health evidence.
 - Hosted contract: the single-P100 route uses `trauma_predict_relation_v2_p100_r9.ipynb`, an offline source archive, and a hash-locked Python 3.12 `torch 2.10.0+cu126` closure. Bundle schema v3 packs all 28 wheels inside one `p100_torch_2_10_cu126_cp312_wheelhouse.blob`, avoiding Kaggle filename rewriting of the individual `+cu126` wheel. The Notebook validates the archive and every member, extracts and installs under `/kaggle/temp`, then uses the private `vanila111/trauma-predict-relation-v2-p100-r9-bundle` Dataset and hash-validated prior-output restore. Training advances through 250/1500/2750/4000-step boundaries before resumable free-running evaluation. The v8 hosted surfaces remain historical and fail closed.
 - Historical V1 scratch Transformer and GRU-D runs remain retained evidence, not the active prediction task.
+- Matched baseline preparation: `grud_h1_baseline_c4_20260717_v1` rebuilds only the historical input as 118 registered H1 channels over the exact 50,350 frozen anchors and patient split, while referencing the unchanged r9 six-M4 target. The external 52-shard sample artifact is built and audited; this branch intentionally stops before GRU-D model and training implementation.
 - Legacy textual routes remain for experiment traceability and are not the active multi-resolution baseline.
 - Sample unit: one ICU stay plus one prediction anchor.
 - Primary key: `(subject_id, hadm_id, stay_id, prediction_hour)`.
@@ -28,7 +25,7 @@ Use that workspace for cohort construction, field adapter development, sample-bu
 
 | Path | Purpose |
 | --- | --- |
-| `src/trauma_predict/` | Importable Python package for data manifests, split handling, training, and evaluation code. |
+| `src/trauma_predict/` | Importable Python package for data manifests, baseline sample construction, training, and evaluation code. |
 | `configs/` | Versioned dataset, training, and accelerator configs. |
 | `schemas/` | JSON Schema contracts for generated dataset and sample manifests. |
 | `notebooks/kaggle/` | Kaggle entrypoints and runbook-only notebooks/scripts. |

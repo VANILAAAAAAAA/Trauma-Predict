@@ -1,0 +1,43 @@
+{
+  "schema": "multires_event_value_transform_spec_v1",
+  "version": "2026-07-12-full-field-v1",
+  "storage_policy": "Store finite values in canonical absolute units; never store normalized values in the canonical sample.",
+  "fit_population": "training subjects only after patient-level split",
+  "normalization_key": ["field", "operator", "condition", "resolution"],
+  "model_view_transforms": {
+    "continuous": {
+      "transform": "clip((x - train_median) / max(train_IQR, epsilon), -clip_value, clip_value)",
+      "clip_value": 10,
+      "statistics": ["median", "IQR", "count"]
+    },
+    "nonnegative": {
+      "transform": "robust_z(log1p(x))",
+      "clip_value": 10,
+      "statistics": ["log1p_median", "log1p_IQR", "count"]
+    },
+    "count": {
+      "transform": "robust_z(log1p(x))",
+      "clip_value": 10,
+      "statistics": ["log1p_median", "log1p_IQR", "count"]
+    },
+    "duration": {
+      "transform": "x / span_hours",
+      "range": [0, 1]
+    },
+    "binary": {
+      "transform": "identity",
+      "range": [0, 1]
+    },
+    "study_slot": {
+      "transform": "block_local_categorical_embedding",
+      "range": [1, "block_cxr_count"]
+    }
+  },
+  "rules": [
+    "A shared value projection without a template-aware normalization key is illegal.",
+    "A duration value is a discrete observed-hour or active-hour burden unless the source provides reliable continuous intervals.",
+    "Zero is retained when it is a valid observed count, amount, duration, or state.",
+    "No statistic may be fitted on validation or test subjects.",
+    "Canonical sample values are never rounded by the builder."
+  ]
+}

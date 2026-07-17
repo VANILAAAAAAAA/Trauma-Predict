@@ -5,13 +5,14 @@ The repository is organized around a standard ML lifecycle while keeping restric
 ```text
 configs/
   accelerate/      Accelerator configs for Kaggle and local fallback.
+  contracts/       Frozen code-side registries and experiment contracts.
   dataset/         Dataset artifact path and required-field configs.
   train/           Training run configs.
 docs/              Human-readable repository policy and runbooks.
 notebooks/kaggle/  Kaggle-specific entrypoints.
 schemas/           Machine-readable data artifact contracts.
 src/trauma_predict/
-  data/            Manifest and split utilities.
+  data/            Manifest, split, and versioned sample-sidecar builders.
   eval/            Metrics and evaluation helpers.
   modeling/        HOUR adapter encoder and structured prediction heads.
   training/        Training config and checkpoint helpers.
@@ -26,3 +27,4 @@ tools/             Maintenance tools.
 3. Every tracked file must be listed in `docs/FILE_INDEX.md`.
 4. Training code reads data through config paths, environment variables, or mounted datasets.
 5. Patient split is keyed by `subject_id`; samples are keyed by `(subject_id, hadm_id, stay_id, prediction_hour)`.
+6. A matched baseline may change its input representation only through a separately frozen sidecar; sample IDs, split authority, visibility, and target identity remain hash-bound.

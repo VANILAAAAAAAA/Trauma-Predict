@@ -1,0 +1,309 @@
+{
+  "schema": "multires_field_ready_contract_v1",
+  "version": "2026-07-12",
+  "sample_unit": "icu_stay",
+  "history_hours": 336,
+  "value_policy": "canonical_exact_value",
+  "availability_policy": {
+    "clinical_hour": "clinical timestamp relative to ICU intime",
+    "available_hour": "storetime relative to ICU intime; when a source has no storetime, the declared source-specific fallback is used",
+    "input_gate": "available_hour <= prediction_hour",
+    "no_forward_fill": true
+  },
+  "static_fields": [
+    "age",
+    "sex",
+    "mechanism",
+    "transfer",
+    "ed",
+    "head_injury",
+    "weight_kg",
+    "initial_ed_sbp",
+    "rsi"
+  ],
+  "dynamic_fields": [
+    "heart_rate",
+    "systolic_bp",
+    "diastolic_bp",
+    "mean_arterial_pressure",
+    "respiratory_rate",
+    "temperature",
+    "spo2",
+    "gcs_eye",
+    "gcs_verbal",
+    "gcs_motor",
+    "respiratory_support",
+    "fio2",
+    "peep",
+    "lactate",
+    "base_excess",
+    "bicarbonate",
+    "creatinine",
+    "bun",
+    "wbc",
+    "hemoglobin",
+    "platelet_count",
+    "inr",
+    "sodium",
+    "potassium",
+    "chloride",
+    "glucose",
+    "vasopressor_support",
+    "norepinephrine_equivalent_dose",
+    "crystalloid",
+    "rbc",
+    "plasma",
+    "platelet_transfusion",
+    "cryoprecipitate",
+    "antibiotics",
+    "urine_output",
+    "surgery"
+  ],
+  "output_files": {
+    "static_context.json": {
+      "format": "json"
+    },
+    "point_events.csv.gz": {
+      "format": "csv.gz",
+      "columns": [
+        "field",
+        "clinical_hour",
+        "available_hour",
+        "value",
+        "unit",
+        "source_table",
+        "source_id",
+        "source_condition"
+      ]
+    },
+    "interval_events.csv.gz": {
+      "format": "csv.gz",
+      "columns": [
+        "field",
+        "start_hour",
+        "end_hour",
+        "available_hour",
+        "value",
+        "unit",
+        "condition",
+        "source_table",
+        "source_id"
+      ]
+    },
+    "cxr_events.csv.gz": {
+      "format": "csv.gz",
+      "columns": [
+        "study_id",
+        "clinical_hour",
+        "available_hour",
+        "label"
+      ]
+    },
+    "manifest.json": {
+      "format": "json"
+    }
+  },
+  "point_sources": {
+    "chartevents": {
+      "220045": ["heart_rate", "beats/min"],
+      "220050": ["systolic_bp", "mmHg"],
+      "225309": ["systolic_bp", "mmHg"],
+      "220179": ["systolic_bp", "mmHg"],
+      "224167": ["systolic_bp", "mmHg"],
+      "227243": ["systolic_bp", "mmHg"],
+      "220051": ["diastolic_bp", "mmHg"],
+      "225310": ["diastolic_bp", "mmHg"],
+      "220180": ["diastolic_bp", "mmHg"],
+      "224643": ["diastolic_bp", "mmHg"],
+      "227242": ["diastolic_bp", "mmHg"],
+      "220052": ["mean_arterial_pressure", "mmHg"],
+      "220181": ["mean_arterial_pressure", "mmHg"],
+      "220210": ["respiratory_rate", "breaths/min"],
+      "223761": ["temperature", "Celsius"],
+      "223762": ["temperature", "Celsius"],
+      "226329": ["temperature", "Celsius"],
+      "220277": ["spo2", "percent"],
+      "220739": ["gcs_eye", "score"],
+      "223900": ["gcs_verbal", "score"],
+      "223901": ["gcs_motor", "score"],
+      "223835": ["fio2", "fraction"],
+      "220339": ["peep", "cmH2O"],
+      "224700": ["peep", "cmH2O"]
+    },
+    "labevents": {
+      "50813": ["lactate", "mmol/L"],
+      "52442": ["lactate", "mmol/L"],
+      "53154": ["lactate", "mmol/L"],
+      "50802": ["base_excess", "mEq/L"],
+      "50803": ["bicarbonate", "mEq/L"],
+      "50882": ["bicarbonate", "mEq/L"],
+      "51739": ["bicarbonate", "mEq/L"],
+      "50912": ["creatinine", "mg/dL"],
+      "52546": ["creatinine", "mg/dL"],
+      "51006": ["bun", "mg/dL"],
+      "52647": ["bun", "mg/dL"],
+      "51300": ["wbc", "K/uL"],
+      "51301": ["wbc", "K/uL"],
+      "51755": ["wbc", "K/uL"],
+      "51756": ["wbc", "K/uL"],
+      "50811": ["hemoglobin", "g/dL"],
+      "51222": ["hemoglobin", "g/dL"],
+      "51640": ["hemoglobin", "g/dL"],
+      "51265": ["platelet_count", "K/uL"],
+      "51704": ["platelet_count", "K/uL"],
+      "51237": ["inr", "ratio"],
+      "51675": ["inr", "ratio"],
+      "50983": ["sodium", "mEq/L"],
+      "52623": ["sodium", "mEq/L"],
+      "50824": ["sodium", "mEq/L"],
+      "52455": ["sodium", "mEq/L"],
+      "50971": ["potassium", "mEq/L"],
+      "52610": ["potassium", "mEq/L"],
+      "50822": ["potassium", "mEq/L"],
+      "52452": ["potassium", "mEq/L"],
+      "50902": ["chloride", "mEq/L"],
+      "52535": ["chloride", "mEq/L"],
+      "50806": ["chloride", "mEq/L"],
+      "52434": ["chloride", "mEq/L"],
+      "50931": ["glucose", "mg/dL"],
+      "52569": ["glucose", "mg/dL"],
+      "50809": ["glucose", "mg/dL"],
+      "52027": ["glucose", "mg/dL"]
+    },
+    "outputevents": {
+      "226559": ["urine_output", "mL"],
+      "226560": ["urine_output", "mL"],
+      "226566": ["urine_output", "mL"],
+      "226627": ["urine_output", "mL"],
+      "226631": ["urine_output", "mL"],
+      "226713": ["urine_output", "mL"],
+      "227489": ["urine_output", "mL"]
+    }
+  },
+  "respiratory_sources": {
+    "ventilator_mode_itemids": [223849, 229314],
+    "oxygen_delivery_itemid": 226732,
+    "episode_gap_hours": 14,
+    "conditions": [
+      "RESP_OTHER_OXYGEN",
+      "RESP_HIGH_FLOW",
+      "RESP_NONINVASIVE",
+      "RESP_INVASIVE"
+    ],
+    "priority": [
+      "RESP_INVASIVE",
+      "RESP_NONINVASIVE",
+      "RESP_HIGH_FLOW",
+      "RESP_OTHER_OXYGEN"
+    ],
+    "absence_policy": "absence of a charted support source is unknown and emits no interval; a tracheostomy device alone is not treated as support intensity"
+  },
+  "interval_sources": {
+    "canonical_units": {
+      "respiratory_support": "hours",
+      "vasopressor_support": "hours",
+      "norepinephrine_equivalent_dose": "mcg/kg/min",
+      "crystalloid": "mL",
+      "rbc": "mL",
+      "plasma": "mL",
+      "platelet_transfusion": "mL",
+      "cryoprecipitate": "mL",
+      "antibiotics": "hours",
+      "surgery": "count"
+    },
+    "crystalloid": [221208, 225158, 225828, 226364, 226375],
+    "rbc": [225168, 226368, 227070],
+    "plasma": [220970, 226367, 227072],
+    "platelet_transfusion": [225170, 226369, 227071],
+    "cryoprecipitate": [225171, 226371],
+    "antibiotics": [
+      225798,
+      225837,
+      225838,
+      225840,
+      225842,
+      225843,
+      225844,
+      225845,
+      225847,
+      225848,
+      225850,
+      225851,
+      225853,
+      225855,
+      225859,
+      225860,
+      225863,
+      225865,
+      225875,
+      225879,
+      225881,
+      225883,
+      225884,
+      225885,
+      225893,
+      225899,
+      229061,
+      229064
+    ],
+    "antibiotic_orders": {
+      "source_table": "prescriptions",
+      "availability_fallback": "starttime",
+      "conditions": ["ORDER_START", "ORDER_ACTIVE"],
+      "drug_regex": "vancomycin|cefazolin|cefepime|ceftazidime|ceftriaxone|ciprofloxacin|levofloxacin|moxifloxacin|clindamycin|metronidazole|piperacillin|tazobactam|zosyn|ampicillin|sulbactam|unasyn|meropenem|imipenem|ertapenem|azithromycin|doxycycline|linezolid|daptomycin|gentamicin|tobramycin|amikacin|bactrim|trimethoprim|sulfamethoxazole|fluconazole|micafungin|voriconazole|acyclovir"
+    },
+    "vasopressors": {
+      "221906": "VASO_NOREPINEPHRINE",
+      "221289": "VASO_EPINEPHRINE",
+      "229617": "VASO_EPINEPHRINE",
+      "221662": "VASO_DOPAMINE",
+      "222315": "VASO_VASOPRESSIN",
+      "221749": "VASO_PHENYLEPHRINE",
+      "229630": "VASO_PHENYLEPHRINE",
+      "229631": "VASO_PHENYLEPHRINE",
+      "229632": "VASO_PHENYLEPHRINE",
+      "221653": "VASO_OTHER"
+    },
+    "norepinephrine_equivalent": {
+      "unit": "mcg/kg/min",
+      "formula": "norepinephrine + epinephrine + phenylephrine/10 + dopamine/100 + vasopressin_units_per_hour*2.5/60",
+      "source": "MIT-LCP mimic-code norepinephrine_equivalent_dose.sql",
+      "overlap_policy": "adapter emits non-overlapping intervals containing the summed active dose before downstream LAST/MAX/time-weighted MEAN",
+      "quality_counters": [
+        "ned_candidate_rows",
+        "ned_emitted_components",
+        "ned_dropped_unsupported_unit_or_weight"
+      ]
+    },
+    "procedureevents": {
+      "225792": ["respiratory_support", "RESP_INVASIVE"],
+      "225794": ["respiratory_support", "RESP_NONINVASIVE"],
+      "225470": ["surgery", "START"]
+    }
+  },
+  "cxr": {
+    "input_only": true,
+    "availability_assumption": "automated label available at acquisition time",
+    "labels": [
+      "pneumothorax",
+      "pleural_fluid",
+      "lung_opacity",
+      "fracture",
+      "normal",
+      "selected_negative",
+      "selected_uncertain"
+    ],
+    "mapping": {
+      "pneumothorax": ["Pneumothorax"],
+      "pleural_fluid": ["Pleural Effusion"],
+      "lung_opacity": ["Lung Opacity", "Atelectasis", "Consolidation", "Pneumonia", "Edema"],
+      "fracture": ["Fracture"]
+    },
+    "slot_policy": "study_id is retained here; study_slot is assigned inside each later H1/M4/F24 block by acquisition-time order"
+  },
+  "target_constraints": {
+    "cxr": "excluded",
+    "urine_output": "source supports SUM and COUNT only; no rate or oliguria duration",
+    "surgery": "START only; no inferred duration"
+  }
+}

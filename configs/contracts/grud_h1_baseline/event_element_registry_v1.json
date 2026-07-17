@@ -1,0 +1,617 @@
+{
+  "schema": "multires_event_element_registry_v1",
+  "version": "2026-07-12-full-field-v1",
+  "closed_world": true,
+  "padding_id": 0,
+  "tuple_order": [
+    "field_id",
+    "operator_id",
+    "condition_id",
+    "value",
+    "block_id"
+  ],
+  "sides": {
+    "input": {
+      "id": 1,
+      "serialized_prefix": "IN"
+    },
+    "target": {
+      "id": 2,
+      "serialized_prefix": "OUT"
+    }
+  },
+  "roles": {
+    "FAR": {
+      "id": 1,
+      "side": "input",
+      "resolution": "F24"
+    },
+    "MIDDLE": {
+      "id": 2,
+      "side": "input",
+      "resolution": "M4"
+    },
+    "NEAR": {
+      "id": 3,
+      "side": "input",
+      "resolution": "H1"
+    },
+    "FUTURE_H1": {
+      "id": 4,
+      "side": "target",
+      "resolution": "H1"
+    },
+    "FUTURE_M4": {
+      "id": 5,
+      "side": "target",
+      "resolution": "M4"
+    },
+    "FUTURE_F24": {
+      "id": 6,
+      "side": "target",
+      "resolution": "F24"
+    }
+  },
+  "resolutions": {
+    "H1": {
+      "id": 1,
+      "span_hours": 1,
+      "input_role": "NEAR",
+      "target_role": "FUTURE_H1",
+      "target_block_count": 1
+    },
+    "M4": {
+      "id": 2,
+      "span_hours": 4,
+      "input_role": "MIDDLE",
+      "target_role": "FUTURE_M4",
+      "target_block_count": 6
+    },
+    "F24": {
+      "id": 3,
+      "span_hours": 24,
+      "input_role": "FAR",
+      "target_role": "FUTURE_F24",
+      "target_block_count": 1
+    }
+  },
+  "operators": {
+    "OBS": {
+      "id": 1,
+      "meaning": "latest valid point observed in the block"
+    },
+    "LAST": {
+      "id": 2,
+      "meaning": "last valid point in the block"
+    },
+    "MIN": {
+      "id": 3,
+      "meaning": "minimum valid value in the block"
+    },
+    "MAX": {
+      "id": 4,
+      "meaning": "maximum valid value in the block"
+    },
+    "MEAN": {
+      "id": 5,
+      "meaning": "mean registered value in the block"
+    },
+    "SUM": {
+      "id": 6,
+      "meaning": "registered amount accumulated in the block"
+    },
+    "COUNT": {
+      "id": 7,
+      "meaning": "number of registered observations or studies"
+    },
+    "DURATION": {
+      "id": 8,
+      "meaning": "active or predicate-matching burden in hours"
+    },
+    "STATE": {
+      "id": 9,
+      "meaning": "known active state at the right edge of the block"
+    },
+    "START": {
+      "id": 10,
+      "meaning": "field-defined onset count: canonical clinical episode onsets for state support, registered source starts for administrations/procedures"
+    }
+  },
+  "conditions": {
+    "NONE": {
+      "id": 1,
+      "kind": "none"
+    },
+    "OBSERVED": {
+      "id": 2,
+      "kind": "coverage"
+    },
+    "ACTIVE": {
+      "id": 3,
+      "kind": "state"
+    },
+    "RESP_INVASIVE": {
+      "id": 4,
+      "kind": "event_subtype"
+    },
+    "RESP_NONINVASIVE": {
+      "id": 5,
+      "kind": "event_subtype"
+    },
+    "RESP_HIGH_FLOW": {
+      "id": 6,
+      "kind": "event_subtype"
+    },
+    "RESP_OTHER_OXYGEN": {
+      "id": 7,
+      "kind": "event_subtype"
+    },
+    "VASO_NOREPINEPHRINE": {
+      "id": 8,
+      "kind": "event_subtype"
+    },
+    "VASO_EPINEPHRINE": {
+      "id": 9,
+      "kind": "event_subtype"
+    },
+    "VASO_PHENYLEPHRINE": {
+      "id": 10,
+      "kind": "event_subtype"
+    },
+    "VASO_VASOPRESSIN": {
+      "id": 11,
+      "kind": "event_subtype"
+    },
+    "VASO_DOPAMINE": {
+      "id": 12,
+      "kind": "event_subtype"
+    },
+    "VASO_OTHER": {
+      "id": 13,
+      "kind": "event_subtype"
+    },
+    "HR_LT40": {
+      "id": 14,
+      "kind": "numeric_predicate",
+      "comparator": "<",
+      "threshold": 40,
+      "unit": "beats/min",
+      "within_hour_reducer": "min"
+    },
+    "HR_GT120": {
+      "id": 15,
+      "kind": "numeric_predicate",
+      "comparator": ">",
+      "threshold": 120,
+      "unit": "beats/min",
+      "within_hour_reducer": "max"
+    },
+    "SBP_LT90": {
+      "id": 16,
+      "kind": "numeric_predicate",
+      "comparator": "<",
+      "threshold": 90,
+      "unit": "mmHg",
+      "within_hour_reducer": "min"
+    },
+    "MAP_LT65": {
+      "id": 17,
+      "kind": "numeric_predicate",
+      "comparator": "<",
+      "threshold": 65,
+      "unit": "mmHg",
+      "within_hour_reducer": "min"
+    },
+    "MAP_GE65_LT70": {
+      "id": 18,
+      "kind": "numeric_interval",
+      "lower": 65,
+      "lower_inclusive": true,
+      "upper": 70,
+      "upper_inclusive": false,
+      "unit": "mmHg",
+      "within_hour_reducer": "min"
+    },
+    "MAP_GE70": {
+      "id": 19,
+      "kind": "numeric_predicate",
+      "comparator": ">=",
+      "threshold": 70,
+      "unit": "mmHg",
+      "within_hour_reducer": "max"
+    },
+    "RR_LT8": {
+      "id": 20,
+      "kind": "numeric_predicate",
+      "comparator": "<",
+      "threshold": 8,
+      "unit": "breaths/min",
+      "within_hour_reducer": "min"
+    },
+    "RR_GE22": {
+      "id": 21,
+      "kind": "numeric_predicate",
+      "comparator": ">=",
+      "threshold": 22,
+      "unit": "breaths/min",
+      "within_hour_reducer": "max"
+    },
+    "SPO2_LE93": {
+      "id": 22,
+      "kind": "numeric_predicate",
+      "comparator": "<=",
+      "threshold": 93,
+      "unit": "percent",
+      "within_hour_reducer": "min"
+    },
+    "TEMP_GE38": {
+      "id": 23,
+      "kind": "numeric_predicate",
+      "comparator": ">=",
+      "threshold": 38,
+      "unit": "Celsius",
+      "within_hour_reducer": "max"
+    },
+    "pneumothorax": {
+      "id": 24,
+      "kind": "cxr_label"
+    },
+    "pleural_fluid": {
+      "id": 25,
+      "kind": "cxr_label"
+    },
+    "lung_opacity": {
+      "id": 26,
+      "kind": "cxr_label"
+    },
+    "fracture": {
+      "id": 27,
+      "kind": "cxr_label"
+    },
+    "normal": {
+      "id": 28,
+      "kind": "cxr_label"
+    },
+    "selected_negative": {
+      "id": 29,
+      "kind": "cxr_label"
+    },
+    "selected_uncertain": {
+      "id": 30,
+      "kind": "cxr_label"
+    },
+    "ADMINISTRATION": {
+      "id": 31,
+      "kind": "antibiotic_source",
+      "source_table": "inputevents"
+    },
+    "ORDER_START": {
+      "id": 32,
+      "kind": "antibiotic_source",
+      "source_table": "prescriptions"
+    },
+    "ORDER_ACTIVE": {
+      "id": 33,
+      "kind": "antibiotic_source",
+      "source_table": "prescriptions"
+    }
+  },
+  "value_types": {
+    "continuous": {
+      "storage": "finite_float",
+      "model_transform_family": "robust_z"
+    },
+    "nonnegative": {
+      "storage": "finite_float_gte_0",
+      "model_transform_family": "log1p_robust_z"
+    },
+    "count": {
+      "storage": "integer_gte_0",
+      "model_transform_family": "log1p_robust_z"
+    },
+    "duration": {
+      "storage": "hours_between_0_and_block_span",
+      "model_transform_family": "divide_by_span"
+    },
+    "binary": {
+      "storage": "0_or_1",
+      "model_transform_family": "identity"
+    },
+    "study_slot": {
+      "storage": "integer_gte_1_local_to_block",
+      "model_transform_family": "categorical_slot_embedding"
+    }
+  },
+  "input_emit_policies": {
+    "observed_only": "emit only when registered evidence exists",
+    "positive_only": "emit only when a valid value is greater than zero",
+    "known_state": "emit both 0 and 1 when state is known"
+  },
+  "fields": {
+    "heart_rate": {
+      "id": 1,
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "beats/min",
+      "valid_range": [
+        1,
+        299
+      ]
+    },
+    "systolic_bp": {
+      "id": 2,
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "valid_range": [
+        1,
+        399
+      ]
+    },
+    "diastolic_bp": {
+      "id": 3,
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "valid_range": [
+        1,
+        299
+      ]
+    },
+    "mean_arterial_pressure": {
+      "id": 4,
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "mmHg",
+      "valid_range": [
+        20,
+        250
+      ]
+    },
+    "respiratory_rate": {
+      "id": 5,
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "breaths/min",
+      "valid_range": [
+        1,
+        69
+      ]
+    },
+    "temperature": {
+      "id": 6,
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "Celsius",
+      "valid_range": [
+        10,
+        50
+      ]
+    },
+    "spo2": {
+      "id": 7,
+      "domain": "vitals",
+      "source_kind": "point",
+      "unit": "percent",
+      "valid_range": [
+        50,
+        100
+      ]
+    },
+    "gcs_eye": {
+      "id": 8,
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "valid_range": [
+        1,
+        4
+      ]
+    },
+    "gcs_verbal": {
+      "id": 9,
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "valid_range": [
+        1,
+        5
+      ]
+    },
+    "gcs_motor": {
+      "id": 10,
+      "domain": "neurologic",
+      "source_kind": "point",
+      "unit": "score",
+      "valid_range": [
+        1,
+        6
+      ]
+    },
+    "respiratory_support": {
+      "id": 11,
+      "domain": "respiratory",
+      "source_kind": "state_interval",
+      "unit": "hours",
+      "condition_contract": "one mutually exclusive highest-support condition per interval; tracheostomy is an airway attribute, not a support-intensity condition"
+    },
+    "fio2": {
+      "id": 12,
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "fraction",
+      "valid_range": [
+        0.21,
+        1.0
+      ]
+    },
+    "peep": {
+      "id": 13,
+      "domain": "respiratory",
+      "source_kind": "point",
+      "unit": "cmH2O",
+      "valid_range": [
+        0,
+        40
+      ]
+    },
+    "lactate": {
+      "id": 14,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mmol/L",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "base_excess": {
+      "id": 15,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "bicarbonate": {
+      "id": 16,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "creatinine": {
+      "id": 17,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "bun": {
+      "id": 18,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "wbc": {
+      "id": 19,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "K/uL",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "hemoglobin": {
+      "id": 20,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "g/dL",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "platelet_count": {
+      "id": 21,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "K/uL",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "inr": {
+      "id": 22,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "ratio",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "sodium": {
+      "id": 23,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "potassium": {
+      "id": 24,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "chloride": {
+      "id": 25,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mEq/L",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "glucose": {
+      "id": 26,
+      "domain": "labs",
+      "source_kind": "point",
+      "unit": "mg/dL",
+      "qc_status": "retain_exact_value_pending_empirical_train_only_transform"
+    },
+    "vasopressor_support": {
+      "id": 27,
+      "domain": "circulation",
+      "source_kind": "state_interval",
+      "unit": "hours"
+    },
+    "norepinephrine_equivalent_dose": {
+      "id": 28,
+      "domain": "circulation",
+      "source_kind": "rate_interval",
+      "unit": "mcg/kg/min"
+    },
+    "crystalloid": {
+      "id": 29,
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "mL"
+    },
+    "rbc": {
+      "id": 30,
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "mL"
+    },
+    "plasma": {
+      "id": 31,
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "mL"
+    },
+    "platelet_transfusion": {
+      "id": 32,
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "mL"
+    },
+    "cryoprecipitate": {
+      "id": 33,
+      "domain": "treatment",
+      "source_kind": "amount_interval",
+      "unit": "mL"
+    },
+    "antibiotics": {
+      "id": 34,
+      "domain": "treatment",
+      "source_kind": "state_interval",
+      "unit": "hours"
+    },
+    "urine_output": {
+      "id": 35,
+      "domain": "output",
+      "source_kind": "point_amount",
+      "unit": "mL"
+    },
+    "surgery": {
+      "id": 36,
+      "domain": "procedures",
+      "source_kind": "interval_start",
+      "unit": "count"
+    },
+    "cxr": {
+      "id": 37,
+      "domain": "imaging",
+      "source_kind": "cxr_study",
+      "unit": "study_slot",
+      "input_only": true
+    }
+  }
+}
