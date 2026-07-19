@@ -65,6 +65,8 @@ class GRUDH1V2KaggleRouteTest(unittest.TestCase):
         self.assertEqual(self.builder.BUNDLE_SCHEMA, self.launcher.SCIENCE_SCHEMA)
         self.assertEqual(self.builder.DATASET_REF, self.launcher.SCIENCE_DATASET_REF)
         self.assertEqual(self.builder.RUNTIME_DATASET_REF, self.launcher.RUNTIME_DATASET_REF)
+        self.assertEqual(Path(self.builder.SCIENCE_DATA_ARCHIVE_NAME).suffix, ".blob")
+        self.assertEqual(Path(self.builder.SOURCE_ARCHIVE_NAME).suffix, ".blob")
         for literal in (
             '"fresh_start": True',
             '"target_step": 4000',
@@ -239,6 +241,8 @@ class GRUDH1V2KaggleRouteTest(unittest.TestCase):
                 )
             archive_a = output_a / row_a["path"]
             archive_b = output_b / row_b["path"]
+            self.assertEqual(row_a["path"], self.builder.SCIENCE_DATA_ARCHIVE_NAME)
+            self.assertEqual(archive_a.suffix, ".blob")
             self.assertEqual(archive_a.read_bytes(), archive_b.read_bytes())
             self.assertEqual(row_a["sha256"], row_b["sha256"])
             with tarfile.open(archive_a, "r:") as handle:

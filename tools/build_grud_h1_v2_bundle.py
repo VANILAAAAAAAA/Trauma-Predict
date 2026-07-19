@@ -36,6 +36,8 @@ RUNTIME_DATASET_REF = "vanila111/trauma-predict-relation-v2-p100-r9-bundle"
 NORMALIZATION_SHA256 = (
     "80b277662fdcfd8758b85b8ad74aad739bdb7c6a68d7d1e80a9e1c3e684fe03a"
 )
+SCIENCE_DATA_ARCHIVE_NAME = "grud_h1_joint_m4_science_data.blob"
+SOURCE_ARCHIVE_NAME = "grud_h1_joint_m4_source.blob"
 
 REQUIRED_SOURCE_PATHS = {
     "configs/dataset/grud_h1_joint_m4_v2_c4.yaml",
@@ -208,7 +210,7 @@ def build_data_archive(
             "target_shards",
         ),
     )
-    archive = output / "grud_h1_joint_m4_science_data.tar"
+    archive = output / SCIENCE_DATA_ARCHIVE_NAME
     with tarfile.open(archive, "w", format=tarfile.USTAR_FORMAT) as handle:
         for source in h1_files:
             relative = source.relative_to(h1_root).as_posix()
@@ -244,7 +246,7 @@ def build_source_archive(output: Path, repo_root: Path) -> dict[str, Any]:
     if missing:
         raise RuntimeError(f"source release lacks required paths: {missing}")
     inventory: list[dict[str, Any]] = []
-    archive = output / "grud_h1_joint_m4_source.tar"
+    archive = output / SOURCE_ARCHIVE_NAME
     with tarfile.open(archive, "w", format=tarfile.USTAR_FORMAT) as handle:
         for relative in sorted(relatives, key=lambda item: item.as_posix()):
             source = repo_root / relative
