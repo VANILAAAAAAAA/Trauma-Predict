@@ -1,0 +1,55 @@
+schema_version: trauma_predict.grud_h1_v2_dataset_config.v1
+route: grud_h1_to_joint_m4_v2
+
+h1:
+  root: ${TRAUMA_PREDICT_GRUD_H1_ROOT}
+  dataset_id: grud_h1_baseline_c4_20260717_v1
+  dataset_manifest_sha256: 2d30bdd75071f50b1631639087c2338e69ae346ec1facad13c6a8285e70288cf
+  sample_manifest_sha256: 6762897d5f516dc3442a7a206bc3bf19c3e43e32a2444f2807a475d3db61412b
+  channel_registry_sha256: de7628958ef80a7ca01d9a5ed7bb590bbbcd3590df3ef79d068711fd01fa554a
+  resolution: H1
+  channel_count: 118
+  max_history_hours: 312
+
+target:
+  root: ${TRAUMA_PREDICT_V2_TARGET_ROOT}
+  dataset_id: multires_event_m4_target_v2_c4_full_20260714_r9
+  dataset_manifest_sha256: 6c4e1e300686195fb2c58bfcbd74df6c7cb905d7031985cb7a7624d5c7061f1e
+  sample_manifest_sha256: df5eedcee0abf7d09fea86572db471047bdaa82dc28b14dc8bbf0dac0e32dd0e
+  contract_bundle_hash: ee4786d5141c5e0a4abfd1780bbca93244c3b2c8323f3ef59a62e09123d11c05
+  resolution: M4
+  ordered_blocks: 6
+  field_processes: 29
+  stochastic_factors: 414
+
+join:
+  key: sample_id
+  guards: [subject_id, hadm_id, stay_id, prediction_hour, split, base_content_hash, h1_content_hash, target_content_hash]
+  persisted_patient_split: true
+  regenerate_anchors: false
+
+expected_counts:
+  samples: 50350
+  train: 37734
+  val: 6309
+  test: 6307
+  shards: 52
+
+supervision_path: configs/model/multires_event_v1_supervision.json
+supervision_sha256: 722cae631ca2b7cf801514cccdfd6cf18be9742f0cb94c9a1e89fb3696d095f6
+
+normalization:
+  path: ${TRAUMA_PREDICT_GRUD_NORMALIZATION_PATH}
+  artifact_sha256: 80b277662fdcfd8758b85b8ad74aad739bdb7c6a68d7d1e80a9e1c3e684fe03a
+  dataset_fingerprint: 96b77af36c2929860ce10f3cb11ca05867d988524141abf6b0cc9d7fdb9f99aa
+  fit_split: train
+  fit_by_subject_only: true
+  fit_subjects: 3022
+  fit_at_training_runtime: false
+  clip_value: 10.0
+  epsilon: 1.0e-6
+
+loader:
+  cache_shards: 1
+  num_workers: 0
+  pin_memory: true

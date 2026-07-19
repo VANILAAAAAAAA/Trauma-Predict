@@ -1,0 +1,52 @@
+schema_version: trauma_predict.grud_h1_joint_m4_model_config.v1
+route: grud_h1_to_joint_m4_v2
+role: matched_classic_baseline
+initialization: from_scratch
+
+input:
+  resolution: H1
+  channel_count: 118
+  max_history_hours: 312
+  missing_tuple: mask_zero
+  registered_zero: mask_one_value_zero
+  cxr_study_slot_policy: count_label_occurrences_within_hour
+
+grud:
+  hidden_size: 192
+  dropout: 0.1
+  value_decay: diagonal
+  hidden_decay: full_from_channel_deltas
+  decay_initialization: near_identity_positive_bias_1e-3
+  feature_center: normalized_zero
+  concatenate_observation_mask: true
+
+decoder:
+  type: block_major_gru_cell
+  hidden_size: 192
+  future_blocks: 6
+  target_fields: 29
+  causal_positions: 174
+  order: block_then_frozen_field_order
+  teacher_feedback: right_shifted_registered_primitives
+  rollout_feedback: right_shifted_sampled_registered_primitives
+
+output:
+  primitive_parameter_heads: registered_v2
+  stochastic_factors: 414
+  deterministic_projection_loss: false
+  h1_head: false
+  f24_head: false
+
+formal_contract:
+  model_parameter_count: 1596987
+  causal_field_positions: 174
+  stochastic_factors: 414
+  relation_parameters: 0
+
+excluded_method_components:
+  multi_resolution_input: true
+  transformer: true
+  relation_bias: true
+  relation_table: true
+  temporal_fusion: true
+  target_attention: true
