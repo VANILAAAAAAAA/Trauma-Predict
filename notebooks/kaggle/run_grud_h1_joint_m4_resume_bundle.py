@@ -16,7 +16,7 @@ from typing import Any, Mapping
 
 
 RESUME_SCHEMA = "trauma_predict.grud_h1_joint_m4_resume_bundle.v1"
-RESUME_DATASET_REF = "vanila111/trauma-predict-grud-h1-joint-m4-v2-resume-2500-bundle"
+RESUME_DATASET_REF = "vanila111/trauma-grud-h1-m4-v2-resume-2500-bundle"
 SCIENCE_SCHEMA = "trauma_predict.grud_h1_joint_m4_p100_bundle.v1"
 SCIENCE_DATASET_REF = "vanila111/trauma-predict-grud-h1-joint-m4-v2-bundle"
 RUNTIME_DATASET_REF = "vanila111/trauma-predict-relation-v2-p100-r9-bundle"

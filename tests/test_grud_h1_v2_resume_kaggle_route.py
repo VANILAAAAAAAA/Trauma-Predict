@@ -45,6 +45,9 @@ class GRUDH1V2ResumeKaggleRouteTest(unittest.TestCase):
     def test_every_surface_agrees_on_2500_to_4000(self) -> None:
         self.assertEqual(self.builder.BUNDLE_SCHEMA, self.launcher.RESUME_SCHEMA)
         self.assertEqual(self.builder.DATASET_REF, self.launcher.RESUME_DATASET_REF)
+        dataset_slug = self.builder.DATASET_REF.split("/", 1)[1]
+        self.assertGreaterEqual(len(dataset_slug), 6)
+        self.assertLessEqual(len(dataset_slug), 50)
         self.assertEqual(self.builder.NOTEBOOK_REF, self.launcher.NOTEBOOK_REF)
         self.assertEqual(self.config["training"]["max_steps"], 4000)
         self.assertEqual(self.config["resume_state"]["checkpoint_step"], 2500)

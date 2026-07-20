@@ -14,7 +14,7 @@
   "dataset_sources": [
     "vanila111/trauma-predict-grud-h1-joint-m4-v2-bundle",
     "vanila111/trauma-predict-relation-v2-p100-r9-bundle",
-    "vanila111/trauma-predict-grud-h1-joint-m4-v2-resume-2500-bundle"
+    "vanila111/trauma-grud-h1-m4-v2-resume-2500-bundle"
   ],
   "kernel_sources": [],
   "competition_sources": [],
