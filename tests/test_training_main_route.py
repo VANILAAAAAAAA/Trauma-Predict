@@ -28,6 +28,7 @@ from trauma_predict.training.main_route import (
     validate_main_route_config,
     validate_resume_checkpoint_stage,
 )
+from trauma_predict.training.grud_h1_v2 import validate_grud_h1_v2_configs
 from trauma_predict.training.multires_event import validate_multires_event_config
 from trauma_predict.training.multires_event_v2 import validate_multires_event_v2_configs
 from trauma_predict.training.config import load_yaml_config
@@ -222,6 +223,14 @@ class TrainingMainRouteTest(unittest.TestCase):
                     dataset_path = REPO_ROOT / config["dataset"]["config_path"]
                     model_path = REPO_ROOT / config["model"]["config_path"]
                     validate_multires_event_v2_configs(
+                        config,
+                        load_yaml_config(dataset_path),
+                        load_yaml_config(model_path),
+                    )
+                elif config.get("route") == "grud_h1_to_joint_m4_v2":
+                    dataset_path = REPO_ROOT / config["dataset"]["config_path"]
+                    model_path = REPO_ROOT / config["model"]["config_path"]
+                    validate_grud_h1_v2_configs(
                         config,
                         load_yaml_config(dataset_path),
                         load_yaml_config(model_path),

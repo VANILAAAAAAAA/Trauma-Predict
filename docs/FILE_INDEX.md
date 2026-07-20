@@ -40,6 +40,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `configs/runtime/p100_torch_2_10_cu126_cp312.json` | config | Hash lock for the complete Python 3.12 PyTorch 2.10.0 CUDA 12.6 wheelhouse required by P100 `sm_60`. | Public package filenames, sizes, and hashes only. |
 | `configs/train/p100_stage_a_hour.yaml` | config | Stage A single-GPU/P100 HOUR values-only training config. | Uses environment-variable paths only. |
 | `configs/train/p100_grud_h1_joint_m4_v2.yaml` | config | Freezes the fresh 4,000-step single-P100 GRU-D joint-M4 training and interval-validation contract. | Uses environment-variable paths only. |
+| `configs/train/p100_grud_h1_joint_m4_v2_resume_2500.yaml` | config | Freezes the hash-locked step-2500 recovery, original global schedule through 4000, sampler cursor, and declared RNG reset. | Uses environment-variable paths only. |
 | `configs/train/t4x2_first_run.yaml` | config | Joint-baseline T4 x2 training config; not Stage A. | Uses environment-variable paths only. |
 | `configs/train/t4x2_multires_event_v1_full.yaml` | config | Frozen 4,000-step T4 x2 multires baseline training and evaluation contract. | Uses environment-variable paths only. |
 | `configs/train/t4x2_multires_event_v1_smoke.yaml` | config | Two-step T4 x2 DDP smoke contract run before the full multires baseline. | Uses environment-variable paths only. |
@@ -58,7 +59,9 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `notebooks/kaggle/historical_v8_dataset_evidence.py` | kaggle | Retains v8 Dataset identity, hash, deterministic materialization, and log evidence without any training or promotion entrypoint. | Reads historical fixture or mounted bytes only; external actions fail closed. |
 | `notebooks/kaggle/kernel-metadata-relation-v2-p100.template.json` | kaggle | Optional private P100 kernel metadata binding the frozen Relation V2 Dataset and notebook slug. | No embedded data or credentials. |
 | `notebooks/kaggle/kernel-metadata-grud-h1-v2.template.json` | kaggle | Private P100 metadata binding the GRU-D science bundle and reused verified runtime Dataset. | No embedded data or credentials. |
+| `notebooks/kaggle/kernel-metadata-grud-h1-v2-resume-2500.template.json` | kaggle | Private P100 metadata binding the science, runtime, and recovered step-2500 resume Datasets. | No embedded data or credentials. |
 | `notebooks/kaggle/run_grud_h1_joint_m4_bundle.py` | kaggle | Verifies and extracts the GRU-D science bundle, restores the frozen P100 runtime, launches training, and validates exported checkpoints. | Reads frozen private Inputs and writes training outputs only at runtime. |
+| `notebooks/kaggle/run_grud_h1_joint_m4_resume_bundle.py` | kaggle | Verifies the original science/runtime Inputs plus recovered checkpoint bundle, launches global step 2500-to-4000 continuation, and audits export lineage. | Reads frozen private Inputs and writes resumed training outputs only at runtime. |
 | `notebooks/kaggle/run_multires_event_v1.py` | kaggle | Pinned Kaggle launcher for data acquisition, preflight, DDP smoke, full training, and output verification. | Downloads or reads the private frozen artifact only at runtime. |
 | `notebooks/kaggle/run_multires_event_v2.py` | kaggle | Small historical v8 launcher stub with no mode, promotion, config, or training API. | Stops immediately. |
 | `notebooks/kaggle/run_relation_v2_p100_bundle.py` | kaggle | Hash-validates the private bundle and prior notebook output, then advances one formal P100 training/evaluation stage. | Reads the frozen private Dataset and writes resumable outputs only at runtime. |
@@ -67,6 +70,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `notebooks/kaggle/scan_token_lengths.py` | kaggle | Scans shard input token lengths against the configured encoder window before training. | Reads mounted private data only at runtime. |
 | `notebooks/kaggle/train_kaggle.py` | kaggle | Kaggle-compatible training entrypoint wrapper. | No data. |
 | `notebooks/kaggle/train_grud_h1_joint_m4_v2.py` | kaggle | Fresh single-P100 entrypoint for the H1 GRU-D to joint six-M4 baseline. | Reads only manifest-bound runtime paths. |
+| `notebooks/kaggle/train_grud_h1_joint_m4_v2_resume.py` | kaggle | Single-P100 entrypoint for the recovered GRU-D step-2500-to-4000 continuation. | Reads only manifest-bound runtime paths. |
 | `notebooks/kaggle/train_multires_event_v1.ipynb` | kaggle | Two-cell Save & Run notebook pinned to the immutable multires baseline tag. | No embedded data. |
 | `notebooks/kaggle/train_multires_event_v1.py` | kaggle | DDP training entrypoint and dry-run preflight for the multires route. | Reads the frozen private artifact only at runtime. |
 | `notebooks/kaggle/train_relation_v2_p100.py` | kaggle | Single-process formal Relation V2 P100 training entrypoint. | Reads only manifest-bound runtime paths. |
@@ -79,6 +83,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `notebooks/kaggle/train_stage_a_hour.ipynb` | kaggle | End-to-end Kaggle notebook for Stage A HOUR-only training. | No data. |
 | `notebooks/kaggle/trauma_predict_relation_v2_p100_r9.ipynb` | kaggle | Thin pre-bound-Input Notebook that installs and verifies the frozen P100 cu126 runtime before the staged Relation V2 run. | No embedded data, source download, or credentials. |
 | `notebooks/kaggle/trauma_predict_grud_h1_joint_m4_v2.ipynb` | kaggle | Thin pre-bound-Input Notebook for fresh GRU-D step-0-to-4000 training and checkpoint export. | No embedded data, dynamic download, or credentials. |
+| `notebooks/kaggle/trauma_predict_grud_h1_joint_m4_v2_resume_2500.ipynb` | kaggle | Thin three-Input Notebook for hash-locked GRU-D continuation from global step 2500 to 4000. | No embedded data, dynamic download, or credentials. |
 | `notebooks/kaggle/verify_private_dataset.ipynb` | kaggle | Kaggle notebook that verifies private Dataset mounting or API download before preflight. | No data. |
 | `pyproject.toml` | packaging | Python package, optional dependencies, and test config. | No data. |
 | `requirements-kaggle.txt` | packaging | Kaggle install requirements. | No data. |
@@ -155,7 +160,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `src/trauma_predict/training/__init__.py` | package | Training namespace. | No data. |
 | `src/trauma_predict/training/checkpoints.py` | package | Checkpoint retention helpers. | No data. |
 | `src/trauma_predict/training/config.py` | package | YAML config loading and environment expansion. | No data. |
-| `src/trauma_predict/training/grud_h1_v2.py` | package | Fresh single-P100 GRU-D training, exact 414-factor NLL, fixed-subject interval validation, checkpointing, and export. | Reads private data and writes outputs only at runtime. |
+| `src/trauma_predict/training/grud_h1_v2.py` | package | Fresh and recovered single-P100 GRU-D training, exact 414-factor NLL, fixed-subject validation, cursor-aware checkpointing, and export. | Reads private data and writes outputs only at runtime. |
 | `src/trauma_predict/training/main_route.py` | package | Hugging Face Trainer loop for main-route structured prediction. | No data. |
 | `src/trauma_predict/training/multires_event.py` | package | DDP training, interval/final evaluation, resume identity, and artifact export for the multires route. | No data. |
 | `src/trauma_predict/training/multires_event_loss.py` | package | Typed probabilistic losses and component-field-resolution macro aggregation. | No data. |
@@ -171,6 +176,8 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `tests/test_grud_h1_v2_data.py` | tests | Tests exact H1/r9 identity joining, missingness tensors, normalization, CXR counts, and target closure. | Synthetic records and optional mounted manifests only. |
 | `tests/test_grud_h1_v2_kaggle_route.py` | tests | Tests the two-Input P100 bundle, fresh-run notebook, safe extraction, checkpoint export, and concise logging route. | Synthetic files only. |
 | `tests/test_grud_h1_v2_model.py` | tests | Tests standard GRU-D decay, causal right-shifted feedback, registered heads, shape, and formal parameter count. | Synthetic tensors only. |
+| `tests/test_grud_h1_v2_resume.py` | tests | Tests the frozen step-2500 identity, epoch-52 cursor reconstruction, metrics truncation, and exact-resume v2 checkpoints. | Synthetic tensors and metadata only. |
+| `tests/test_grud_h1_v2_resume_kaggle_route.py` | tests | Tests the three-Input resume bundle, thin notebook, deterministic state archive, and completed lineage gate. | Synthetic files only. |
 | `tests/test_grud_h1_v2_training.py` | tests | Tests the matched objective, sampling, fixed validation, optimizer, checkpoints, and excluded method components. | Synthetic tensors and optional mounted manifests only. |
 | `tests/test_manifest_contracts.py` | tests | Tests schema and manifest helper behavior. | Synthetic records only. |
 | `tests/test_multires_event_contract.py` | tests | Tests target-overlay counts, semantics, and F24 mappings against the frozen registry. | Registry metadata only. |
@@ -204,6 +211,7 @@ Every tracked file in this repository must appear in this table. Run `python too
 | `tools/build_relation_v2_p100_bundle.py` | tools | Builds the clean source-bound private Kaggle Dataset bundle and complete hash-locked P100 cu126 runtime for the formal Relation V2 route. | Packages only frozen derived artifacts and public runtime wheels; never raw MIMIC rows. |
 | `tools/build_grud_h1_baseline_samples.py` | tools | Builds the full or gated matched H1 baseline sidecar from external hash-bound authorities. | Writes generated artifacts outside Git. |
 | `tools/build_grud_h1_v2_bundle.py` | tools | Builds the private hash-bound H1/r9 science and clean-source bundle for formal GRU-D Kaggle training. | Packages only frozen derived artifacts; never raw MIMIC rows. |
+| `tools/build_grud_h1_v2_resume_bundle.py` | tools | Builds the small private source and recovered step-2500 state bundle for GRU-D continuation. | Packages only the recovered checkpoint, logs, manifests, and code; never raw MIMIC rows. |
 | `tools/fit_grud_h1_v2_normalization.py` | tools | Fits the frozen robust H1 input normalization using one deterministic anchor per training subject only. | Reads private training-sidecar records and writes aggregate statistics outside Git. |
 | `tools/update_file_index.py` | tools | Validates that all tracked files appear in this index. | No data. |
 | `uv.lock` | packaging | Exact dependency resolution used in semantic runtime identity. | No data. |

@@ -36,6 +36,7 @@ from trauma_predict.training.observability import (
 
 
 TRAIN_SCHEMA = "trauma_predict.grud_h1_joint_m4_train_config.v1"
+RESUME_TRAIN_SCHEMA = "trauma_predict.grud_h1_joint_m4_resume_train_config.v1"
 DATASET_SCHEMA = "trauma_predict.grud_h1_v2_dataset_config.v1"
 MODEL_SCHEMA = "trauma_predict.grud_h1_joint_m4_model_config.v1"
 ROUTE = "grud_h1_to_joint_m4_v2"
@@ -48,6 +49,20 @@ EXPECTED_LOGGING_STEPS = 100
 EXPECTED_EVAL_STEPS = 250
 EXPECTED_SAVE_STEPS = 500
 EXPECTED_MODEL_PARAMETERS = 1_596_987
+EXPECTED_RESUME_STEP = 2500
+EXPECTED_RESUME_CHECKPOINT_SHA256 = (
+    "ba5da75fe63808374916fd270f899e45f3a9c0c3452c85fdbe6edc5dfb233054"
+)
+EXPECTED_RESUME_MANIFEST_SHA256 = (
+    "28dac8094956b407cb8721a6e6b98f171a81867de79569f8ed121bef62021221"
+)
+EXPECTED_RESUME_SOURCE_METRICS_SHA256 = (
+    "422ba862a026c7c920cab2fcf93327b5365ae33e1decef16f3e9d992f1c9c72e"
+)
+EXPECTED_RESUME_SOURCE_TRAINING_MANIFEST_SHA256 = (
+    "21ec36a674d897fdbe9a565cec293a3823c0de3dda8fa9f5bec38e51882698cd"
+)
+EXPECTED_RESUME_RNG_SEED = 979_216_224
 
 DEFAULT_LAB_SCALE_ARTIFACT = (
     "configs/dataset/multires_event_v2_c4_lab_affine_scale_r9.json"
@@ -144,8 +159,10 @@ def validate_grud_h1_v2_configs(
 ) -> None:
     """Fail closed if the matched baseline contract is silently changed."""
 
-    if train.get("schema_version") != TRAIN_SCHEMA or train.get("route") != ROUTE:
+    train_schema = train.get("schema_version")
+    if train_schema not in {TRAIN_SCHEMA, RESUME_TRAIN_SCHEMA} or train.get("route") != ROUTE:
         raise ValueError("GRU-D train config schema/route mismatch")
+    is_resume = train_schema == RESUME_TRAIN_SCHEMA
     if dataset.get("schema_version") != DATASET_SCHEMA or dataset.get("route") != ROUTE:
         raise ValueError("GRU-D dataset config schema/route mismatch")
     if model.get("schema_version") != MODEL_SCHEMA or model.get("route") != ROUTE:
@@ -228,8 +245,8 @@ def validate_grud_h1_v2_configs(
         "required_cuda_devices": 1,
         "required_world_size": 1,
         "required_device_name_substring": "P100",
-        "fresh_start": True,
-        "resume": False,
+        "fresh_start": not is_resume,
+        "resume": is_resume,
         "forced_stop": False,
         "precision": "fp16",
         "max_steps": EXPECTED_OPTIMIZER_STEPS,
@@ -276,11 +293,38 @@ def validate_grud_h1_v2_configs(
         "grad_scaler_growth_factor": 2.0,
         "grad_scaler_backoff_factor": 0.5,
         "grad_scaler_growth_interval": 1_000_000,
-        "keep_last_checkpoints": 3,
+        "keep_last_checkpoints": 1 if is_resume else 3,
         "dataloader_num_workers": 0,
     }
     if {key: training.get(key) for key in frozen_optimizer} != frozen_optimizer:
         raise ValueError("GRU-D optimizer/batch/precision contract changed")
+
+    if is_resume:
+        resume_state = _mapping(train.get("resume_state"), "train.resume_state")
+        expected_resume_state = {
+            "checkpoint_path": "${TRAUMA_PREDICT_GRUD_RESUME_CHECKPOINT}",
+            "checkpoint_manifest_path": "${TRAUMA_PREDICT_GRUD_RESUME_MANIFEST}",
+            "source_metrics_path": "${TRAUMA_PREDICT_GRUD_RESUME_SOURCE_METRICS}",
+            "source_training_manifest_path": "${TRAUMA_PREDICT_GRUD_RESUME_SOURCE_TRAINING_MANIFEST}",
+            "checkpoint_step": EXPECTED_RESUME_STEP,
+            "checkpoint_sha256": EXPECTED_RESUME_CHECKPOINT_SHA256,
+            "checkpoint_manifest_sha256": EXPECTED_RESUME_MANIFEST_SHA256,
+            "source_metrics_sha256": EXPECTED_RESUME_SOURCE_METRICS_SHA256,
+            "source_training_manifest_sha256": EXPECTED_RESUME_SOURCE_TRAINING_MANIFEST_SHA256,
+            "source_notebook_ref": "vanila111/trauma-predict-grud-h1-joint-m4-v2",
+            "source_notebook_version": 4,
+            "source_session_output_id": 336631710,
+            "source_last_observed_step": 2900,
+            "discarded_uncheckpointed_steps": [2501, 2900],
+            "sampler_continuity": "reconstructed_epoch_and_microbatch_cursor",
+            "rng_continuity": "deterministic_reset_not_bitwise_equivalent",
+            "rng_seed": EXPECTED_RESUME_RNG_SEED,
+            "rng_seed_derivation": "checkpoint_sha256_prefix8_mod_2147483647",
+        }
+        if {key: resume_state.get(key) for key in expected_resume_state} != expected_resume_state:
+            raise ValueError("GRU-D step-2500 resume identity or continuity declaration changed")
+    elif train.get("resume_state") is not None:
+        raise ValueError("fresh GRU-D config must not contain resume_state")
 
     decoder = _mapping(model.get("decoder"), "model.decoder")
     if (
@@ -735,12 +779,282 @@ def require_single_p100(training: Mapping[str, Any]) -> torch.device:
     return torch.device("cuda", 0)
 
 
+def _validate_resume_train_compatibility(
+    source: Mapping[str, Any],
+    resumed: Mapping[str, Any],
+) -> None:
+    exact_top_level = (
+        "route",
+        "seed",
+        "lab_scale_artifact",
+        "lab_scale_artifact_hash",
+        "standardized_primitive_scale_artifact",
+        "standardized_primitive_scale_artifact_hash",
+        "trajectory_metric_contract",
+        "trajectory_metric_contract_hash",
+        "dataset",
+        "model",
+        "objective",
+        "evaluation",
+    )
+    mismatches = [key for key in exact_top_level if source.get(key) != resumed.get(key)]
+    source_training = dict(_mapping(source.get("training"), "checkpoint.train_config.training"))
+    resumed_training = dict(_mapping(resumed.get("training"), "train.training"))
+    allowed_changes = {"fresh_start", "resume", "keep_last_checkpoints"}
+    for key in allowed_changes:
+        source_training.pop(key, None)
+        resumed_training.pop(key, None)
+    if source_training != resumed_training:
+        mismatches.append("training")
+    if mismatches:
+        raise ValueError(
+            "resume changes the frozen GRU-D experiment contract: "
+            f"{sorted(mismatches)}"
+        )
+
+
+def _validate_resume_dataset_compatibility(
+    source: Mapping[str, Any],
+    resumed: Mapping[str, Any],
+) -> None:
+    source_copy = copy.deepcopy(dict(source))
+    resumed_copy = copy.deepcopy(dict(resumed))
+    for payload in (source_copy, resumed_copy):
+        _mapping(payload.get("h1"), "dataset.h1").pop("root", None)
+        _mapping(payload.get("target"), "dataset.target").pop("root", None)
+        _mapping(payload.get("normalization"), "dataset.normalization").pop("path", None)
+    if source_copy != resumed_copy:
+        raise ValueError("resume checkpoint dataset contract differs from the mounted authority")
+
+
+def _restore_resume_checkpoint(
+    *,
+    checkpoint_path: Path,
+    checkpoint_manifest_path: Path,
+    expected_checkpoint_sha256: str,
+    expected_manifest_sha256: str,
+    expected_step: int,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Any,
+    scaler: Any,
+    train_config: Mapping[str, Any],
+    dataset_config: Mapping[str, Any],
+    model_config: Mapping[str, Any],
+    runtime_identity: Mapping[str, Any],
+    device: torch.device,
+) -> Mapping[str, Any]:
+    for path, label in (
+        (checkpoint_path, "resume checkpoint"),
+        (checkpoint_manifest_path, "resume checkpoint manifest"),
+    ):
+        if path.is_symlink() or not path.is_file():
+            raise FileNotFoundError(f"{label} is absent or not a regular file: {path}")
+    if sha256_file(checkpoint_path) != expected_checkpoint_sha256:
+        raise ValueError("resume checkpoint hash differs from the frozen recovery input")
+    if sha256_file(checkpoint_manifest_path) != expected_manifest_sha256:
+        raise ValueError("resume checkpoint manifest hash differs from the frozen recovery input")
+
+    checkpoint_manifest = _read_json(checkpoint_manifest_path)
+    if (
+        checkpoint_manifest.get("schema_version")
+        != "trauma_predict.grud_h1_v2_checkpoint_manifest.v1"
+        or int(checkpoint_manifest.get("step", -1)) != expected_step
+        or checkpoint_manifest.get("checkpoint") != "checkpoint.pt"
+        or checkpoint_manifest.get("checkpoint_sha256") != expected_checkpoint_sha256
+    ):
+        raise ValueError("resume checkpoint manifest identity differs from step 2500")
+
+    payload = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    if not isinstance(payload, Mapping):
+        raise TypeError("resume checkpoint root must be a mapping")
+    if (
+        payload.get("schema_version") != "trauma_predict.grud_h1_v2_checkpoint.v1"
+        or payload.get("model_contract") != MODEL_CONTRACT
+        or int(payload.get("step", -1)) != expected_step
+    ):
+        raise ValueError("resume checkpoint schema, model, or step differs")
+    source_train = _mapping(payload.get("train_config"), "checkpoint.train_config")
+    _validate_resume_train_compatibility(source_train, train_config)
+    _validate_resume_dataset_compatibility(
+        _mapping(payload.get("dataset_config"), "checkpoint.dataset_config"),
+        dataset_config,
+    )
+    if payload.get("model_config") != model_config:
+        raise ValueError("resume checkpoint model config differs from the frozen architecture")
+    if payload.get("runtime_identity") != runtime_identity:
+        raise ValueError("resume checkpoint runtime identity differs from the mounted data")
+
+    model.load_state_dict(_mapping(payload.get("model_state_dict"), "model_state_dict"), strict=True)
+    optimizer.load_state_dict(
+        _mapping(payload.get("optimizer_state_dict"), "optimizer_state_dict")
+    )
+    scheduler.load_state_dict(
+        _mapping(payload.get("scheduler_state_dict"), "scheduler_state_dict")
+    )
+    scaler.load_state_dict(
+        _mapping(payload.get("grad_scaler_state_dict"), "grad_scaler_state_dict")
+    )
+
+    optimizer_steps: list[int] = []
+    for state in optimizer.state.values():
+        value = state.get("step")
+        if value is None:
+            continue
+        optimizer_steps.append(int(value.item() if isinstance(value, Tensor) else value))
+    if not optimizer_steps or set(optimizer_steps) != {expected_step}:
+        raise ValueError("resume AdamW state does not close exactly at step 2500")
+    if int(scheduler.state_dict().get("last_epoch", -1)) != expected_step:
+        raise ValueError("resume scheduler is not at global step 2500")
+    scaler_state = scaler.state_dict()
+    if int(scaler_state.get("_growth_tracker", -1)) != expected_step:
+        raise ValueError("resume GradScaler is not at global step 2500")
+    if not math.isclose(
+        float(scaler_state.get("scale", math.nan)),
+        32.0,
+        rel_tol=0.0,
+        abs_tol=0.0,
+    ):
+        raise ValueError("resume GradScaler scale differs from the uninterrupted prefix")
+    observed_lr = float(optimizer.param_groups[0]["lr"])
+    scheduler_lr = float(scheduler.get_last_lr()[0])
+    if not math.isclose(observed_lr, 1.25e-4, rel_tol=0.0, abs_tol=1.0e-15):
+        raise ValueError(f"resume AdamW learning rate differs at step 2500: {observed_lr}")
+    if not math.isclose(scheduler_lr, observed_lr, rel_tol=0.0, abs_tol=1.0e-15):
+        raise ValueError("resume scheduler and optimizer learning rates disagree")
+
+    validation = _mapping(payload.get("validation"), "checkpoint.validation")
+    if int(validation.get("step", -1)) != expected_step:
+        raise ValueError("resume checkpoint validation is not bound to step 2500")
+    metric = float(validation.get("joint_nll_subject_macro", math.inf))
+    if not math.isfinite(metric):
+        raise ValueError("resume checkpoint validation metric is not finite")
+    return dict(validation)
+
+
+def _copy_resume_checkpoint(
+    *,
+    output_dir: Path,
+    checkpoint_path: Path,
+    checkpoint_manifest_path: Path,
+    step: int,
+) -> Path:
+    checkpoint_dir = output_dir / f"checkpoint-{int(step)}"
+    temporary_dir = output_dir / f".checkpoint-{int(step)}.partial"
+    if checkpoint_dir.exists() or temporary_dir.exists():
+        raise FileExistsError(f"resume checkpoint destination already exists: {step}")
+    temporary_dir.mkdir(parents=True)
+    shutil.copy2(checkpoint_path, temporary_dir / "checkpoint.pt")
+    shutil.copy2(checkpoint_manifest_path, temporary_dir / "manifest.json")
+    temporary_dir.replace(checkpoint_dir)
+    return checkpoint_dir / "checkpoint.pt"
+
+
+def _import_resume_metrics_prefix(
+    *,
+    source_metrics_path: Path,
+    source_training_manifest_path: Path,
+    expected_metrics_sha256: str,
+    expected_training_manifest_sha256: str,
+    metrics_path: Path,
+    resume_step: int,
+) -> Mapping[str, int]:
+    for path, expected, label in (
+        (source_metrics_path, expected_metrics_sha256, "source metrics"),
+        (
+            source_training_manifest_path,
+            expected_training_manifest_sha256,
+            "source training manifest",
+        ),
+    ):
+        if path.is_symlink() or not path.is_file():
+            raise FileNotFoundError(f"resume {label} is absent: {path}")
+        if sha256_file(path) != expected:
+            raise ValueError(f"resume {label} hash differs from the cancelled v4 output")
+
+    source_manifest = _read_json(source_training_manifest_path)
+    if (
+        source_manifest.get("schema_version")
+        != "trauma_predict.grud_h1_v2_training_manifest.v1"
+        or source_manifest.get("route") != ROUTE
+        or source_manifest.get("status") != "RUNNING"
+    ):
+        raise ValueError("cancelled source training manifest identity differs")
+
+    prefix_lines: list[str] = []
+    prefix_rows: list[Mapping[str, Any]] = []
+    discarded_steps: list[int] = []
+    for raw_line in source_metrics_path.read_text(encoding="utf-8").splitlines():
+        if not raw_line.strip():
+            continue
+        row = json.loads(raw_line)
+        if not isinstance(row, Mapping):
+            raise TypeError("source metrics row must be an object")
+        raw_step = row.get("step", row.get("completed_step"))
+        if raw_step is None:
+            raise ValueError("source metrics row lacks a global step")
+        step = int(raw_step)
+        if step <= resume_step:
+            prefix_lines.append(raw_line)
+            prefix_rows.append(row)
+        else:
+            discarded_steps.append(step)
+    if not prefix_rows or max(int(row.get("step", 0)) for row in prefix_rows) != resume_step:
+        raise ValueError("source metrics do not close at the recovered checkpoint step")
+    if any(row.get("event") == "amp_optimizer_skip" for row in prefix_rows):
+        raise ValueError("source optimizer stream contains an AMP skip before step 2500")
+    if not any(
+        row.get("event") == "interval_validation"
+        and int(row.get("step", -1)) == resume_step
+        for row in prefix_rows
+    ):
+        raise ValueError("source metrics lack step-2500 interval validation")
+    if not discarded_steps or min(discarded_steps) <= resume_step:
+        raise ValueError("source metrics do not expose the discarded post-checkpoint tail")
+    if metrics_path.exists():
+        raise FileExistsError(f"resume metrics destination already exists: {metrics_path}")
+    with metrics_path.open("x", encoding="utf-8") as handle:
+        for line in prefix_lines:
+            handle.write(line)
+            handle.write("\n")
+    return {
+        "imported_rows": len(prefix_rows),
+        "discarded_rows": len(discarded_steps),
+        "discarded_first_step": min(discarded_steps),
+        "discarded_last_step": max(discarded_steps),
+    }
+
+
+def _position_train_iterator_for_step(
+    runtime: GRUDH1V2Runtime,
+    *,
+    global_step: int,
+    accumulation_steps: int,
+) -> tuple[int, Any, int, int]:
+    microbatches_per_epoch = len(runtime.train_loader)
+    if microbatches_per_epoch < 1 or microbatches_per_epoch % accumulation_steps:
+        raise RuntimeError(
+            "train loader length must be exactly divisible by gradient accumulation"
+        )
+    optimizer_steps_per_epoch = microbatches_per_epoch // accumulation_steps
+    epoch, optimizer_offset = divmod(global_step, optimizer_steps_per_epoch)
+    skipped_microbatches = optimizer_offset * accumulation_steps
+    runtime.train_sampler.set_epoch(epoch)
+    train_iterator = iter(runtime.train_loader)
+    for _ in range(skipped_microbatches):
+        try:
+            next(train_iterator)
+        except StopIteration as exc:
+            raise RuntimeError("resume cursor exceeds the deterministic train epoch") from exc
+    return epoch, train_iterator, skipped_microbatches, optimizer_steps_per_epoch
+
+
 def run_grud_h1_v2_training(
     train_config_path: str | Path,
     *,
     repo_root: str | Path,
 ) -> GRUDH1V2TrainingResult:
-    """Run one fresh 4,000-update GRU-D baseline and export its selected checkpoint."""
+    """Run the frozen GRU-D schedule from either step 0 or recovered step 2500."""
 
     root = Path(repo_root).resolve()
     train, dataset, model_config, dataset_path, model_path = load_grud_h1_v2_configs(
@@ -748,6 +1062,10 @@ def run_grud_h1_v2_training(
         repo_root=root,
     )
     training = _mapping(train["training"], "train.training")
+    is_resume = bool(training["resume"])
+    resume_state = (
+        _mapping(train.get("resume_state"), "train.resume_state") if is_resume else None
+    )
     output_dir = resolve_repo_path(str(train["outputs"]["output_dir"]), root)
     metrics_path = resolve_repo_path(str(train["outputs"]["metrics_jsonl"]), root)
     _require_fresh_output_dir(output_dir)
@@ -766,7 +1084,20 @@ def run_grud_h1_v2_training(
         "route": ROUTE,
         "completed_step": 0,
         "config_sha256": config_sha256,
+        "execution_mode": "resume_2500_to_4000" if is_resume else "fresh_0_to_4000",
     }
+    if resume_state is not None:
+        running_manifest["resume_lineage"] = {
+            key: value
+            for key, value in resume_state.items()
+            if key
+            not in {
+                "checkpoint_path",
+                "checkpoint_manifest_path",
+                "source_metrics_path",
+                "source_training_manifest_path",
+            }
+        }
     atomic_write_json(manifest_path, running_manifest)
     global_step = 0
 
@@ -796,29 +1127,125 @@ def run_grud_h1_v2_training(
         )
         autocast = _autocast_factory(device, str(training["precision"]))
 
+        restored_validation: Mapping[str, Any] | None = None
+        restored_checkpoint: Path | None = None
+        if resume_state is not None:
+            checkpoint_path = resolve_repo_path(str(resume_state["checkpoint_path"]), root)
+            checkpoint_manifest_path = resolve_repo_path(
+                str(resume_state["checkpoint_manifest_path"]), root
+            )
+            global_step = int(resume_state["checkpoint_step"])
+            restored_validation = _restore_resume_checkpoint(
+                checkpoint_path=checkpoint_path,
+                checkpoint_manifest_path=checkpoint_manifest_path,
+                expected_checkpoint_sha256=str(resume_state["checkpoint_sha256"]),
+                expected_manifest_sha256=str(
+                    resume_state["checkpoint_manifest_sha256"]
+                ),
+                expected_step=global_step,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                train_config=train,
+                dataset_config=dataset,
+                model_config=model_config,
+                runtime_identity=runtime.identity,
+                device=device,
+            )
+            restored_checkpoint = _copy_resume_checkpoint(
+                output_dir=output_dir,
+                checkpoint_path=checkpoint_path,
+                checkpoint_manifest_path=checkpoint_manifest_path,
+                step=global_step,
+            )
+            metrics_import = _import_resume_metrics_prefix(
+                source_metrics_path=resolve_repo_path(
+                    str(resume_state["source_metrics_path"]), root
+                ),
+                source_training_manifest_path=resolve_repo_path(
+                    str(resume_state["source_training_manifest_path"]), root
+                ),
+                expected_metrics_sha256=str(resume_state["source_metrics_sha256"]),
+                expected_training_manifest_sha256=str(
+                    resume_state["source_training_manifest_sha256"]
+                ),
+                metrics_path=metrics_path,
+                resume_step=global_step,
+            )
+            running_manifest["completed_step"] = global_step
+            running_manifest["restored_checkpoint"] = {
+                "path": str(restored_checkpoint.relative_to(output_dir)),
+                "sha256": str(resume_state["checkpoint_sha256"]),
+                "step": global_step,
+                "joint_nll_subject_macro": float(
+                    restored_validation["joint_nll_subject_macro"]
+                ),
+            }
+            running_manifest["resume_metrics_import"] = dict(metrics_import)
+            atomic_write_json(manifest_path, running_manifest)
+            print(
+                "GRUD_V2_RESUME_STATE_OK "
+                f"step={global_step} optimizer_step={global_step} "
+                f"scheduler_step={global_step} scaler_step={global_step}",
+                flush=True,
+            )
+
         append_jsonl(
             metrics_path,
             {
-                "event": "training_start",
+                "event": "training_resume" if is_resume else "training_start",
                 "created_at": utc_now(),
-                "step": 0,
+                "step": global_step,
                 "max_steps": EXPECTED_OPTIMIZER_STEPS,
                 "identity": dict(runtime.identity),
+                "rng_continuity": (
+                    resume_state["rng_continuity"] if resume_state is not None else "continuous"
+                ),
             },
         )
-        print(
-            "GRUD_V2_TRAINING_START "
-            f"restored_step=0 target_step={EXPECTED_OPTIMIZER_STEPS} forced_stop=false",
-            flush=True,
+        if is_resume:
+            print(
+                "GRUD_V2_TRAINING_START "
+                f"restored_step={global_step} target_step={EXPECTED_OPTIMIZER_STEPS} "
+                "forced_stop=false",
+                flush=True,
+            )
+        else:
+            print(
+                "GRUD_V2_TRAINING_START "
+                f"restored_step=0 target_step={EXPECTED_OPTIMIZER_STEPS} "
+                "forced_stop=false",
+                flush=True,
+            )
+        best_step: int | None = global_step if restored_validation is not None else None
+        best_metric = (
+            float(restored_validation["joint_nll_subject_macro"])
+            if restored_validation is not None
+            else math.inf
         )
-        best_step: int | None = None
-        best_metric = math.inf
         train_nll_sum = 0.0
         train_anchor_count = 0
-        epoch = 0
-        runtime.train_sampler.set_epoch(epoch)
-        train_iterator = iter(runtime.train_loader)
         accumulation_steps = int(training["gradient_accumulation_steps"])
+        epoch, train_iterator, skipped_microbatches, optimizer_steps_per_epoch = (
+            _position_train_iterator_for_step(
+                runtime,
+                global_step=global_step,
+                accumulation_steps=accumulation_steps,
+            )
+        )
+        if resume_state is not None:
+            _seed_everything(int(resume_state["rng_seed"]))
+            print(
+                "GRUD_V2_RESUME_CURSOR_OK "
+                f"step={global_step} epoch={epoch} "
+                f"skipped_microbatches={skipped_microbatches} "
+                f"optimizer_steps_per_epoch={optimizer_steps_per_epoch} "
+                f"rng_seed={int(resume_state['rng_seed'])} "
+                "bitwise_continuity=false",
+                flush=True,
+            )
+        microbatches_consumed_in_epoch = skipped_microbatches
 
         while global_step < EXPECTED_OPTIMIZER_STEPS:
             optimizer.zero_grad(set_to_none=True)
@@ -831,7 +1258,9 @@ def run_grud_h1_v2_training(
                     epoch += 1
                     runtime.train_sampler.set_epoch(epoch)
                     train_iterator = iter(runtime.train_loader)
+                    microbatches_consumed_in_epoch = 0
                     raw_batch = next(train_iterator)
+                microbatches_consumed_in_epoch += 1
                 batch = move_to_device(raw_batch, device)
                 _, loss_result = exact_teacher_forced_loss(
                     model,
@@ -919,7 +1348,30 @@ def run_grud_h1_v2_training(
                     raise AssertionError(
                         "every GRU-D checkpoint step must have interval validation"
                     )
-                _save_checkpoint(
+                metric = float(interval_result["joint_nll_subject_macro"])
+                candidate_best_step = best_step
+                candidate_best_metric = best_metric
+                if metric < candidate_best_metric:
+                    candidate_best_metric = metric
+                    candidate_best_step = global_step
+                exact_resume_state: dict[str, Any] = {}
+                if is_resume:
+                    exact_resume_state = {
+                        "trainer_state": {
+                            "global_step": global_step,
+                            "epoch": epoch,
+                            "microbatches_consumed_in_epoch": microbatches_consumed_in_epoch,
+                            "gradient_accumulation_steps": accumulation_steps,
+                            "optimizer_steps_per_epoch": optimizer_steps_per_epoch,
+                            "best_step": candidate_best_step,
+                            "best_metric": candidate_best_metric,
+                            "exact_rng_continuity_from_this_checkpoint": True,
+                            "source_non_bitwise_resume_step": EXPECTED_RESUME_STEP,
+                        },
+                        "sampler_state": runtime.train_sampler.state_dict(),
+                        "rng_state": _capture_rng_state(),
+                    }
+                checkpoint_path = _save_checkpoint(
                     output_dir=output_dir,
                     step=global_step,
                     model=model,
@@ -931,12 +1383,26 @@ def run_grud_h1_v2_training(
                     model_config=model_config,
                     runtime_identity=runtime.identity,
                     validation=interval_result,
+                    **exact_resume_state,
                 )
                 print(f"GRUD_V2_CHECKPOINT_OK step={global_step}", flush=True)
-                metric = float(interval_result["joint_nll_subject_macro"])
-                if metric < best_metric:
-                    best_metric = metric
-                    best_step = global_step
+                best_metric = candidate_best_metric
+                best_step = candidate_best_step
+                checkpoint_manifest_path = checkpoint_path.with_name("manifest.json")
+                running_manifest["completed_step"] = global_step
+                running_manifest["latest_checkpoint"] = {
+                    "path": str(checkpoint_path.relative_to(output_dir)),
+                    "sha256": sha256_file(checkpoint_path),
+                    "manifest_path": str(checkpoint_manifest_path.relative_to(output_dir)),
+                    "manifest_sha256": sha256_file(checkpoint_manifest_path),
+                    "step": global_step,
+                    "exact_resume_state": is_resume,
+                }
+                running_manifest["best_checkpoint"] = {
+                    "step": best_step,
+                    "joint_nll_subject_macro": best_metric,
+                }
+                atomic_write_json(manifest_path, running_manifest)
                 _prune_checkpoints(
                     output_dir,
                     keep_last=int(training.get("keep_last_checkpoints", 3)),
@@ -1027,6 +1493,9 @@ def _save_checkpoint(
     model_config: Mapping[str, Any],
     runtime_identity: Mapping[str, Any],
     validation: Mapping[str, Any],
+    trainer_state: Mapping[str, Any] | None = None,
+    sampler_state: Mapping[str, Any] | None = None,
+    rng_state: Mapping[str, Any] | None = None,
 ) -> Path:
     checkpoint_dir = output_dir / f"checkpoint-{int(step)}"
     temporary_dir = output_dir / f".checkpoint-{int(step)}.partial"
@@ -1034,32 +1503,53 @@ def _save_checkpoint(
         raise FileExistsError(f"checkpoint destination already exists for step {step}")
     temporary_dir.mkdir(parents=False)
     checkpoint_path = temporary_dir / "checkpoint.pt"
-    torch.save(
-        {
-            "schema_version": "trauma_predict.grud_h1_v2_checkpoint.v1",
-            "created_at": utc_now(),
-            "step": int(step),
-            "model_contract": MODEL_CONTRACT,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict(),
-            "grad_scaler_state_dict": scaler.state_dict(),
-            "train_config": dict(train_config),
-            "dataset_config": dict(dataset_config),
-            "model_config": dict(model_config),
-            "runtime_identity": dict(runtime_identity),
-            "validation": dict(validation),
-        },
-        checkpoint_path,
-    )
+    exact_members = (trainer_state, sampler_state, rng_state)
+    if any(member is not None for member in exact_members) and not all(
+        member is not None for member in exact_members
+    ):
+        raise ValueError("exact-resume checkpoint requires trainer, sampler, and RNG state")
+    exact_resume = all(member is not None for member in exact_members)
+    checkpoint_payload: dict[str, Any] = {
+        "schema_version": (
+            "trauma_predict.grud_h1_v2_checkpoint.v2"
+            if exact_resume
+            else "trauma_predict.grud_h1_v2_checkpoint.v1"
+        ),
+        "created_at": utc_now(),
+        "step": int(step),
+        "model_contract": MODEL_CONTRACT,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+        "grad_scaler_state_dict": scaler.state_dict(),
+        "train_config": dict(train_config),
+        "dataset_config": dict(dataset_config),
+        "model_config": dict(model_config),
+        "runtime_identity": dict(runtime_identity),
+        "validation": dict(validation),
+    }
+    if exact_resume:
+        checkpoint_payload.update(
+            {
+                "trainer_state": dict(trainer_state or {}),
+                "sampler_state": dict(sampler_state or {}),
+                "rng_state": dict(rng_state or {}),
+            }
+        )
+    torch.save(checkpoint_payload, checkpoint_path)
     atomic_write_json(
         temporary_dir / "manifest.json",
         {
-            "schema_version": "trauma_predict.grud_h1_v2_checkpoint_manifest.v1",
+            "schema_version": (
+                "trauma_predict.grud_h1_v2_checkpoint_manifest.v2"
+                if exact_resume
+                else "trauma_predict.grud_h1_v2_checkpoint_manifest.v1"
+            ),
             "step": int(step),
             "checkpoint": "checkpoint.pt",
             "checkpoint_sha256": sha256_file(checkpoint_path),
             "joint_nll_subject_macro": float(validation["joint_nll_subject_macro"]),
+            "exact_resume_state": exact_resume,
         },
     )
     temporary_dir.replace(checkpoint_dir)
@@ -1095,6 +1585,14 @@ def _seed_everything(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+def _capture_rng_state() -> dict[str, Any]:
+    return {
+        "python": random.getstate(),
+        "torch_cpu": torch.get_rng_state(),
+        "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
+    }
 
 
 def _autocast_factory(device: torch.device, precision: str) -> Any:

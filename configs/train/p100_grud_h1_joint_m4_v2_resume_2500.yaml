@@ -1,0 +1,89 @@
+schema_version: trauma_predict.grud_h1_joint_m4_resume_train_config.v1
+route: grud_h1_to_joint_m4_v2
+run_name: p100_grud_h1_joint_m4_v2_resume_2500
+seed: 20260713
+lab_scale_artifact: configs/dataset/multires_event_v2_c4_lab_affine_scale_r9.json
+lab_scale_artifact_hash: cae827b1f8b1c6a156da4bad340af1b9b0411ca2f5fbe0b9aa8d36ed06cb87bb
+standardized_primitive_scale_artifact: configs/dataset/multires_event_v2_c4_standardized_primitive_scale_r9.json
+standardized_primitive_scale_artifact_hash: f075a9d2d415028845026b06e746cecf382102dfc0ed2c31631000506030665f
+trajectory_metric_contract: configs/evaluation/multires_event_v2_relation_v2_metrics.json
+trajectory_metric_contract_hash: 2d8f9c2c421e9d69e18470a37b3c6ae7696fff0664c6083df8a7e2de1745123e
+
+dataset:
+  config_path: configs/dataset/grud_h1_joint_m4_v2_c4.yaml
+model:
+  config_path: configs/model/grud_h1_joint_m4_v2.yaml
+
+objective:
+  future_resolution: M4
+  future_blocks: 6
+  core_fields: 29
+  stochastic_primitive_factors: 414
+  factor_composition: joint_log_probability_sum
+  anchor_reduction: mean
+  active_target_denominator: false
+  deterministic_projection_loss: false
+  family_weights: null
+
+evaluation:
+  checkpoint_metric: joint_nll_subject_macro
+  interval_anchor_policy: one_fixed_anchor_per_validation_subject
+  interval_expected_subjects: 505
+  final_evaluation_in_training_notebook: false
+  free_running_in_training_notebook: false
+
+training:
+  required_cuda_devices: 1
+  required_world_size: 1
+  required_device_name_substring: P100
+  fresh_start: false
+  resume: true
+  forced_stop: false
+  precision: fp16
+  grad_scaler_initial_scale: 32.0
+  grad_scaler_growth_factor: 2.0
+  grad_scaler_backoff_factor: 0.5
+  grad_scaler_growth_interval: 1000000
+  per_device_train_batch_size: 32
+  gradient_accumulation_steps: 2
+  effective_train_batch_size: 64
+  per_device_eval_batch_size: 32
+  train_samples_per_epoch: 3072
+  max_steps: 4000
+  optimizer: AdamW
+  loss_reduction: raw_414_factor_joint_nll_batch_mean
+  learning_rate: 3.0e-4
+  warmup_steps: 400
+  weight_decay: 0.01
+  adamw_betas: [0.9, 0.999]
+  adamw_eps: 1.0e-8
+  max_grad_norm: 1.0
+  logging_steps: 100
+  eval_steps: 250
+  save_steps: 500
+  keep_last_checkpoints: 1
+  dataloader_num_workers: 0
+
+resume_state:
+  checkpoint_path: ${TRAUMA_PREDICT_GRUD_RESUME_CHECKPOINT}
+  checkpoint_manifest_path: ${TRAUMA_PREDICT_GRUD_RESUME_MANIFEST}
+  source_metrics_path: ${TRAUMA_PREDICT_GRUD_RESUME_SOURCE_METRICS}
+  source_training_manifest_path: ${TRAUMA_PREDICT_GRUD_RESUME_SOURCE_TRAINING_MANIFEST}
+  checkpoint_step: 2500
+  checkpoint_sha256: ba5da75fe63808374916fd270f899e45f3a9c0c3452c85fdbe6edc5dfb233054
+  checkpoint_manifest_sha256: 28dac8094956b407cb8721a6e6b98f171a81867de79569f8ed121bef62021221
+  source_metrics_sha256: 422ba862a026c7c920cab2fcf93327b5365ae33e1decef16f3e9d992f1c9c72e
+  source_training_manifest_sha256: 21ec36a674d897fdbe9a565cec293a3823c0de3dda8fa9f5bec38e51882698cd
+  source_notebook_ref: vanila111/trauma-predict-grud-h1-joint-m4-v2
+  source_notebook_version: 4
+  source_session_output_id: 336631710
+  source_last_observed_step: 2900
+  discarded_uncheckpointed_steps: [2501, 2900]
+  sampler_continuity: reconstructed_epoch_and_microbatch_cursor
+  rng_continuity: deterministic_reset_not_bitwise_equivalent
+  rng_seed: 979216224
+  rng_seed_derivation: checkpoint_sha256_prefix8_mod_2147483647
+
+outputs:
+  output_dir: ${TRAUMA_PREDICT_OUTPUT_ROOT}/p100_grud_h1_joint_m4_v2_resume_2500
+  metrics_jsonl: ${TRAUMA_PREDICT_OUTPUT_ROOT}/p100_grud_h1_joint_m4_v2_resume_2500/metrics.jsonl
